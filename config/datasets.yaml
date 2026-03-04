@@ -1,0 +1,293 @@
+# Реестр наборов данных NSK OpenData Bot
+# Источник: opendata.novo-sibirsk.ru
+# TTL по умолчанию: 24 часа
+
+defaults:
+  ttl_hours: 24
+  encoding: utf-8-sig
+  delimiter: ","
+
+datasets:
+
+  parking:
+    name: "Парковки"
+    description: "Парковочное пространство города Новосибирска"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=50"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data50/data-20250626T1152-structure-20250626T1152.csv"
+    format: csv
+    keywords:
+      - парковк
+      - парковок       # сколько парковок (родительный падеж)
+      - паркова        # парковая зона, паркование
+      - парковочн
+      - стоянк
+      - машиноместа
+      - машинное место
+      - автопарк
+      - место для авто
+      - для машин      # место для машин, стоянка для машин
+      - припаркова     # припарковаться, припаркованы
+    fields:
+      district_col: AdrDistr
+      street_col: AdrStreet
+      name_col: AdrStreet
+      display_cols:
+        - AdrDistr
+        - AdrStreet
+        - ParkType
+        - NumMashMest
+        - NumMashMestInv
+        - ParkOhrana
+        - Regim
+      count_col: NumMashMest
+      filter_cols:
+        - {col: ParkType, label: "Тип парковки"}
+        - {col: ParkStatus, label: "Статус"}
+        - {col: Regim, label: "Режим работы"}
+        - {col: ParkOhrana, label: "Охрана"}
+
+  stops:
+    name: "Остановки транспорта"
+    description: "Остановки наземного городского пассажирского транспорта"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=49"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data49/data-20260219T1724-structure-20260219T1724.CSV"
+    format: csv
+    keywords:
+      - остановк
+      - остановочн
+      - автобусн
+      - транспортн
+      - троллейбусн
+      - маршрутн
+      - пассажирск
+      - общественн транспорт
+    fields:
+      district_col: AdrDistr
+      street_col: AdrStreet
+      name_col: OstName
+      display_cols:
+        - OstName
+        - AdrDistr
+        - AdrStreet
+        - Pavilion
+        - Marshryt
+      filter_cols:
+        - {col: Pavilion, label: "Павильон"}
+
+  culture:
+    name: "Организации культуры"
+    description: "Прочие муниципальные организации культуры города Новосибирска"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=78"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data77/data-20251224T0211-structure-20251224T0211.CSV"
+    format: csv
+    keywords:
+      - культур организ
+      - театр
+      - дом культур
+      - дворец культур
+      - культурн учрежден
+      - муниципальн организ культур
+    fields:
+      district_col: Rayon
+      street_col: Ulica
+      name_col: FullName
+      display_cols:
+        - ShortName
+        - Rayon
+        - Ulica
+        - Dom
+        - TelUch
+        - Site
+
+  schools:
+    name: "Школы"
+    description: "Муниципальные средние общеобразовательные организации"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=28"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data28/data-20260206T0109-structure-20260206T0109.CSV"
+    format: csv
+    keywords:
+      - школ
+      - общеобразовательн
+      - гимназ
+      - лице
+      - сош
+      - образовательн организ
+      - учебн заведен
+    fields:
+      district_col: AdrDistr
+      street_col: AdrStreet
+      name_col: OuName
+      display_cols:
+        - OuName
+        - AdrDistr
+        - AdrStreet
+        - AdrDom
+        - Phone
+        - Regimrab
+      filter_cols:
+        - {col: Regimrab, label: "Режим работы"}
+
+  kindergartens:
+    name: "Детские сады"
+    description: "Муниципальные организации дошкольного образования"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=27"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data27/data-20260127T0154-structure-20260127T0154.CSV"
+    format: csv
+    keywords:
+      - детск сад
+      - дошкольн
+      - детсад
+      - садик
+      - ясли
+      - дошкол
+      - дду
+    fields:
+      district_col: AdrDistr
+      street_col: AdrStreet
+      name_col: OuName
+      display_cols:
+        - OuName
+        - AdrDistr
+        - AdrStreet
+        - AdrDom
+        - Phone
+        - Mesta
+        - Regimraboti
+      count_col: Mesta
+
+  libraries:
+    name: "Библиотеки"
+    description: "Муниципальные библиотеки города Новосибирска"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=22"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data22/data-20260212T0324-structure-20260212T0324.CSV"
+    format: csv
+    keywords:
+      - библиотек
+      - книжн
+      - читальн
+      - читальня
+      - книги
+    fields:
+      district_col: AdrDistr
+      street_col: AdrStreet
+      name_col: BiblFName
+      display_cols:
+        - BiblName
+        - AdrDistr
+        - AdrStreet
+        - AdrDom
+        - Phone
+        - Site
+
+  parks:
+    name: "Парки"
+    description: "Муниципальные парки культуры и отдыха"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=24"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data24/data-20260212T0324-structure-20260212T0324.CSV"
+    format: csv
+    keywords:
+      - парки           # покажи парки, парки по районам
+      - парков          # список парков, сколько парков (родительный падеж)
+      - парке           # в парке, про парки (предложный падеж)
+      - парк культур
+      - парк отдых
+      - парк новосибирска
+      - лесопарк
+      - сквер
+      - зон отдых
+      - место отдых
+      - пко
+      - зеленая зон
+      - муниципальный парк
+    fields:
+      district_col: AdrDistr
+      street_col: AdrStreet
+      name_col: ParkName
+      display_cols:
+        - ParkName
+        - AdrDistr
+        - AdrStreet
+        - AdrDom
+        - Phone
+        - Site
+
+  sport_grounds:
+    name: "Спортплощадки"
+    description: "Спортивные площадки города Новосибирска"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=65"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data68/data-20250729T1144-structure-20250729T1144.CSV"
+    format: csv
+    keywords:
+      - спортплощадк
+      - спортивн площадк
+      - площадк спорт
+      - стадион
+      - корт
+      - спортивн сооружен
+    fields:
+      district_col: District
+      street_col: Street
+      name_col: Type
+      display_cols:
+        - Type
+        - District
+        - Street
+        - House
+        - VidSport
+        - Phone
+        - Comment
+      filter_cols:
+        - {col: VidSport, label: "Вид спорта"}
+        - {col: Type, label: "Тип"}
+
+  pharmacies:
+    name: "Аптеки"
+    description: "Аптечная сеть (АО «Новосибирская аптечная сеть»)"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=37"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data37/data-20260212T0324-structure-20260212T0324.CSV"
+    format: csv
+    keywords:
+      - аптек
+      - лекарств
+      - фармац
+      - аптечн
+      - провизор
+      - медикамент
+    fields:
+      district_col: AdrDistr
+      street_col: AdrStr
+      name_col: Name
+      display_cols:
+        - Name
+        - Type
+        - AdrDistr
+        - AdrStr
+        - AdrDom
+        - Phone
+
+  sport_orgs:
+    name: "Спортивные организации"
+    description: "Спортивные организации города Новосибирска"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=64"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data67/data-20250729T1145-structure-20250729T1145.CSV"
+    format: csv
+    keywords:
+      - спортивн организ
+      - спортшкол
+      - физкультур
+      - секц
+      - спортивн клуб
+      - дюсш
+      - спорт организ
+    fields:
+      district_col: Rayon
+      street_col: Ulica
+      name_col: NazvUch
+      display_cols:
+        - NazvUch
+        - Type
+        - Rayon
+        - Ulica
+        - Dom
+        - TelUch
+        - VidSporta

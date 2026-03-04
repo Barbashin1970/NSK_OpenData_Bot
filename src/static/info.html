@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NSK OpenData Bot — О проекте</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* ── Фиксированная навигационная панель (стиль как у /docs) ── */
+    #nsk-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+      background: linear-gradient(90deg, #1e3a5f 0%, #1d4ed8 100%);
+      color: white; padding: 9px 20px;
+      display: flex; align-items: center; gap: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.35);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px; line-height: 1;
+    }
+    #nsk-nav a.back {
+      color: #93c5fd; text-decoration: none; font-weight: 500;
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 13px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.25);
+      transition: background .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    #nsk-nav a.back:hover { background: rgba(255,255,255,.13); border-color: rgba(255,255,255,.45); }
+    #nsk-nav .sep { opacity: .3; }
+    #nsk-nav .title { font-weight: 700; color: #e2eaf4; font-size: 14px; }
+    #nsk-nav .sub { color: #94a3b8; font-size: 12px; }
+    #nsk-nav .badge {
+      margin-left: auto; background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.2); border-radius: 6px;
+      padding: 2px 9px; font-size: 11px; color: #cbd5e1;
+    }
+
+    /* ── Диаграмма архитектуры ── */
+    .arch-step {
+      background: white;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 16px 22px;
+      position: relative;
+    }
+    .arch-step.highlight {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+    }
+    .arch-arrow {
+      text-align: center;
+      color: #94a3b8;
+      font-size: 22px;
+      line-height: 1;
+      margin: 4px 0;
+    }
+
+    /* ── Блок кода ── */
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 12px;
+      padding: 18px 22px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.7;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+    }
+    code { font-family: inherit; }
+    .kw { color: #7dd3fc; }
+    .cm { color: #64748b; font-style: italic; }
+    .str { color: #86efac; }
+    .fn { color: #fbbf24; }
+
+    /* ── Принцип лояльного агента ── */
+    .compare-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+    @media (max-width: 640px) { .compare-row { grid-template-columns: 1fr; } }
+
+    /* ── Плавный скролл ── */
+    html { scroll-behavior: smooth; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased" style="padding-top: 44px">
+
+<!-- ══════════════════════════════════════════════════════ NAVBAR -->
+<div id="nsk-nav">
+  <a href="/" class="back">← На главную</a>
+  <span class="sep">|</span>
+  <span class="title">NSK OpenData Bot</span>
+  <span class="sub">О проекте и архитектуре</span>
+  <span class="badge">v1.0.0</span>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ HERO -->
+<header class="bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-700 text-white">
+  <div class="max-w-4xl mx-auto px-6 py-14">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center text-3xl shadow-inner">🗂️</div>
+      <div>
+        <h1 class="text-2xl font-bold leading-tight">NSK OpenData Bot</h1>
+        <p class="text-blue-300 text-sm">Открытые данные мэрии Новосибирска · opendata.novo-sibirsk.ru</p>
+      </div>
+    </div>
+
+    <p class="text-blue-100 text-lg leading-relaxed max-w-3xl mb-8">
+      Интеллектуальный агент для работы с открытыми городскими данными: отвечает на запросы на
+      <strong class="text-white">русском языке</strong> без шаблонных форм и SQL-запросов.
+      Работает полностью на локальной машине — без облачных LLM.
+    </p>
+
+    <div class="flex flex-wrap gap-3 text-sm">
+      <span class="bg-white/15 border border-white/25 rounded-full px-4 py-1.5">🧠 Семантическая маршрутизация</span>
+      <span class="bg-white/15 border border-white/25 rounded-full px-4 py-1.5">🗄️ DuckDB · 10 наборов данных</span>
+      <span class="bg-white/15 border border-white/25 rounded-full px-4 py-1.5">⚡ Отключения ЖКХ в реальном времени</span>
+      <span class="bg-white/15 border border-white/25 rounded-full px-4 py-1.5">🔌 REST API · CLI · Web UI</span>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════ CONTENT -->
+<main class="max-w-4xl mx-auto px-6 py-12 space-y-16">
+
+  <!-- ── Суть: что это такое ─────────────────────────────────── -->
+  <section>
+    <h2 class="text-2xl font-bold text-slate-800 mb-2">Что такое NSK OpenData Bot</h2>
+    <div class="w-12 h-1 bg-blue-500 rounded mb-6"></div>
+
+    <p class="text-slate-600 leading-relaxed mb-4">
+      Бот — это <strong>полноценный интеллектуальный агент</strong>, который принимает свободный текст на русском
+      языке и превращает его в точный SQL-запрос к городским данным. Никакой ручной настройки форм, фильтров,
+      кнопок — пользователь просто пишет «<em>сколько школ в Ленинском районе</em>» и мгновенно получает ответ.
+    </p>
+    <p class="text-slate-600 leading-relaxed mb-4">
+      Ключевая идея: <strong>семантика как движок</strong>. Вместо того чтобы учить пользователей языку системы,
+      система учится языку пользователя. Это достигается через комбинацию правил
+      (<span class="font-mono text-blue-700 text-sm">router.py</span> + <span class="font-mono text-blue-700 text-sm">planner.py</span>)
+      и семантической конфигурации (<span class="font-mono text-blue-700 text-sm">SKILL.md</span>).
+    </p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-5">
+        <div class="text-2xl mb-2">📥</div>
+        <div class="font-semibold text-blue-900 mb-1">Источники данных</div>
+        <div class="text-blue-700 text-sm">opendata.novo-sibirsk.ru — 10 наборов, ~4 МБ. Кэш обновляется каждые 24 часа.</div>
+      </div>
+      <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-5">
+        <div class="text-2xl mb-2">⚡</div>
+        <div class="font-semibold text-emerald-900 mb-1">Реальное время</div>
+        <div class="text-emerald-700 text-sm">051.novo-sibirsk.ru — отключения ЖКХ. Парсится каждые 30 минут, история 7 дней.</div>
+      </div>
+      <div class="bg-violet-50 border border-violet-100 rounded-xl p-5">
+        <div class="text-2xl mb-2">🔒</div>
+        <div class="font-semibold text-violet-900 mb-1">Без LLM в runtime</div>
+        <div class="text-violet-700 text-sm">Весь inference — regex + DuckDB SQL. Работает на ноутбуке без GPU и без интернет-LLM.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Архитектура ─────────────────────────────────────────── -->
+  <section>
+    <h2 class="text-2xl font-bold text-slate-800 mb-2">Архитектура системы</h2>
+    <div class="w-12 h-1 bg-blue-500 rounded mb-6"></div>
+
+    <p class="text-slate-600 leading-relaxed mb-8">
+      Запрос проходит через четыре слоя: маршрутизация → планирование → выполнение → рендеринг.
+      Каждый слой имеет единственную ответственность и легко тестируется независимо (79 unit-тестов).
+    </p>
+
+    <!-- Диаграмма -->
+    <div class="max-w-lg mx-auto space-y-1">
+
+      <div class="arch-step bg-slate-700 text-white border-slate-600">
+        <div class="font-mono text-xs text-slate-400 mb-1">вход</div>
+        <div class="font-semibold">💬 Запрос пользователя</div>
+        <div class="text-slate-300 text-sm mt-1">«сколько школ в Ленинском районе»</div>
+      </div>
+
+      <div class="arch-arrow">↓</div>
+
+      <div class="arch-step highlight">
+        <div class="font-mono text-xs text-blue-500 mb-1">src/router.py</div>
+        <div class="font-semibold text-slate-800">🧭 Маршрутизатор (семантическое ядро)</div>
+        <div class="text-slate-500 text-sm mt-1">
+          Взвешенное совпадение стем-ключевых слов.<br/>
+          Дизамбигуация омонимов (парк vs парковка).<br/>
+          Возвращает: <span class="font-mono text-blue-600">topic=schools, confidence=0.85</span>
+        </div>
+      </div>
+
+      <div class="arch-arrow">↓</div>
+
+      <div class="arch-step highlight">
+        <div class="font-mono text-xs text-blue-500 mb-1">src/planner.py</div>
+        <div class="font-semibold text-slate-800">📋 Планировщик операций</div>
+        <div class="text-slate-500 text-sm mt-1">
+          Распознаёт тип запроса и параметры.<br/>
+          Возвращает: <span class="font-mono text-blue-600">COUNT, district=Ленинский</span>
+        </div>
+      </div>
+
+      <div class="arch-arrow">↓</div>
+
+      <div class="arch-step highlight">
+        <div class="font-mono text-xs text-blue-500 mb-1">src/executor.py</div>
+        <div class="font-semibold text-slate-800">🗄️ Исполнитель (SQL → DuckDB)</div>
+        <div class="text-slate-500 text-sm mt-1">
+          Строит SQL из плана, выполняет запрос.<br/>
+          Возвращает: <span class="font-mono text-blue-600">&#123;"count": 23&#125;</span>
+        </div>
+      </div>
+
+      <div class="arch-arrow">↓</div>
+
+      <div class="arch-step">
+        <div class="font-mono text-xs text-slate-400 mb-1">src/api.py · src/renderer.py</div>
+        <div class="font-semibold text-slate-800">📤 API / CLI / Web UI</div>
+        <div class="text-slate-500 text-sm mt-1">REST JSON, Rich-таблица в терминале, интерактивный веб-интерфейс</div>
+      </div>
+
+      <div class="arch-arrow">↓</div>
+
+      <div class="arch-step bg-emerald-600 text-white border-emerald-500">
+        <div class="font-mono text-xs text-emerald-200 mb-1">результат</div>
+        <div class="font-semibold">✅ Ответ пользователю</div>
+        <div class="text-emerald-100 text-sm mt-1">«В Ленинском районе 23 школы»</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Семантическое ядро ──────────────────────────────────── -->
+  <section>
+    <h2 class="text-2xl font-bold text-slate-800 mb-2">Семантическое ядро: как работает маршрутизатор</h2>
+    <div class="w-12 h-1 bg-blue-500 rounded mb-6"></div>
+
+    <p class="text-slate-600 leading-relaxed mb-6">
+      Маршрутизатор (<span class="font-mono text-sm text-blue-700">router.py</span>) — это
+      <strong>взвешенная система сопоставления смыслов</strong>, не просто поиск по ключевым словам.
+      Он учитывает морфологию русского языка через стем-префиксы и умеет разрешать
+      семантические конфликты (например, «парк» ≠ «парковка»).
+    </p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+      <div class="bg-white border border-slate-200 rounded-xl p-5">
+        <div class="font-semibold text-slate-800 mb-3">🔤 Стем-префиксы вместо словарей</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Вместо хранения всех словоформ ключевое слово записывается как корень:
+          <code class="bg-slate-100 px-1 rounded text-xs">спортивн</code> → совпадает с
+          «спортивные», «спортивной», «спортивных».
+          Паттерн <code class="bg-slate-100 px-1 rounded text-xs">(?&lt;![а-яё])stem</code>
+          гарантирует совпадение только с началом слова.
+        </p>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-xl p-5">
+        <div class="font-semibold text-slate-800 mb-3">⚖️ Взвешенная оценка уверенности</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Каждое совпадающее ключевое слово даёт очки: <code class="bg-slate-100 px-1 rounded text-xs">len(kw_parts)^1.5</code>.
+          Длинные фразы («парк культур», «спортивн организ») ценятся больше коротких корней.
+          Итоговая уверенность нормируется к [0, 1].
+        </p>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-xl p-5">
+        <div class="font-semibold text-slate-800 mb-3">🎯 Дизамбигуация омонимов</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          «Парков» — это генитив от «парк» (зелёная зона) или часть «парковок» (машины)?
+          Два regex-паттерна разрешают конфликт: <em>parking_signals</em> удаляют «парки»
+          при наличии «стоянк», «парковк»; <em>park_exact</em> добавляет «парки» для
+          голого слова «парк» с проверкой конца слова.
+        </p>
+      </div>
+      <div class="bg-white border border-slate-200 rounded-xl p-5">
+        <div class="font-semibold text-slate-800 mb-3">🗺️ Извлечение сущностей</div>
+        <p class="text-slate-500 text-sm leading-relaxed">
+          Из запроса автоматически извлекаются:
+          <strong>район</strong> (Советский, Центральный…),
+          <strong>улица</strong> (ул. Ленина, проспект Карла Маркса),
+          <strong>лимит</strong> (топ-5, первые 10),
+          <strong>год</strong> (за 2024 год),
+          <strong>аудитория</strong> (детские / взрослые).
+        </p>
+      </div>
+    </div>
+
+    <pre><code><span class="cm"># Пример: как оценивается запрос «спортивные площадки в Советском районе»</span>
+
+<span class="fn">route</span>(<span class="str">"спортивные площадки в Советском районе"</span>)
+
+<span class="cm"># router.py проверяет каждое ключевое слово из datasets.yaml:</span>
+<span class="cm"># "спортплощадк"   → нет совпадения с "спортивные площадки"</span>
+<span class="cm"># "спортивн площадк" → "спортивн" ✓ + "площадк" ✓ → score += 2^1.5 = 2.83</span>
+<span class="cm"># confidence = min(1.0, 2.83 / 6 * 3) = 0.94</span>
+
+<span class="cm"># planner.py:</span>
+<span class="cm"># "в Советском районе" → district = "Советский район"</span>
+<span class="cm"># нет "сколько", "топ", "по районам" → operation = FILTER</span>
+
+<span class="cm"># executor.py строит SQL:</span>
+<span class="kw">SELECT</span> "Type", "District", "Street", "House", "VidSport", "Phone", "Comment"
+<span class="kw">FROM</span> sport_grounds
+<span class="kw">WHERE</span> ("District" ILIKE <span class="str">'%Советский%'</span>)
+<span class="kw">ORDER BY</span> "District", "Type"
+<span class="kw">LIMIT</span> 20</code></pre>
+  </section>
+
+  <!-- ── SKILL.md и Claude ───────────────────────────────────── -->
+  <section>
+    <h2 class="text-2xl font-bold text-slate-800 mb-2">SKILL.md — конфигурация агента для Claude</h2>
+    <div class="w-12 h-1 bg-blue-500 rounded mb-6"></div>
+
+    <p class="text-slate-600 leading-relaxed mb-4">
+      В корне проекта есть файл <span class="font-mono text-sm bg-slate-100 px-1.5 py-0.5 rounded">SKILL.md</span> —
+      это <strong>семантическая конфигурация агента</strong>. Когда Claude Code (или любой агент на базе Claude)
+      получает запрос пользователя, он сначала читает этот файл, чтобы понять контекст, команды и тон ответов.
+    </p>
+
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
+      <div class="font-semibold text-amber-900 mb-2">💡 Ключевая идея SKILL.md</div>
+      <p class="text-amber-800 text-sm leading-relaxed">
+        Вместо того чтобы программировать поведение агента в коде — оно описывается
+        на <strong>естественном языке</strong> в Markdown-файле. Добавить новую тему или команду = написать
+        несколько строк в SKILL.md, без изменения Python-кода.
+      </p>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden mb-6">
+      <div class="bg-slate-800 px-5 py-3 text-slate-300 text-xs font-mono font-semibold">
+        Принцип «лояльного агента»: Best-effort interpretation
+      </div>
+      <div class="divide-y divide-slate-100">
+        <div class="compare-row">
+          <div class="p-4 bg-rose-50">
+            <div class="text-xs text-rose-500 font-semibold mb-2 uppercase tracking-wide">Без SKILL.md</div>
+            <div class="font-mono text-sm text-slate-700 mb-1">«парковки»</div>
+            <div class="text-sm text-rose-700">«Уточните, что именно вы хотите узнать о парковках?»</div>
+          </div>
+          <div class="p-4 bg-emerald-50 border-l border-slate-100">
+            <div class="text-xs text-emerald-600 font-semibold mb-2 uppercase tracking-wide">С SKILL.md</div>
+            <div class="font-mono text-sm text-slate-700 mb-1">«парковки»</div>
+            <div class="text-sm text-emerald-700">→ <code>parking / GROUP / по районам</code> — сразу выдаёт группировку</div>
+          </div>
+        </div>
+        <div class="compare-row">
+          <div class="p-4 bg-rose-50">
+            <div class="text-xs text-rose-500 font-semibold mb-2 uppercase tracking-wide">Без SKILL.md</div>
+            <div class="font-mono text-sm text-slate-700 mb-1">«свет отключили в советском»</div>
+            <div class="text-sm text-rose-700">«Вы имеете в виду отключение электроэнергии?»</div>
+          </div>
+          <div class="p-4 bg-emerald-50 border-l border-slate-100">
+            <div class="text-xs text-emerald-600 font-semibold mb-2 uppercase tracking-wide">С SKILL.md</div>
+            <div class="font-mono text-sm text-slate-700 mb-1">«свет отключили в советском»</div>
+            <div class="text-sm text-emerald-700">→ <code>power_outages / POWER_STATUS / Советский</code></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <pre><code><span class="cm"># Фрагмент SKILL.md — так выглядит семантическая конфигурация агента</span>
+
+<span class="kw">## Поддерживаемые темы</span>
+
+| Тема | Что содержит | Примеры запросов |
+|------|-------------|-----------------|
+| <span class="str">**parking**</span> | Парковки (2360 объектов)  | «сколько парковок», «парковки по районам» |
+| <span class="str">**schools**</span> | Муниципальные школы (214) | «школы в Кировском районе» |
+| <span class="str">**power_outages**</span> | Отключения ЖКХ | «свет в советском», «плановые отключения» |
+
+<span class="kw">## Принципы интерпретации</span>
+
+- Всегда пытаться выполнить наиболее вероятную интерпретацию
+- Не спрашивать уточнения — выполнять с разумными допущениями
+- При неопределённости — показывать список доступных тем</code></pre>
+  </section>
+
+  <!-- ── Почему это элегантно ────────────────────────────────── -->
+  <section>
+    <h2 class="text-2xl font-bold text-slate-800 mb-2">Почему это красиво: для разработчиков и заказчиков</h2>
+    <div class="w-12 h-1 bg-blue-500 rounded mb-6"></div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5 flex gap-4">
+        <div class="text-2xl shrink-0">🧩</div>
+        <div>
+          <div class="font-semibold text-slate-800 mb-1">Минимум зависимостей</div>
+          <p class="text-slate-500 text-sm">Python + DuckDB + FastAPI + BeautifulSoup.
+          Никакого Spark, Kafka, Elasticsearch или внешних векторных БД.
+          Запускается на любом компьютере с 4 ГБ RAM.</p>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5 flex gap-4">
+        <div class="text-2xl shrink-0">⚡</div>
+        <div>
+          <div class="font-semibold text-slate-800 mb-1">Мгновенные ответы</div>
+          <p class="text-slate-500 text-sm">DuckDB выполняет аналитические SQL-запросы
+          к CSV в памяти за миллисекунды. Кэш на диске — данные загружаются один раз,
+          используются тысячи раз.</p>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5 flex gap-4">
+        <div class="text-2xl shrink-0">🔧</div>
+        <div>
+          <div class="font-semibold text-slate-800 mb-1">Легко расширять</div>
+          <p class="text-slate-500 text-sm">Добавить новую тему — добавить секцию в
+          <code class="text-xs bg-slate-100 px-1 rounded">datasets.yaml</code> с URL данных
+          и ключевыми словами. Добавить смысл — написать строку в SKILL.md.
+          Никакого обучения модели.</p>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5 flex gap-4">
+        <div class="text-2xl shrink-0">🧪</div>
+        <div>
+          <div class="font-semibold text-slate-800 mb-1">Полное тестовое покрытие</div>
+          <p class="text-slate-500 text-sm">79 unit-тестов покрывают маршрутизатор,
+          планировщик, извлечение сущностей и дизамбигуацию. Каждый PR проверяется
+          автоматически — регрессии исключены.</p>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5 flex gap-4">
+        <div class="text-2xl shrink-0">🤖</div>
+        <div>
+          <div class="font-semibold text-slate-800 mb-1">Гибрид: правила + ИИ</div>
+          <p class="text-slate-500 text-sm">Без LLM в runtime — быстро и предсказуемо.
+          Опционально: подключите Claude API, GigaChat или Ollama для генерации
+          ответов в свободной форме поверх структурированных данных.</p>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-5 flex gap-4">
+        <div class="text-2xl shrink-0">🏙️</div>
+        <div>
+          <div class="font-semibold text-slate-800 mb-1">Готовый шаблон для городов</div>
+          <p class="text-slate-500 text-sm">Архитектура универсальна: замените URL
+          источников данных и ключевые слова — получите аналогичного бота для
+          любого другого города с порталом открытых данных.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Структура проекта ────────────────────────────────────── -->
+  <section>
+    <h2 class="text-2xl font-bold text-slate-800 mb-2">Структура проекта</h2>
+    <div class="w-12 h-1 bg-blue-500 rounded mb-6"></div>
+
+    <pre><code>nsk-opendata-bot/
+├── <span class="fn">src/</span>
+│   ├── <span class="kw">router.py</span>        <span class="cm"># Семантическая маршрутизация запросов</span>
+│   ├── <span class="kw">planner.py</span>       <span class="cm"># COUNT / GROUP / TOP_N / FILTER / POWER_*</span>
+│   ├── <span class="kw">executor.py</span>      <span class="cm"># SQL-запросы к DuckDB</span>
+│   ├── <span class="kw">power_scraper.py</span> <span class="cm"># Парсер 051.novo-sibirsk.ru (отключения ЖКХ)</span>
+│   ├── <span class="kw">power_cache.py</span>   <span class="cm"># Скользящее окно 7 дней, TTL 30 мин</span>
+│   ├── <span class="kw">api.py</span>           <span class="cm"># FastAPI: /ask, /topics, /update, /docs, /info</span>
+│   ├── <span class="kw">cli.py</span>           <span class="cm"># CLI: bot ask / bot topics / bot power</span>
+│   ├── <span class="kw">fetcher.py</span>       <span class="cm"># Загрузка CSV с opendata (utf-8-sig / cp1251)</span>
+│   ├── <span class="kw">cache.py</span>         <span class="cm"># DuckDB-кэш с TTL</span>
+│   ├── <span class="kw">renderer.py</span>      <span class="cm"># Rich-рендеринг в терминале</span>
+│   └── <span class="fn">static/</span>
+│       ├── <span class="str">index.html</span>   <span class="cm"># Веб-интерфейс (Tailwind + Vanilla JS)</span>
+│       ├── <span class="str">info.html</span>    <span class="cm"># Эта страница</span>
+│       └── <span class="str">...</span>
+├── <span class="fn">config/</span>
+│   └── <span class="kw">datasets.yaml</span>    <span class="cm"># Реестр тем: URL, ключевые слова, поля</span>
+├── <span class="fn">tests/</span>               <span class="cm"># 79 unit-тестов</span>
+├── <span class="str">SKILL.md</span>             <span class="cm"># Семантическая конфигурация для Claude Agent SDK</span>
+├── <span class="str">pyproject.toml</span>       <span class="cm"># Точки входа: bot, bot serve, ...</span>
+└── <span class="str">Запустить бот.command</span> <span class="cm"># Лаунчер для macOS (двойной клик)</span></code></pre>
+  </section>
+
+  <!-- ── Данные ───────────────────────────────────────────────── -->
+  <section>
+    <h2 class="text-2xl font-bold text-slate-800 mb-2">Поддерживаемые данные</h2>
+    <div class="w-12 h-1 bg-blue-500 rounded mb-6"></div>
+
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-slate-50 border-b border-slate-200">
+            <th class="text-left px-4 py-3 font-semibold text-slate-600">Тема</th>
+            <th class="text-left px-4 py-3 font-semibold text-slate-600">Описание</th>
+            <th class="text-right px-4 py-3 font-semibold text-slate-600">Строк</th>
+            <th class="text-left px-4 py-3 font-semibold text-slate-600">TTL</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">parking</td><td class="px-4 py-3 text-slate-600">Парковки и стоянки</td><td class="px-4 py-3 text-right text-slate-500">~2 360</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">stops</td><td class="px-4 py-3 text-slate-600">Остановки транспорта</td><td class="px-4 py-3 text-right text-slate-500">~746</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">schools</td><td class="px-4 py-3 text-slate-600">Муниципальные школы</td><td class="px-4 py-3 text-right text-slate-500">~214</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">kindergartens</td><td class="px-4 py-3 text-slate-600">Детские сады</td><td class="px-4 py-3 text-right text-slate-500">~253</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">libraries</td><td class="px-4 py-3 text-slate-600">Библиотеки</td><td class="px-4 py-3 text-right text-slate-500">~11</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">pharmacies</td><td class="px-4 py-3 text-slate-600">Аптеки</td><td class="px-4 py-3 text-right text-slate-500">~27</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">parks</td><td class="px-4 py-3 text-slate-600">Парки культуры и отдыха</td><td class="px-4 py-3 text-right text-slate-500">~1</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">sport_grounds</td><td class="px-4 py-3 text-slate-600">Спортивные площадки</td><td class="px-4 py-3 text-right text-slate-500">~142</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">sport_orgs</td><td class="px-4 py-3 text-slate-600">Спортивные организации</td><td class="px-4 py-3 text-right text-slate-500">~89</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50"><td class="px-4 py-3 font-mono text-blue-700">culture</td><td class="px-4 py-3 text-slate-600">Организации культуры</td><td class="px-4 py-3 text-right text-slate-500">~11</td><td class="px-4 py-3 text-slate-400">24 ч</td></tr>
+          <tr class="hover:bg-slate-50 bg-amber-50"><td class="px-4 py-3 font-mono text-amber-700">power_outages</td><td class="px-4 py-3 text-slate-600">Отключения ЖКХ (реальное время)</td><td class="px-4 py-3 text-right text-slate-500">live</td><td class="px-4 py-3 text-amber-600 font-medium">30 мин</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Быстрый старт ───────────────────────────────────────── -->
+  <section>
+    <h2 class="text-2xl font-bold text-slate-800 mb-2">Быстрый старт</h2>
+    <div class="w-12 h-1 bg-blue-500 rounded mb-6"></div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 text-center">
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+        <div class="text-3xl font-bold text-blue-600 mb-1">1</div>
+        <div class="font-semibold text-blue-900 text-sm">Установить</div>
+        <code class="text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded mt-2 block">pip install -e .</code>
+      </div>
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+        <div class="text-3xl font-bold text-blue-600 mb-1">2</div>
+        <div class="font-semibold text-blue-900 text-sm">Загрузить данные</div>
+        <code class="text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded mt-2 block">bot update --all</code>
+      </div>
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+        <div class="text-3xl font-bold text-blue-600 mb-1">3</div>
+        <div class="font-semibold text-blue-900 text-sm">Запустить</div>
+        <code class="text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded mt-2 block">bot serve</code>
+      </div>
+    </div>
+
+    <pre><code><span class="cm"># CLI — спросить напрямую</span>
+bot ask <span class="str">"сколько школ в Ленинском районе"</span>
+bot ask <span class="str">"топ-5 аптек в центре"</span>
+bot ask <span class="str">"плановые отключения электричества"</span>
+
+<span class="cm"># REST API</span>
+curl <span class="str">"http://localhost:8000/ask?q=сколько+парковок+по+районам"</span>
+
+<span class="cm"># Веб-интерфейс</span>
+<span class="cm"># → http://127.0.0.1:8000</span>
+
+<span class="cm"># Требования: Python 3.11+, ~50 МБ памяти, интернет для первой загрузки</span></code></pre>
+  </section>
+
+  <!-- ── Footer ─────────────────────────────────────────────── -->
+  <footer class="border-t border-slate-200 pt-8 pb-4 flex flex-wrap items-center justify-between gap-4 text-sm text-slate-400">
+    <div>
+      NSK OpenData Bot · ЦИИ НГУ ·
+      <a href="http://opendata.novo-sibirsk.ru" target="_blank" class="hover:text-blue-500 transition-colors">opendata.novo-sibirsk.ru</a>
+    </div>
+    <div class="flex gap-4">
+      <a href="/" class="hover:text-blue-500 transition-colors">← Главная</a>
+      <a href="/docs" class="hover:text-blue-500 transition-colors">API Docs ↗</a>
+      <span>MIT License</span>
+    </div>
+  </footer>
+
+</main>
+</body>
+</html>

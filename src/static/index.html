@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NSK OpenData Bot — Открытые данные Новосибирска</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } }
+    }
+  </script>
+  <style>
+    .chip { transition: all .15s ease; }
+    .chip:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+    .chip:active { transform: translateY(0); }
+    .topic-card { transition: all .15s ease; }
+    .topic-card:hover { transform: translateY(-2px); }
+    .topic-card:active { transform: scale(.98); }
+    .spinner { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn .25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .bar-fill { transition: width .7s cubic-bezier(.4,0,.2,1); }
+    .search-glow:focus { box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
+    input::placeholder { color: #94a3b8; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
+
+<!-- ═══════════════════ HEADER ═══════════════════ -->
+<header class="bg-gradient-to-br from-blue-900 via-blue-700 to-indigo-700 text-white shadow-xl">
+  <div class="max-w-4xl mx-auto px-4 pt-7 pb-8">
+
+    <!-- Branding -->
+    <div class="flex items-center justify-between gap-3 mb-7">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 bg-white/15 rounded-2xl flex items-center justify-center text-2xl shadow-inner">🗂️</div>
+        <div>
+          <h1 class="text-xl font-bold leading-tight tracking-tight">NSK OpenData Bot</h1>
+          <p class="text-blue-300 text-xs mt-0.5">Открытые данные мэрии Новосибирска · opendata.novo-sibirsk.ru</p>
+        </div>
+      </div>
+      <a href="/docs" target="_blank"
+         class="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-xl border border-white/20 transition-all whitespace-nowrap"
+         title="Открыть документацию REST API (Swagger UI)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+        </svg>
+        API Docs
+      </a>
+    </div>
+
+    <!-- Search bar -->
+    <div class="flex gap-3">
+      <input
+        id="queryInput"
+        type="text"
+        placeholder="Введите вопрос на русском языке..."
+        class="search-glow flex-1 px-5 py-3.5 rounded-2xl bg-white text-slate-900 text-sm shadow-lg focus:outline-none placeholder:text-slate-400 transition-shadow"
+        onkeydown="if(event.key==='Enter') ask()"
+      >
+      <button
+        onclick="ask()"
+        class="px-6 py-3.5 bg-white text-blue-700 font-semibold text-sm rounded-2xl shadow-lg hover:bg-blue-50 active:scale-95 transition-all whitespace-nowrap"
+      >
+        Спросить →
+      </button>
+    </div>
+
+    <!-- Example chips -->
+    <div id="chips" class="flex flex-wrap gap-2 mt-4"></div>
+  </div>
+</header>
+
+<!-- ═══════════════════ MAIN ═══════════════════ -->
+<main class="max-w-4xl mx-auto px-4 py-7 space-y-7">
+
+  <!-- Loading indicator -->
+  <div id="loadingState" class="hidden items-center gap-3 text-slate-500 text-sm">
+    <svg class="spinner w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+    </svg>
+    <span id="loadingText">Обрабатываю запрос...</span>
+  </div>
+
+  <!-- Result area -->
+  <div id="resultArea" class="hidden"></div>
+
+  <!-- Topics section -->
+  <section>
+    <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">Доступные наборы данных</h2>
+    <div id="topicsGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      <div class="col-span-full flex items-center justify-center gap-2 text-slate-400 text-sm py-6">
+        <svg class="spinner w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        Загрузка...
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="text-center text-xs text-slate-400 pb-4 space-y-1">
+    <p>Данные: <a href="http://opendata.novo-sibirsk.ru" target="_blank" class="hover:text-blue-500 transition-colors">opendata.novo-sibirsk.ru</a> · Отключения: <a href="http://051.novo-sibirsk.ru" target="_blank" class="hover:text-blue-500 transition-colors">051.novo-sibirsk.ru</a></p>
+    <p>NSK OpenData Bot · ЦИИ НГУ · <a href="/docs" target="_blank" class="hover:text-blue-500 transition-colors">API Docs ↗</a> · <span id="footerTime"></span></p>
+  </footer>
+
+</main>
+
+<!-- ═══════════════════ SCRIPT ═══════════════════ -->
+<script>
+
+// ─── Example queries ────────────────────────────────────────────────────────
+const EXAMPLES = [
+  "сколько парковок по районам",
+  "библиотеки для детей",
+  "топ-5 аптек",
+  "отключения электричества сейчас",
+  "детские спортивные организации",
+  "школы в Советском районе",
+  "список детских садов",
+  "плановые отключения",
+  "что ты умеешь",
+];
+
+function buildChips() {
+  const el = document.getElementById('chips');
+  el.innerHTML = EXAMPLES.map(q =>
+    `<button class="chip px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs rounded-full border border-white/20 cursor-pointer"
+      data-query="${esc(q)}">${q}</button>`
+  ).join('');
+  el.querySelectorAll('[data-query]').forEach(btn =>
+    btn.addEventListener('click', () => setQuery(btn.dataset.query))
+  );
+}
+
+function setQuery(q) {
+  const input = document.getElementById('queryInput');
+  const hadText = input.value.trim().length > 0;
+  input.value = q;
+  input.focus();
+  // Если поле было пустым — сразу отправляем; если уже было что-то напечатано — только подставляем текст
+  if (!hadText) {
+    ask();
+  }
+}
+
+// ─── Ask ─────────────────────────────────────────────────────────────────────
+async function ask() {
+  const q = document.getElementById('queryInput').value.trim();
+  if (!q) return;
+
+  setLoading(q);
+
+  try {
+    const resp = await fetch('/ask?q=' + encodeURIComponent(q));
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    renderResult(data);
+  } catch (e) {
+    showError('Ошибка соединения с сервером. Проверьте, что бот запущен: <code class="bg-red-100 px-1 rounded">bot serve</code>');
+  }
+}
+
+function setLoading(q) {
+  document.getElementById('loadingState').className = 'flex items-center gap-3 text-slate-500 text-sm';
+  document.getElementById('loadingText').textContent = `Ищу ответ на: «${q}»`;
+  document.getElementById('resultArea').className = 'hidden';
+}
+
+function showError(html) {
+  document.getElementById('loadingState').className = 'hidden';
+  const el = document.getElementById('resultArea');
+  el.className = 'fade-in bg-red-50 border border-red-200 rounded-2xl p-5 text-red-700 text-sm';
+  el.innerHTML = `<strong class="font-semibold">Ошибка:</strong> ${html}`;
+}
+
+// ─── Render result ────────────────────────────────────────────────────────────
+function renderResult(data) {
+  document.getElementById('loadingState').className = 'hidden';
+  const el = document.getElementById('resultArea');
+
+  if (data.error) {
+    el.className = 'fade-in bg-amber-50 border border-amber-200 rounded-2xl p-5';
+    el.innerHTML = `
+      <p class="text-amber-800 font-semibold mb-1.5">⚠ Не удалось найти ответ</p>
+      <p class="text-amber-700 text-sm">${esc(data.error)}</p>
+      ${data.available_topics ? `<p class="text-slate-500 text-xs mt-3">Попробуйте: ${data.available_topics.slice(0,5).join(', ')}</p>` : ''}
+    `;
+    return;
+  }
+
+  el.className = 'fade-in space-y-4';
+  const op = data.operation;
+
+  let html = metaHeader(data);
+
+  if      (op === 'COUNT')                     html += renderCount(data);
+  else if (op === 'GROUP')                     html += renderGroup(data);
+  else if (op === 'TOP_N' || op === 'FILTER')  html += renderTable(data);
+  else if (op && op.startsWith('POWER_'))      html += renderPower(data);
+  else if (op === 'INFO')                      html += renderInfo(data);
+  else if (op === 'DISTRICTS')                 html += renderDistricts(data);
+  else                                         html += renderTable(data);
+
+  el.innerHTML = html;
+
+  // Animate bar fills after render
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.bar-fill[data-pct]').forEach(bar => {
+      bar.style.width = bar.dataset.pct + '%';
+    });
+  });
+}
+
+// ─── Meta header ─────────────────────────────────────────────────────────────
+function metaHeader(data) {
+  if (!data.topic) return '';
+  const conf = data.confidence != null
+    ? `<span class="text-slate-400 text-xs">${Math.round(data.confidence * 100)}% уверенность</span>` : '';
+  const dist = data.district
+    ? `<span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-medium">${esc(data.district)}</span>` : '';
+  const street = data.street
+    ? `<span class="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">ул. ${esc(data.street)}</span>` : '';
+  const extra = data.extra_filters && data.extra_filters.audience
+    ? `<span class="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">${data.extra_filters.audience === 'children' ? 'дети' : 'взрослые'}</span>` : '';
+  return `
+    <div class="flex items-center flex-wrap gap-2 text-sm pb-1">
+      <span class="font-semibold text-slate-800">${esc(data.topic_name || data.topic)}</span>
+      ${conf} ${dist} ${street} ${extra}
+    </div>
+  `;
+}
+
+// ─── COUNT ────────────────────────────────────────────────────────────────────
+function renderCount(data) {
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 text-center">
+      <div class="text-7xl font-bold text-blue-600 mb-2 tracking-tight">${Number(data.count).toLocaleString('ru-RU')}</div>
+      <div class="text-slate-500 text-base">${esc(data.topic_name || 'записей')}</div>
+      ${data.district ? `<div class="text-slate-400 text-sm mt-1">${esc(data.district)}</div>` : ''}
+    </div>
+  `;
+}
+
+// ─── GROUP ────────────────────────────────────────────────────────────────────
+function renderGroup(data) {
+  const rows = data.rows || [];
+  if (!rows.length) return emptyState();
+  const max = Math.max(...rows.map(r => r['количество'] || 0), 1);
+  const total = data.count || rows.reduce((s, r) => s + (r['количество'] || 0), 0);
+
+  const rowsHtml = rows.map((r, i) => {
+    const d = r['район'] || '—';
+    const n = r['количество'] || 0;
+    const pct = Math.round(n / max * 100);
+    const rank = i < 3 ? ['🥇','🥈','🥉'][i] : `${i+1}`;
+    return `
+      <tr class="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
+        <td class="py-3 px-4 text-sm text-slate-400 w-8 text-center">${rank}</td>
+        <td class="py-3 px-4 text-sm text-slate-700 font-medium">${esc(d)}</td>
+        <td class="py-3 px-4 w-1/3">
+          <div class="flex items-center gap-3">
+            <div class="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+              <div class="bar-fill bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full w-0" data-pct="${pct}"></div>
+            </div>
+            <span class="text-sm font-semibold text-slate-700 w-12 text-right">${n}</span>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
+        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">По районам</span>
+        <span class="text-xs text-slate-400">Итого: <strong class="text-slate-600">${Number(total).toLocaleString('ru-RU')}</strong></span>
+      </div>
+      <table class="w-full">
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+const COL_LABELS = {
+  AdrDistr:'Район', AdrStreet:'Улица', OstName:'Остановка',
+  BiblName:'Название', BiblFName:'Полное название',
+  OuName:'Название', ParkType:'Тип парковки', NumMashMest:'Мест',
+  NumMashMestInv:'Мест (инв.)', ParkOhrana:'Охрана', Regim:'Режим',
+  Pavilion:'Павильон', Marshryt:'Маршруты',
+  AdrDom:'Дом', Phone:'Телефон', Site:'Сайт',
+  Dom:'Дом', Ulica:'Улица', Rayon:'Район',
+  ShortName:'Название', FullName:'Полное название',
+  TelUch:'Телефон', Mesta:'Мест', Regimraboti:'Режим',
+  Regimrab:'Режим', ParkName:'Парк',
+  Type:'Тип', District:'Район', Street:'Улица', House:'Дом',
+  VidSport:'Вид спорта', Comment:'Комментарий',
+  Name:'Название', AdrStr:'Улица',
+  NazvUch:'Организация', VidSporta:'Вид спорта',
+  район:'Район', количество:'Кол-во',
+};
+
+function colLabel(c) { return COL_LABELS[c] || c; }
+
+function renderTable(data) {
+  const rows = data.rows || [];
+  const cols = data.columns || [];
+  if (!rows.length) return emptyState();
+
+  const count = data.count ?? rows.length;
+  const shown = rows.length;
+
+  const headCells = cols.map(c =>
+    `<th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-4 py-3 border-b border-slate-100 whitespace-nowrap">${colLabel(c)}</th>`
+  ).join('');
+
+  const body = rows.map(r => {
+    const cells = cols.map(c => {
+      const raw = r[c] ?? '';
+      let val;
+      if (c === 'Site' && raw && raw !== '—') {
+        val = `<a href="${esc(raw)}" target="_blank" rel="noopener" class="text-blue-600 hover:underline">${esc(raw)}</a>`;
+      } else if (c === 'Phone' && raw) {
+        val = `<a href="tel:${esc(raw)}" class="text-slate-600 hover:text-blue-600">${esc(String(raw))}</a>`;
+      } else {
+        val = `<span class="text-slate-700">${esc(String(raw === null || raw === undefined ? '—' : raw))}</span>`;
+      }
+      return `<td class="px-4 py-2.5 text-sm">${val}</td>`;
+    }).join('');
+    return `<tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50/80 transition-colors">${cells}</tr>`;
+  }).join('');
+
+  const moreHtml = count > shown
+    ? `<div class="px-5 py-3 text-xs text-slate-400 text-center bg-slate-50 border-t border-slate-100">
+        Показано ${shown} из ${Number(count).toLocaleString('ru-RU')} — уточните запрос или добавьте район/улицу
+       </div>`
+    : '';
+
+  const noteHtml = data.note
+    ? `<div class="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">ℹ️ ${esc(data.note)}</div>`
+    : '';
+
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
+        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">
+          ${data.operation === 'TOP_N' ? `Топ-${shown}` : 'Результаты'}
+        </span>
+        <span class="text-xs text-slate-400">
+          Найдено: <strong class="text-slate-600">${Number(count).toLocaleString('ru-RU')}</strong>
+          ${count > shown ? ` · показано ${shown}` : ''}
+        </span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-full">
+          <thead><tr>${headCells}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+      ${moreHtml}
+    </div>
+    ${noteHtml}
+  `;
+}
+
+// ─── POWER ────────────────────────────────────────────────────────────────────
+const GROUP_LABELS = { active: 'Аварийное', planned: 'Плановое' };
+
+function powerMetaBar(meta) {
+  if (!meta || !meta.last_scraped) return '';
+  const ts = String(meta.last_scraped).substring(0,16).replace('T',' ');
+  return `
+    <div class="px-5 py-3 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-4 text-xs text-slate-500">
+      <span>⏱ Обновлено: <strong class="text-slate-600">${ts}</strong></span>
+      <span>🔴 Аварийных: <strong class="text-red-600">${meta.active_houses || 0}</strong> домов</span>
+      <span>🟡 Плановых: <strong class="text-amber-600">${meta.planned_houses || 0}</strong> домов</span>
+    </div>
+  `;
+}
+
+function groupBadge(type) {
+  return type === 'active'
+    ? `<span class="bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-xs font-medium">Аварийное</span>`
+    : `<span class="bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-medium">Плановое</span>`;
+}
+
+function renderPower(data) {
+  const op = data.operation;
+  const rows = data.rows || [];
+  const meta = data.power_meta || {};
+  const metaBar = powerMetaBar(meta);
+
+  if (!rows.length) {
+    return `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        ${metaBar}
+        <div class="text-center text-slate-400 py-10">
+          <span class="text-3xl block mb-2">✅</span>
+          Отключений не зафиксировано
+        </div>
+      </div>
+    `;
+  }
+
+  let tableBody = '';
+  let thead = '';
+
+  if (op === 'POWER_HISTORY') {
+    thead = `<tr>
+      <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">День</th>
+      <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Тип</th>
+      <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Домов</th>
+      <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Снимков</th>
+    </tr>`;
+    tableBody = rows.map(r => `
+      <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+        <td class="px-4 py-3 text-sm font-medium text-slate-700">${esc(r.day || '—')}</td>
+        <td class="px-4 py-3">${groupBadge(r.group_type)}</td>
+        <td class="px-4 py-3 text-sm font-semibold text-slate-700">${r.total_houses || 0}</td>
+        <td class="px-4 py-3 text-xs text-slate-400">${r.snapshots || 0}</td>
+      </tr>
+    `).join('');
+  } else {
+    thead = `<tr>
+      <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Тип</th>
+      <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Район</th>
+      <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Домов</th>
+      <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Обновлено</th>
+    </tr>`;
+    tableBody = rows.map(r => {
+      const ts = String(r.scraped_at || '').substring(0,16).replace('T',' ');
+      return `
+        <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+          <td class="px-4 py-3">${groupBadge(r.group_type)}</td>
+          <td class="px-4 py-3 text-sm text-slate-700">${esc(r.district || 'Весь город')}</td>
+          <td class="px-4 py-3 text-sm font-semibold text-slate-700">${r.houses || '—'}</td>
+          <td class="px-4 py-3 text-xs text-slate-400">${ts}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  const titles = {
+    POWER_STATUS: 'Текущий статус отключений',
+    POWER_TODAY: 'Отключения сегодня',
+    POWER_PLANNED: 'Плановые отключения',
+    POWER_HISTORY: 'История отключений',
+  };
+
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
+        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">
+          ${titles[op] || op}
+        </span>
+        <span class="text-xs text-slate-400">${rows.length} записей</span>
+      </div>
+      ${metaBar}
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>${thead}</thead>
+          <tbody>${tableBody}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ─── INFO ─────────────────────────────────────────────────────────────────────
+const TOPIC_ICONS = {
+  parking:'🚗', stops:'🚌', culture:'🎭', schools:'🏫',
+  kindergartens:'🧒', libraries:'📚', parks:'🌿',
+  sport_grounds:'⚽', pharmacies:'💊', sport_orgs:'🏋️',
+};
+
+function renderInfo(data) {
+  const topics = data.topics || [];
+  const cards = topics.map(t => `
+    <div class="bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl p-4 cursor-pointer transition-all topic-card"
+         onclick="setQuery('покажи ${esc(t.name)}')">
+      <span class="text-xl block mb-2">${TOPIC_ICONS[t.id] || '📊'}</span>
+      <div class="font-semibold text-sm text-slate-800">${esc(t.name)}</div>
+      <div class="text-xs text-slate-400 mt-1 leading-relaxed">${esc(t.description || '')}</div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <p class="text-slate-500 text-sm mb-4">Я умею отвечать на вопросы о:</p>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${cards}</div>
+      <div class="mt-4 pt-4 border-t border-slate-100">
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 cursor-pointer hover:bg-amber-100 transition-colors topic-card"
+             onclick="setQuery('отключения электричества сейчас')">
+          <span class="text-xl block mb-2">⚡</span>
+          <div class="font-semibold text-sm text-slate-800">Отключения ЖКХ</div>
+          <div class="text-xs text-slate-400 mt-1">Электро, вода, тепло · 051.novo-sibirsk.ru · реальное время</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ─── DISTRICTS ────────────────────────────────────────────────────────────────
+function renderDistricts(data) {
+  const rows = data.rows || [];
+  const cards = rows.map(d => `
+    <div class="bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl px-4 py-3 text-sm text-slate-700 font-medium cursor-pointer transition-all"
+         onclick="setQuery('покажи школы в ${esc(d)}')">
+      ${esc(d)}
+    </div>
+  `).join('');
+
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+      <p class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">Районы Новосибирска</p>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">${cards}</div>
+      <p class="text-xs text-slate-400 mt-4">Нажмите на район для примера запроса</p>
+    </div>
+  `;
+}
+
+// ─── Empty / helpers ──────────────────────────────────────────────────────────
+function emptyState() {
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center">
+      <span class="text-3xl block mb-3">🔍</span>
+      <p class="text-slate-400">Данные не найдены по вашему запросу</p>
+    </div>
+  `;
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Topics grid ──────────────────────────────────────────────────────────────
+async function loadTopics() {
+  try {
+    const resp = await fetch('/topics');
+    if (!resp.ok) throw new Error();
+    const data = await resp.json();
+    renderTopics(data.topics || []);
+  } catch {
+    document.getElementById('topicsGrid').innerHTML =
+      '<div class="col-span-full text-center text-red-400 text-sm py-4">Не удалось загрузить данные о темах</div>';
+  }
+}
+
+function renderTopics(topics) {
+  const cards = topics.map(t => {
+    const rows = t.rows != null ? `${Number(t.rows).toLocaleString('ru-RU')} строк` : 'нет данных';
+    const hasData = t.rows != null && t.rows > 0;
+    const badge = hasData
+      ? (t.stale
+          ? `<span class="bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full text-xs">устарел</span>`
+          : `<span class="bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded-full text-xs">актуален</span>`)
+      : `<span class="bg-slate-100 text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-full text-xs">нет данных</span>`;
+
+    const exampleQuery = hasData ? `покажи ${t.name}` : `bot update --topic ${t.id}`;
+    return `
+      <div class="topic-card bg-white border border-slate-200 rounded-2xl p-4 cursor-pointer hover:border-blue-300 hover:shadow-md"
+           onclick="${hasData ? `setQuery('покажи ${t.name}')` : ''}">
+        <div class="flex justify-between items-start mb-2">
+          <span class="text-2xl">${TOPIC_ICONS[t.id] || '📊'}</span>
+          ${badge}
+        </div>
+        <div class="font-semibold text-sm text-slate-800 leading-tight">${esc(t.name)}</div>
+        <div class="text-xs text-slate-400 mt-1">${rows}</div>
+      </div>
+    `;
+  }).join('');
+
+  const powerCard = `
+    <div class="topic-card bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 cursor-pointer hover:border-amber-400 hover:shadow-md"
+         onclick="setQuery('отключения электричества сейчас')">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">⚡</span>
+        <span class="bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full text-xs">realtime</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">Отключения ЖКХ</div>
+      <div class="text-xs text-slate-500 mt-1">051.novo-sibirsk.ru</div>
+    </div>
+  `;
+
+  document.getElementById('topicsGrid').innerHTML = cards + powerCard;
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+buildChips();
+loadTopics();
+document.getElementById('queryInput').focus();
+
+// Footer time
+(function updateTime() {
+  const el = document.getElementById('footerTime');
+  if (el) {
+    const now = new Date();
+    el.textContent = now.toLocaleString('ru-RU', {
+      day:'2-digit', month:'long', hour:'2-digit', minute:'2-digit'
+    });
+  }
+  setTimeout(updateTime, 30000);
+})();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,209 @@
+[
+  {
+    "id": 1,
+    "query": "сколько парковок в Новосибирске",
+    "expected_topic": "parking",
+    "expected_operation": "COUNT",
+    "note": "Базовый COUNT по теме parking"
+  },
+  {
+    "id": 2,
+    "query": "сколько парковок в Центральном районе",
+    "expected_topic": "parking",
+    "expected_operation": "COUNT",
+    "expected_district": "Центральный район",
+    "note": "COUNT с фильтром по району"
+  },
+  {
+    "id": 3,
+    "query": "покажи парковки в Ленинском районе",
+    "expected_topic": "parking",
+    "expected_operation": "FILTER",
+    "expected_district": "Ленинский район",
+    "note": "FILTER с районом"
+  },
+  {
+    "id": 4,
+    "query": "сколько парковок по районам",
+    "expected_topic": "parking",
+    "expected_operation": "GROUP",
+    "note": "GROUP по районам для парковок"
+  },
+  {
+    "id": 5,
+    "query": "топ-10 парковок по количеству мест",
+    "expected_topic": "parking",
+    "expected_operation": "TOP_N",
+    "expected_limit": 10,
+    "note": "TOP_N для парковок"
+  },
+  {
+    "id": 6,
+    "query": "сколько остановок в Новосибирске",
+    "expected_topic": "stops",
+    "expected_operation": "COUNT",
+    "note": "COUNT остановок"
+  },
+  {
+    "id": 7,
+    "query": "остановки в Советском районе",
+    "expected_topic": "stops",
+    "expected_operation": "FILTER",
+    "expected_district": "Советский район",
+    "note": "FILTER остановок по Советскому"
+  },
+  {
+    "id": 8,
+    "query": "сколько остановок по районам",
+    "expected_topic": "stops",
+    "expected_operation": "GROUP",
+    "note": "GROUP остановок по районам"
+  },
+  {
+    "id": 9,
+    "query": "остановки с павильоном в Дзержинском районе",
+    "expected_topic": "stops",
+    "expected_operation": "FILTER",
+    "expected_district": "Дзержинский район",
+    "note": "FILTER с дополнительным атрибутом"
+  },
+  {
+    "id": 10,
+    "query": "список организаций культуры",
+    "expected_topic": "culture",
+    "expected_operation": "FILTER",
+    "note": "FILTER культурных организаций"
+  },
+  {
+    "id": 11,
+    "query": "театры Новосибирска",
+    "expected_topic": "culture",
+    "expected_operation": "FILTER",
+    "note": "Синоним для культуры"
+  },
+  {
+    "id": 12,
+    "query": "сколько школ в Новосибирске",
+    "expected_topic": "schools",
+    "expected_operation": "COUNT",
+    "note": "COUNT школ"
+  },
+  {
+    "id": 13,
+    "query": "школы в Кировском районе",
+    "expected_topic": "schools",
+    "expected_operation": "FILTER",
+    "expected_district": "Кировский район",
+    "note": "FILTER школ по Кировскому"
+  },
+  {
+    "id": 14,
+    "query": "сколько школ по районам",
+    "expected_topic": "schools",
+    "expected_operation": "GROUP",
+    "note": "GROUP школ по районам"
+  },
+  {
+    "id": 15,
+    "query": "детские сады в Октябрьском районе",
+    "expected_topic": "kindergartens",
+    "expected_operation": "FILTER",
+    "expected_district": "Октябрьский район",
+    "note": "FILTER детских садов"
+  },
+  {
+    "id": 16,
+    "query": "сколько дошкольных организаций по районам",
+    "expected_topic": "kindergartens",
+    "expected_operation": "GROUP",
+    "note": "GROUP детских садов"
+  },
+  {
+    "id": 17,
+    "query": "библиотеки в Ленинском районе",
+    "expected_topic": "libraries",
+    "expected_operation": "FILTER",
+    "expected_district": "Ленинский район",
+    "note": "FILTER библиотек"
+  },
+  {
+    "id": 18,
+    "query": "сколько библиотек",
+    "expected_topic": "libraries",
+    "expected_operation": "COUNT",
+    "note": "COUNT библиотек"
+  },
+  {
+    "id": 19,
+    "query": "парки культуры и отдыха",
+    "expected_topic": "parks",
+    "expected_operation": "FILTER",
+    "note": "FILTER парков"
+  },
+  {
+    "id": 20,
+    "query": "спортивные площадки в Калининском районе",
+    "expected_topic": "sport_grounds",
+    "expected_operation": "FILTER",
+    "expected_district": "Калининский район",
+    "note": "FILTER спортплощадок"
+  },
+  {
+    "id": 21,
+    "query": "сколько спортплощадок по районам",
+    "expected_topic": "sport_grounds",
+    "expected_operation": "GROUP",
+    "note": "GROUP спортплощадок"
+  },
+  {
+    "id": 22,
+    "query": "аптеки в Железнодорожном районе",
+    "expected_topic": "pharmacies",
+    "expected_operation": "FILTER",
+    "expected_district": "Железнодорожный район",
+    "note": "FILTER аптек"
+  },
+  {
+    "id": 23,
+    "query": "где больше всего парковок по районам",
+    "expected_topic": "parking",
+    "expected_operation": "GROUP",
+    "note": "GROUP с ключевым словом 'больше всего'"
+  },
+  {
+    "id": 24,
+    "query": "топ-5 районов по числу школ",
+    "expected_topic": "schools",
+    "expected_operation": "GROUP",
+    "note": "TOP_N в сочетании с GROUP"
+  },
+  {
+    "id": 25,
+    "query": "спортивные организации в Первомайском районе",
+    "expected_topic": "sport_orgs",
+    "expected_operation": "FILTER",
+    "expected_district": "Первомайский район",
+    "note": "FILTER спортивных организаций"
+  },
+  {
+    "id": 26,
+    "query": "что ты умеешь",
+    "expected_topic": null,
+    "expected_operation": "INFO",
+    "note": "Запрос справки"
+  },
+  {
+    "id": 27,
+    "query": "какие темы поддерживаешь",
+    "expected_topic": null,
+    "expected_operation": "INFO",
+    "note": "Запрос тем (INFO)"
+  },
+  {
+    "id": 28,
+    "query": "покажи все библиотеки",
+    "expected_topic": "libraries",
+    "expected_operation": "FILTER",
+    "note": "FILTER с ключевым словом 'все'"
+  }
+]

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nsk-opendata-bot"
+version = "1.0.0"
+description = "NSK OpenData Bot — CLI-агент для открытых данных Новосибирска (ЦИИ НГУ)"
+readme = "SKILL.md"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.0",
+    "duckdb>=0.10",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+    "rich>=13.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "beautifulsoup4>=4.12",
+]
+
+[project.scripts]
+bot = "src.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0",
+]
