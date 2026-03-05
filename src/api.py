@@ -401,6 +401,7 @@ def get_ask(
             "confidence": round(route_result.confidence, 3),
             "operation": plan.operation,
             "district": plan.district,
+            "sub_district": plan.sub_district,
             "power_meta": {k: str(v) if not isinstance(v, (int, float, str, bool, type(None))) else v
                            for k, v in meta.items()},
             **result,
@@ -426,6 +427,7 @@ def get_ask(
         "confidence": round(route_result.confidence, 3),
         "operation": plan.operation,
         "district": plan.district,
+        "sub_district": plan.sub_district,
         "street": plan.street,
         "extra_filters": plan.extra_filters,
         "cache": {

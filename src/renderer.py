@@ -180,7 +180,10 @@ def render_ask_result(
     if plan.district or plan.street or audience:
         filters = []
         if plan.district:
-            filters.append(f"район={plan.district}")
+            if plan.sub_district:
+                filters.append(f"подрайон={plan.sub_district} (→ {plan.district})")
+            else:
+                filters.append(f"район={plan.district}")
         if plan.street:
             filters.append(f"улица={plan.street}")
         if audience:
@@ -241,6 +244,12 @@ def render_ask_result(
     note = exec_result.get("note")
     if note:
         console.print(f"\n[yellow]ℹ {note}[/yellow]")
+
+    if plan.sub_district:
+        console.print(
+            f"\n[dim]ℹ {plan.sub_district} входит в {plan.district}."
+            f" Данные в открытых источниках хранятся на уровне района.[/dim]"
+        )
 
     console.rule()
 
@@ -389,7 +398,7 @@ def render_help() -> None:
 
 def render_districts() -> None:
     """Показывает список районов Новосибирска с вариантами написания в запросах."""
-    from .router import DISTRICTS
+    from .router import DISTRICTS, SUB_DISTRICTS_INFO
 
     console.rule("[bold blue]Районы Новосибирска[/bold blue]")
     console.print()
@@ -407,7 +416,7 @@ def render_districts() -> None:
         "Ленинский район":       '"в Ленинском районе", "ленинский"',
         "Октябрьский район":     '"в Октябрьском районе", "октябрьский"',
         "Первомайский район":    '"в Первомайском районе", "первомайский"',
-        "Советский район":       '"в Советском районе", "советский"',
+        "Советский район":       '"в Советском районе", "советский", "Академгородок", "Шлюз", "мкр. Щ"',
         "Центральный район":     '"в Центральном районе", "центральный", "в центре"',
     }
 
@@ -415,8 +424,19 @@ def render_districts() -> None:
         table.add_row(district, _examples.get(district, ""))
 
     console.print(table)
+
+    # Подрайоны
+    console.print("\n[bold]Подрайоны и микрорайоны[/bold] [dim](автоматически маппятся на родительский район)[/dim]\n")
+    sub_table = Table(box=box.SIMPLE_HEAD, show_lines=False, padding=(0, 1))
+    sub_table.add_column("Подрайон", style="bold yellow", no_wrap=True, min_width=18)
+    sub_table.add_column("Район", style="cyan", no_wrap=True, min_width=22)
+    sub_table.add_column("Варианты написания", style="dim")
+    for name, (parent, examples) in SUB_DISTRICTS_INFO.items():
+        sub_table.add_row(name, parent, ", ".join(f'"{e}"' for e in examples))
+    console.print(sub_table)
+
     console.print(
-        '[dim]Пример: bot ask "сколько школ в Советском районе"[/dim]'
+        '[dim]Пример: bot ask "аптеки в Академгородке" → фильтрует по Советскому району[/dim]'
     )
     console.rule()
 
@@ -460,7 +480,10 @@ def render_power_result(
     console.print(f"[bold]Запрос:[/bold]   {query_text}")
     console.print(f"[bold]Операция:[/bold] {op_name}")
     if plan.district:
-        console.print(f"[bold]Район:[/bold]    {plan.district}")
+        if plan.sub_district:
+            console.print(f"[bold]Подрайон:[/bold] {plan.sub_district} (→ {plan.district})")
+        else:
+            console.print(f"[bold]Район:[/bold]    {plan.district}")
     console.print(f"[bold]Данные:[/bold]   обновлены {last_str} | всего записей {meta.get('total_records', '?')}")
     console.print()
 

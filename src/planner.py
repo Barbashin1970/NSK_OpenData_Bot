@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .router import extract_district, extract_limit, extract_street
+from .router import extract_district, extract_limit, extract_street, extract_sub_district
 
 # Паттерны для распознавания типа операции (pre-compiled)
 COUNT_PATTERNS = re.compile(
@@ -70,11 +70,12 @@ class Plan:
     operation: str          # COUNT | TOP_N | GROUP | FILTER | INFO
                             # | POWER_STATUS | POWER_TODAY | POWER_HISTORY | POWER_PLANNED
     topic: str | None       # выбранная тема
-    district: str | None    # фильтр по району
+    district: str | None    # фильтр по району (канонический, для SQL)
     street: str | None      # фильтр по улице
     limit: int              # лимит строк (для TOP_N и FILTER)
     year: str | None        # фильтр по году
     min_value: int | None   # минимальное значение
+    sub_district: str | None = None  # отображаемый подрайон («Академгородок», «Шлюз», ...)
     extra_filters: dict[str, str] = field(default_factory=dict)
 
 
@@ -106,6 +107,8 @@ def make_plan(query: str, topic: str | None) -> Plan:
 
     # Параметры
     district = extract_district(query)
+    sub = extract_sub_district(query)
+    sub_district = sub[1] if sub else None
     street = extract_street(query)
     limit = extract_limit(query) or (10 if operation == "TOP_N" else 20)
 
@@ -134,5 +137,6 @@ def make_plan(query: str, topic: str | None) -> Plan:
         limit=limit,
         year=year,
         min_value=min_value,
+        sub_district=sub_district,
         extra_filters=extra_filters,
     )
