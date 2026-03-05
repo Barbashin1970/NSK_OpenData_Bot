@@ -109,3 +109,63 @@ def test_plan_power_default_status():
     """Запрос без специфических паттернов → POWER_STATUS."""
     plan = make_plan("отключения электричества", "power_outages")
     assert plan.operation == "POWER_STATUS"
+
+
+# ── sub_district в Plan ──────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("query,topic,expected_sub,expected_district", [
+    # Академгородок — разные формы
+    ("школы в Академгородке",        "schools",       "Академгородок", "Советский район"),
+    ("аптеки Академa",               "pharmacies",    "Академгородок", "Советский район"),
+    ("остановки в Академe",          "stops",         "Академгородок", "Советский район"),
+    ("библиотеки Academ",            "libraries",     "Академгородок", "Советский район"),
+    # Шлюз
+    ("детские сады на Шлюзе",        "kindergartens", "Шлюз",          "Советский район"),
+    ("школы на Шлюзе",               "schools",       "Шлюз",          "Советский район"),
+    # Верхняя зона
+    ("аптеки в Верхней зоне",        "pharmacies",    "Верхняя зона",  "Советский район"),
+    # Микрорайон «Щ»
+    ("остановки в мкр. Щ",           "stops",         'мкр. "Щ"',      "Советский район"),
+    ("школы микрорайон Щ",           "schools",       'мкр. "Щ"',      "Советский район"),
+])
+def test_plan_sub_district_populated(query, topic, expected_sub, expected_district):
+    """Plan.sub_district и Plan.district заполняются корректно."""
+    plan = make_plan(query, topic)
+    assert plan.sub_district == expected_sub, (
+        f"Запрос: {query!r}\n"
+        f"sub_district={plan.sub_district!r}, ожидалось {expected_sub!r}"
+    )
+    assert plan.district == expected_district, (
+        f"Запрос: {query!r}\n"
+        f"district={plan.district!r}, ожидалось {expected_district!r}"
+    )
+
+
+@pytest.mark.parametrize("query,topic", [
+    ("парковки в Советском районе",  "parking"),
+    ("школы в Ленинском районе",     "schools"),
+    ("аптеки в Центральном",         "pharmacies"),
+    ("сколько библиотек",            "libraries"),
+])
+def test_plan_sub_district_none_for_regular_district(query, topic):
+    """Обычные районы → Plan.sub_district = None."""
+    plan = make_plan(query, topic)
+    assert plan.sub_district is None, (
+        f"Запрос: {query!r} → sub_district должен быть None, получено {plan.sub_district!r}"
+    )
+
+
+def test_plan_sub_district_power_outages():
+    """Power outages + подрайон: district=Советский, sub_district=Академгородок."""
+    plan = make_plan("отключения электричества в Академгородке", "power_outages")
+    assert plan.operation == "POWER_STATUS"
+    assert plan.district == "Советский район"
+    assert plan.sub_district == "Академгородок"
+
+
+def test_plan_sub_district_does_not_override_street():
+    """Подрайон и улица могут присутствовать одновременно."""
+    plan = make_plan("аптеки на ул. Ленина в Академгородке", "pharmacies")
+    assert plan.sub_district == "Академгородок"
+    assert plan.district == "Советский район"
+    assert plan.street is not None
