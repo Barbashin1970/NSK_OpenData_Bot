@@ -153,6 +153,75 @@ def extract_limit(query: str) -> int | None:
     return None
 
 
+# ── Экология и метеорология ──────────────────────────────────────────────────
+_ECOLOGY_KEYWORDS = [
+    "качество воздуха",
+    "загрязнен",
+    "pm2",
+    "pm10",
+    "aqi",
+    "экологи",
+    "пыль",
+    "смог",
+    "дышать",
+    "дышится",
+    "гарь",
+    "no2",
+    "диоксид азота",
+    "частиц",
+    "атмосфер",
+]
+
+_WEATHER_KEYWORDS = [
+    "погод",
+    "температур",
+    "ветер",
+    "ветра",
+    "давлен",
+    "влажност",
+    "метеор",
+    "прогноз",
+]
+
+_ECOLOGY_PRIMARY = ["воздух", "загрязн", "pm2", "pm10", "aqi", "смог", "экологи", "пыль", "дыш", "гарь", "no2", "частиц"]
+_WEATHER_PRIMARY = ["погод", "температур", "ветер", "ветра", "ветру", "ветром", "давлен", "влажност", "метеор"]
+
+
+def _route_ecology(q: str) -> "RouteResult | None":
+    """Проверяет, относится ли запрос к экологии или метеорологии."""
+    has_eco     = any(m in q for m in _ECOLOGY_PRIMARY)
+    has_weather = any(m in q for m in _WEATHER_PRIMARY)
+    if not has_eco and not has_weather:
+        return None
+
+    score = 0.0
+    matched: list[str] = []
+    all_kw = _ECOLOGY_KEYWORDS + _WEATHER_KEYWORDS
+    for kw in all_kw:
+        kw_norm = _normalize(kw)
+        kw_parts = kw_norm.split()
+        all_match = all(
+            re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in kw_parts
+        )
+        if all_match:
+            matched.append(kw)
+            score += len(kw_parts) ** 1.5
+
+    if score == 0:
+        score = 1.0
+        matched = ["экология" if has_eco else "погода"]
+
+    all_count = len(all_kw)
+    confidence = min(1.0, score / max(all_count, 1) * 8)
+    confidence = max(confidence, 0.45 if has_eco else 0.40)
+    return RouteResult(
+        topic="ecology",
+        confidence=confidence,
+        name="Экология и метеорология",
+        matched_keywords=matched,
+    )
+
+
 # Ключевые слова для темы отключений электроснабжения
 _POWER_KEYWORDS = [
     "электричеств",
@@ -224,6 +293,11 @@ def route(query: str) -> list[RouteResult]:
     power_result = _route_power(q)
     if power_result:
         results.append(power_result)
+
+    # Тема экологии и метеорологии (не в YAML-реестре, обрабатывается отдельно)
+    ecology_result = _route_ecology(q)
+    if ecology_result:
+        results.append(ecology_result)
 
     for topic_id, ds in registry.items():
         keywords: list[str] = ds.get("keywords", [])

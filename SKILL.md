@@ -207,21 +207,85 @@ bot ask "отключения электричества в Академгоро
 
 ---
 
+## Экология и метеорология
+
+Данные о качестве воздуха и погоде — в реальном времени с Open-Meteo и (опционально) CityAir.
+TTL = 15 минут. История хранится 7 дней.
+
+```bash
+bot ecology update                       # загрузить актуальные данные
+bot ecology status                       # AQI, PM2.5, погода по всем 10 районам
+bot ecology status --district "Советский район"
+bot ecology pdk                          # превышения ПДК WHO по PM2.5 за сегодня
+bot ecology history                      # динамика за 7 дней
+bot ecology history --days 3 --district "Центральный район"
+```
+
+**Что показывает:**
+- PM2.5, PM10, NO2 — концентрация взвешенных частиц и диоксида азота (мкг/м³)
+- AQI (European Air Quality Index) — сводный индекс качества воздуха
+- Температура воздуха (°C), скорость ветра (м/с), влажность (%), давление (гПа)
+- Превышения ПДК: PM2.5 > 35 мкг/м³ (стандарт ВОЗ) по районам за сутки
+- Исторические снимки по дням с корреляцией ветра и PM2.5
+
+**Источники данных:**
+
+| Источник | TTL | Ключ | Данные |
+|---|---|---|---|
+| [Open-Meteo Air Quality](https://air-quality-api.open-meteo.com) | 15 мин | не нужен | PM2.5, PM10, NO2, AQI |
+| [Open-Meteo Forecast](https://api.open-meteo.com) | 15 мин | не нужен | температура, ветер, давление, влажность |
+| CityAir API | 15 мин | `CITYAIR_API_KEY` в `.env` | телеметрия физических датчиков |
+
+> CityAir является опциональным источником. Без ключа бот работает только через Open-Meteo.
+
+**Поддерживаемые запросы через `bot ask`:**
+
+```bash
+bot ask "какое качество воздуха в Новосибирске"
+bot ask "где сейчас самый загрязненный воздух"
+bot ask "превышение ПДК по PM2.5 сегодня"
+bot ask "динамика PM2.5 в Советском районе за неделю"
+bot ask "какая сейчас погода в центре"
+bot ask "скорость ветра по районам"
+bot ask "смог в Академгородке"
+```
+
+**Ключевые слова-триггеры:**
+
+| Слово в запросе | Что запрашивает |
+|---|---|
+| «воздух», «загрязнен», «смог», «гарь» | Качество воздуха (AQI, PM) |
+| «пыль», «частиц», «PM2.5», «PM10», «NO2» | Конкретные показатели |
+| «экология», «экологическ» | Обзор качества воздуха |
+| «ПДК», «превышен», «опасн», «PM2» | Превышения нормы (ECO_PDK) |
+| «динамика», «история», «за неделю» | История по дням (ECO_HISTORY) |
+| «погода», «температур», «ветер» | Метеоданные (ECO_STATUS) |
+| «давлен», «влажност», «метеор» | Атмосферные показатели |
+
+**Схема DuckDB (ТЗ §4):**
+
+- `dim_stations` — справочник станций (10 районов, координаты, адреса)
+- `fact_measurements` — журнал измерений (PM2.5, PM10, NO2, AQI, погода, timestamp)
+
+---
+
 ## Архитектура
 
 ```
 src/
-  cli.py           — команды Click (ask / update / topics / serve / power)
-  registry.py      — загрузка config/datasets.yaml
-  fetcher.py       — HTTP-загрузка CSV с 051.novo-sibirsk.ru
-  parser.py        — нормализация CSV (encoding, delimiter)
-  cache.py         — DuckDB: хранение данных opendata
-  router.py        — маршрутизация запроса к теме (keywords + power)
+  cli.py              — команды Click (ask / update / topics / serve / power / ecology)
+  registry.py         — загрузка config/datasets.yaml
+  fetcher.py          — HTTP-загрузка CSV с opendata.novo-sibirsk.ru
+  parser.py           — нормализация CSV (encoding, delimiter)
+  cache.py            — DuckDB: хранение данных opendata
+  router.py           — маршрутизация запроса к теме (keywords + power + ecology)
   planner.py       — определение операции (count/topN/filter/group/power*)
   executor.py      — SQL-запросы к DuckDB + execute_power()
   renderer.py      — вывод результата (rich tables)
-  power_scraper.py — скрапинг 051.novo-sibirsk.ru (BeautifulSoup)
-  power_cache.py   — DuckDB: power_outages, скользящее окно 7 дней
+  power_scraper.py    — скрапинг 051.novo-sibirsk.ru (BeautifulSoup)
+  power_cache.py      — DuckDB: power_outages, скользящее окно 7 дней
+  ecology_fetcher.py  — ETL Open-Meteo + CityAir (качество воздуха + погода)
+  ecology_cache.py    — DuckDB: dim_stations + fact_measurements, скользящее окно 7 дней
 
 config/datasets.yaml  — реестр 10 тем opendata
 DATA/

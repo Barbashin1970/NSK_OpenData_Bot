@@ -179,6 +179,66 @@ def execute_plan(plan: Plan) -> dict[str, Any]:
         return {"error": str(e)}
 
 
+def execute_ecology(plan: Plan) -> dict[str, Any]:
+    """Выполняет запросы к таблицам экологии (dim_stations + fact_measurements).
+
+    Поддерживаемые операции:
+      ECO_STATUS  — текущие показатели (последний снимок, по районам)
+      ECO_PDK     — превышения ПДК PM2.5 > 35 мкг/м³ за сегодня
+      ECO_HISTORY — история по дням за N дней
+    """
+    from .ecology_cache import (
+        query_current, query_pdk_exceedances, query_history, get_ecology_meta,
+    )
+
+    district = plan.district
+    op = plan.operation
+
+    try:
+        if op == "ECO_STATUS":
+            rows = query_current(district_filter=district)
+            cols = ["district", "address", "pm25", "pm10", "no2", "aqi",
+                    "temperature_c", "wind_speed_ms", "humidity_pct", "source", "measured_at"]
+            return {
+                "operation": op,
+                "rows": [{k: r.get(k) for k in cols} for r in rows],
+                "columns": cols,
+                "count": len(rows),
+            }
+
+        elif op == "ECO_PDK":
+            rows = query_pdk_exceedances(district_filter=district)
+            cols = ["district", "pm25_max", "pm25_avg", "измерений", "последнее"]
+            return {
+                "operation": op,
+                "rows": [{k: r.get(k) for k in cols} for r in rows],
+                "columns": cols,
+                "count": len(rows),
+                "threshold": 35.0,
+                "note": "ПДК WHO: PM2.5 > 35 мкг/м³ (среднесуточный порог)",
+            }
+
+        elif op == "ECO_HISTORY":
+            days = plan.limit if plan.limit and plan.limit <= 30 else 7
+            rows = query_history(district_filter=district, days=days)
+            cols = ["день", "район", "pm25_ср", "pm25_макс", "aqi_ср",
+                    "темп_ср", "ветер_ср", "снимков"]
+            return {
+                "operation": op,
+                "rows": [{k: r.get(k) for k in cols} for r in rows],
+                "columns": cols,
+                "count": len(rows),
+                "days": days,
+            }
+
+        else:
+            return {"error": f"Неизвестная ecology-операция: {op}"}
+
+    except Exception as e:
+        log.error(f"Ошибка execute_ecology: {e}")
+        return {"error": str(e)}
+
+
 def execute_power(plan: Plan) -> dict[str, Any]:
     """Выполняет запросы к таблице power_outages (отключения электроснабжения).
 

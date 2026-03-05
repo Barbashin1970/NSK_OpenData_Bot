@@ -92,9 +92,9 @@ def test_best_topic(query, expected_topic):
 
 
 def test_best_topic_no_match():
-    """Запрос вне области знаний → None."""
-    result = best_topic("погода в Новосибирске завтра")
-    # либо None, либо confidence очень низкий — мы проверяем только "не крашится"
+    """Запрос вне области знаний → None или очень низкий confidence."""
+    # «погода» теперь поддерживается (ecology), используем явно OOD-запрос
+    result = best_topic("рецепты борща с говядиной")
     assert result is None or result.confidence < 0.3
 
 

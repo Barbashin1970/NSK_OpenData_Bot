@@ -20,3 +20,6 @@ venv/
 .vscode/
 .idea/
 *.swp
+
+# Секреты
+.env

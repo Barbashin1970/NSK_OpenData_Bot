@@ -386,6 +386,167 @@ def power_history(days: int, district: str | None) -> None:
     render_power_result(f"История отключений за {days} дней", plan, result, meta)
 
 
+@cli.group()
+def ecology() -> None:
+    """Качество воздуха и погода в Новосибирске (Open-Meteo + CityAir).
+
+    Примеры:
+      bot ecology update               — загрузить актуальные данные
+      bot ecology status               — текущий AQI и погода по всем районам
+      bot ecology status --district "Советский район"
+      bot ecology pdk                  — превышение ПДК PM2.5 сегодня
+      bot ecology history              — динамика за 7 дней
+      bot ecology history --days 3 --district "Центральный район"
+    """
+    pass
+
+
+@ecology.command(name="update")
+@click.option("--force", is_flag=True, help="Обновить даже если данные актуальны")
+def ecology_update(force: bool) -> None:
+    """Загрузить актуальные данные о качестве воздуха и погоде."""
+    from .ecology_fetcher import fetch_all_ecology
+    from .ecology_cache import upsert_stations, upsert_measurements, is_ecology_stale, get_ecology_meta
+
+    if not force and not is_ecology_stale():
+        meta = get_ecology_meta()
+        last = meta.get("last_updated", "")
+        console.print(f"[dim]Данные актуальны (обновлены {last[:16]}). Используйте --force для принудительного обновления.[/dim]")
+        return
+
+    console.print("[cyan]↓[/cyan] Загружаю данные Open-Meteo (воздух + погода)...")
+    upsert_stations()
+    records = fetch_all_ecology()
+    if not records:
+        console.print("[red]✗ Нет данных — проверьте соединение с интернетом[/red]")
+        return
+
+    added = upsert_measurements(records)
+    meta = get_ecology_meta()
+    console.print(f"[green]✓[/green] Получено: {added} измерений по {meta['districts_covered']} районам")
+    console.print(f"  Обновлено: {meta['last_updated'][:19]}")
+
+
+@ecology.command(name="status")
+@click.option("--district", "-d", default=None, help="Фильтр по району")
+def ecology_status(district: str | None) -> None:
+    """Показать текущее качество воздуха и погоду по районам."""
+    from .ecology_cache import query_current, get_ecology_meta, is_ecology_stale
+    from .ecology_fetcher import fetch_all_ecology
+    from .ecology_cache import upsert_stations, upsert_measurements
+
+    if is_ecology_stale():
+        console.print("[yellow]Данные устарели, обновляю...[/yellow]")
+        upsert_stations()
+        upsert_measurements(fetch_all_ecology())
+
+    rows = query_current(district_filter=district)
+    meta = get_ecology_meta()
+
+    if not rows:
+        console.print("[yellow]Нет данных о качестве воздуха.[/yellow]")
+        return
+
+    from rich.table import Table
+    tbl = Table(title=f"Качество воздуха и погода — {meta.get('last_updated', '')[:16]}")
+    tbl.add_column("Район",          style="cyan", no_wrap=True)
+    tbl.add_column("AQI",            justify="right")
+    tbl.add_column("PM2.5",          justify="right")
+    tbl.add_column("PM10",           justify="right")
+    tbl.add_column("NO2",            justify="right")
+    tbl.add_column("Темп °C",        justify="right")
+    tbl.add_column("Ветер м/с",      justify="right")
+    tbl.add_column("Влажн. %",       justify="right")
+
+    for r in rows:
+        aqi = r.get("aqi")
+        aqi_str = str(aqi) if aqi is not None else "—"
+        aqi_color = "green" if aqi and aqi < 50 else ("yellow" if aqi and aqi < 100 else "red")
+        tbl.add_row(
+            r.get("district", ""),
+            f"[{aqi_color}]{aqi_str}[/{aqi_color}]",
+            str(r.get("pm25") or "—"),
+            str(r.get("pm10") or "—"),
+            str(r.get("no2")  or "—"),
+            str(r.get("temperature_c") or "—"),
+            str(r.get("wind_speed_ms") or "—"),
+            str(r.get("humidity_pct") or "—"),
+        )
+    console.print(tbl)
+    console.print(f"[dim]Источник: Open-Meteo / CityAir | Обновлено: {meta.get('last_updated', '')[:19]}[/dim]")
+
+
+@ecology.command(name="pdk")
+@click.option("--district", "-d", default=None, help="Фильтр по району")
+def ecology_pdk(district: str | None) -> None:
+    """Показать превышения ПДК PM2.5 > 35 мкг/м³ за сегодня."""
+    from .ecology_cache import query_pdk_exceedances, is_ecology_stale
+    from .ecology_fetcher import fetch_all_ecology
+    from .ecology_cache import upsert_stations, upsert_measurements
+
+    if is_ecology_stale():
+        console.print("[yellow]Данные устарели, обновляю...[/yellow]")
+        upsert_stations()
+        upsert_measurements(fetch_all_ecology())
+
+    rows = query_pdk_exceedances(district_filter=district)
+    if not rows:
+        console.print("[green]✓ Превышений ПДК WHO по PM2.5 не зафиксировано за сегодня.[/green]")
+        return
+
+    from rich.table import Table
+    tbl = Table(title="Превышение ПДК PM2.5 (порог ВОЗ: 35 мкг/м³)", style="red")
+    tbl.add_column("Район",      style="cyan")
+    tbl.add_column("PM2.5 макс", justify="right", style="red bold")
+    tbl.add_column("PM2.5 ср",   justify="right")
+    tbl.add_column("Измерений",  justify="right")
+    tbl.add_column("Последнее",  style="dim")
+    for r in rows:
+        tbl.add_row(
+            r.get("district", ""),
+            str(r.get("pm25_max") or "—"),
+            str(r.get("pm25_avg") or "—"),
+            str(r.get("измерений") or "—"),
+            str(r.get("последнее", ""))[:16],
+        )
+    console.print(tbl)
+
+
+@ecology.command(name="history")
+@click.option("--days", "-n", default=7, type=int, help="Глубина истории в днях")
+@click.option("--district", "-d", default=None, help="Фильтр по району")
+def ecology_history(days: int, district: str | None) -> None:
+    """Показать динамику качества воздуха и погоды за N дней."""
+    from .ecology_cache import query_history
+
+    days = min(days, 7)
+    rows = query_history(district_filter=district, days=days)
+    if not rows:
+        console.print("[yellow]Нет исторических данных. Запустите: bot ecology update[/yellow]")
+        return
+
+    from rich.table import Table
+    tbl = Table(title=f"Динамика за {days} дней" + (f" — {district}" if district else ""))
+    tbl.add_column("День",        style="cyan")
+    tbl.add_column("Район",       style="dim")
+    tbl.add_column("PM2.5 ср",    justify="right")
+    tbl.add_column("PM2.5 макс",  justify="right")
+    tbl.add_column("AQI ср",      justify="right")
+    tbl.add_column("Темп °C",     justify="right")
+    tbl.add_column("Ветер м/с",   justify="right")
+    for r in rows:
+        tbl.add_row(
+            str(r.get("день", "")),
+            str(r.get("район", "")),
+            str(r.get("pm25_ср") or "—"),
+            str(r.get("pm25_макс") or "—"),
+            str(r.get("aqi_ср") or "—"),
+            str(r.get("темп_ср") or "—"),
+            str(r.get("ветер_ср") or "—"),
+        )
+    console.print(tbl)
+
+
 @cli.command()
 @click.option("--host", default="127.0.0.1", help="Хост (по умолчанию 127.0.0.1)")
 @click.option("--port", default=8000, type=int, help="Порт (по умолчанию 8000)")
