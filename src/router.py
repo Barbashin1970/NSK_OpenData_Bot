@@ -75,6 +75,7 @@ class RouteResult:
     confidence: float
     name: str
     matched_keywords: list[str] = field(default_factory=list)
+    utility_type: str = ""   # для power_outages: electricity|heat|hot_water|cold_water|gas|all
 
 
 def _normalize(text: str) -> str:
@@ -229,7 +230,9 @@ def _route_ecology(q: str) -> "RouteResult | None":
     )
 
 
-# Ключевые слова для темы отключений электроснабжения
+# ── Ключевые слова отключений по типу ресурса ────────────────────────────────
+
+# Электроснабжение
 _POWER_KEYWORDS = [
     "электричеств",
     "электроснабжен",
@@ -241,22 +244,130 @@ _POWER_KEYWORDS = [
     "отключение электр",
     "отключен электр",
 ]
+_POWER_PRIMARY = ["электр", "свет", "обесточ"]
 
-# Маркеры для минимального определения запроса об электро-отключениях
-_POWER_PRIMARY = ["электр", "свет", "обесточ", "отключен"]
+# Теплоснабжение
+_HEAT_KEYWORDS = [
+    "теплоснабжен",
+    "отопление",
+    "нет тепла",
+    "тепло отключ",
+    "отключили тепло",
+    "батарей",
+    "батарея холодн",
+    "котельн",
+    "отключение тепл",
+]
+_HEAT_PRIMARY = ["отоплен", "теплоснабж", "котельн", "батаре"]
+
+# Горячее водоснабжение
+_HOT_WATER_KEYWORDS = [
+    "горячая вода",
+    "горяч вод",
+    "нет горяч",
+    "горячее водоснабжен",
+    "отключили горяч",
+    "горяч отключ",
+]
+_HOT_WATER_PRIMARY = ["горяч"]
+
+# Холодное водоснабжение / водоснабжение в целом
+_COLD_WATER_KEYWORDS = [
+    "холодная вода",
+    "холодн вод",
+    "нет холодн",
+    "нет воды",
+    "воды нет",
+    "водоснабжен",
+    "отключили воду",
+    "отключение воды",
+]
+_COLD_WATER_PRIMARY = ["холодн вод", "нет вод", "вод отключ", "водоснабж"]
+
+# Газоснабжение
+_GAS_KEYWORDS = [
+    "газоснабжен",
+    "газ отключ",
+    "нет газа",
+    "отключили газ",
+    "отключение газ",
+]
+_GAS_PRIMARY = ["газоснабж", "газ отключ", "нет газ"]
+
+# Общий контекст «отключение ЖКХ» без явного типа ресурса
+_UTILITY_OUTAGE_PRIMARY = ["отключ", "коммунальн", "жкх", "аварий", "авари"]
+
+# Соответствие ключевых слов → utility_filter для DuckDB ILIKE
+UTILITY_FILTER_MAP = {
+    "electricity": "электроснабж",
+    "heat":        "теплоснабж",
+    "hot_water":   "горяч",
+    "cold_water":  "холодн",
+    "gas":         "газоснабж",
+    "all":         "",   # пустой = все типы
+}
+
 _POWER_CONTEXT = ["отключ", "нет", "план", "история", "сейчас", "сегодня", "неделю"]
 
 
+def _detect_utility(q: str) -> str:
+    """Определяет тип ресурса в запросе об отключениях.
+
+    Возвращает один из ключей UTILITY_FILTER_MAP.
+    """
+    # Важен порядок: горячая вода ПЕРЕД холодной и общим «вода»
+    if any(m in q for m in _HEAT_PRIMARY):
+        return "heat"
+    if any(m in q for m in _HOT_WATER_PRIMARY):
+        return "hot_water"
+    if any(
+        re.search(r"(?<![а-яёa-z])" + re.escape(m), q)
+        for m in _COLD_WATER_PRIMARY
+    ):
+        return "cold_water"
+    if any(re.search(r"(?<![а-яёa-z])" + re.escape(m), q) for m in _GAS_PRIMARY):
+        return "gas"
+    if any(m in q for m in _POWER_PRIMARY) or "обесточ" in q:
+        return "electricity"
+    return "all"
+
+
 def _route_power(q: str) -> "RouteResult | None":
-    """Проверяет, относится ли запрос к отключениям электроснабжения."""
-    has_power = any(m in q for m in _POWER_PRIMARY)
+    """Проверяет, относится ли запрос к отключениям ЖКХ любого типа."""
+    # Проверяем любой из типов ресурсов
+    has_electricity = any(m in q for m in _POWER_PRIMARY) or "обесточ" in q
+    has_heat        = any(m in q for m in _HEAT_PRIMARY)
+    has_hot_water   = any(m in q for m in _HOT_WATER_PRIMARY)
+    has_cold_water  = any(
+        re.search(r"(?<![а-яёa-z])" + re.escape(m), q) for m in _COLD_WATER_PRIMARY
+    )
+    has_gas         = any(
+        re.search(r"(?<![а-яёa-z])" + re.escape(m), q) for m in _GAS_PRIMARY
+    )
+    # «отключения ЖКХ» без уточнения типа
+    has_utility     = any(m in q for m in _UTILITY_OUTAGE_PRIMARY)
+
+    has_any = has_electricity or has_heat or has_hot_water or has_cold_water or has_gas
     has_context = any(m in q for m in _POWER_CONTEXT)
-    if not has_power:
+
+    if not has_any and not (has_utility and has_context):
         return None
+
+    # Выбираем ключевые слова для подбора уверенности
+    if has_heat:
+        kw_list, label = _HEAT_KEYWORDS, "теплоснабжение"
+    elif has_hot_water:
+        kw_list, label = _HOT_WATER_KEYWORDS, "горячее водоснабжение"
+    elif has_cold_water:
+        kw_list, label = _COLD_WATER_KEYWORDS, "холодное водоснабжение"
+    elif has_gas:
+        kw_list, label = _GAS_KEYWORDS, "газоснабжение"
+    else:
+        kw_list, label = _POWER_KEYWORDS, "электроснабжение"
 
     score = 0.0
     matched: list[str] = []
-    for kw in _POWER_KEYWORDS:
+    for kw in kw_list:
         kw_norm = _normalize(kw)
         kw_parts = kw_norm.split()
         all_match = all(
@@ -266,16 +377,76 @@ def _route_power(q: str) -> "RouteResult | None":
             matched.append(kw)
             score += len(kw_parts) ** 1.5
 
-    if score == 0 and has_power:
+    if score == 0:
         score = 1.0
-        matched = ["электроснабжение"]
+        matched = [label]
 
-    confidence = min(1.0, score / max(len(_POWER_KEYWORDS), 1) * 5)
-    confidence = max(confidence, 0.45 if has_power else 0.0)
+    confidence = min(1.0, score / max(len(kw_list), 1) * 5)
+    confidence = max(confidence, 0.45)
+
+    # Определяем тип утилиты для передачи в planner
+    utility_type = _detect_utility(q)
     return RouteResult(
         topic="power_outages",
         confidence=confidence,
-        name="Отключения электроснабжения",
+        name=f"Отключения ЖКХ ({label})",
+        matched_keywords=matched,
+        utility_type=utility_type,
+    )
+
+
+# ── Строительство и разрешения ───────────────────────────────────────────────
+_CONSTRUCTION_KEYWORDS = [
+    "разрешение на строительство",
+    "разрешение на ввод",
+    "строительство объект",
+    "стройка",
+    "новостройк",
+    "капитальн строительств",
+    "введён в эксплуатацию",
+    "ввод в эксплуатацию",
+    "застройщик",
+]
+_CONSTRUCTION_PRIMARY = [
+    "разрешен", "стройк", "новостройк", "застройщик", "капстрой", "снос здани"
+]
+# Контекст — слова, которые уточняют что речь идёт о строительстве
+_CONSTRUCTION_CONTEXT = ["строительств", "объект", "дом", "здани"]
+
+
+def _route_construction(q: str) -> "RouteResult | None":
+    """Проверяет, относится ли запрос к разрешениям на строительство."""
+    has_primary = any(m in q for m in _CONSTRUCTION_PRIMARY)
+    has_context = any(m in q for m in _CONSTRUCTION_CONTEXT)
+
+    # Нужен хотя бы один явный признак строительства
+    if not has_primary and not (
+        "разрешен" in q and has_context
+    ):
+        return None
+
+    score = 0.0
+    matched: list[str] = []
+    for kw in _CONSTRUCTION_KEYWORDS:
+        kw_norm = kw.lower()
+        kw_parts = kw_norm.split()
+        all_match = all(
+            re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in kw_parts
+        )
+        if all_match:
+            matched.append(kw)
+            score += len(kw_parts) ** 1.5
+
+    if score == 0:
+        score = 1.0
+        matched = ["строительство"]
+
+    confidence = min(1.0, score / max(len(_CONSTRUCTION_KEYWORDS), 1) * 5)
+    confidence = max(confidence, 0.5)
+    return RouteResult(
+        topic="construction",
+        confidence=confidence,
+        name="Разрешения на строительство",
         matched_keywords=matched,
     )
 
@@ -296,7 +467,7 @@ def route(query: str) -> list[RouteResult]:
     registry = load_registry()
     results: list[RouteResult] = []
 
-    # Тема отключений электроснабжения (не в YAML-реестре, обрабатывается отдельно)
+    # Тема отключений ЖКХ (не в YAML-реестре, обрабатывается отдельно)
     power_result = _route_power(q)
     if power_result:
         results.append(power_result)
@@ -305,6 +476,11 @@ def route(query: str) -> list[RouteResult]:
     ecology_result = _route_ecology(q)
     if ecology_result:
         results.append(ecology_result)
+
+    # Тема разрешений на строительство (не в YAML-реестре)
+    construction_result = _route_construction(q)
+    if construction_result:
+        results.append(construction_result)
 
     for topic_id, ds in registry.items():
         keywords: list[str] = ds.get("keywords", [])

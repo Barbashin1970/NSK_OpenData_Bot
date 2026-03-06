@@ -33,13 +33,28 @@ CREATE TABLE IF NOT EXISTS power_outages (
 )
 """
 
+_DETAIL_DDL = """
+CREATE TABLE IF NOT EXISTS power_outages_detail (
+    id            VARCHAR,
+    utility_id    VARCHAR,
+    district_href VARCHAR,
+    address       VARCHAR,
+    date_from     VARCHAR,
+    date_to       VARCHAR,
+    reason        VARCHAR,
+    scraped_at    VARCHAR,
+    source_url    VARCHAR
+)
+"""
+
 
 def init_power_table() -> None:
-    """Создаёт таблицу power_outages если её нет."""
+    """Создаёт таблицы power_outages и power_outages_detail если их нет."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = _get_conn()
     try:
         conn.execute(_TABLE_DDL)
+        conn.execute(_DETAIL_DDL)
     finally:
         conn.close()
 
@@ -235,3 +250,70 @@ def get_electricity_status(district_filter: str | None = None) -> list[dict]:
         district_filter=district_filter,
         latest_only=True,
     )
+
+
+def upsert_detail(records: list[dict]) -> int:
+    """Вставляет детальные записи об отключениях (адреса) с очисткой старых."""
+    if not records:
+        return 0
+    init_power_table()
+    conn = _get_conn()
+    try:
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=POWER_HISTORY_DAYS)
+        ).isoformat()
+        conn.execute("DELETE FROM power_outages_detail WHERE scraped_at < ?", [cutoff])
+        rows = [
+            (
+                r["id"], r["utility_id"], r.get("district_href", ""),
+                r["address"], r.get("date_from", ""), r.get("date_to", ""),
+                r.get("reason", ""), r["scraped_at"], r.get("source_url", ""),
+            )
+            for r in records
+        ]
+        conn.executemany(
+            "INSERT INTO power_outages_detail VALUES (?,?,?,?,?,?,?,?,?)", rows
+        )
+        return len(rows)
+    finally:
+        conn.close()
+
+
+def query_power_addresses(
+    utility_id: str | None = None,
+    address_contains: str | None = None,
+    latest_only: bool = True,
+    limit: int = 50,
+) -> list[dict]:
+    """Запрашивает детальные адресные записи из power_outages_detail."""
+    init_power_table()
+    conn = _get_conn()
+    try:
+        wheres: list[str] = []
+        params: list = []
+        if latest_only:
+            wheres.append(
+                "scraped_at = (SELECT MAX(scraped_at) FROM power_outages_detail)"
+            )
+        if utility_id:
+            wheres.append("utility_id = ?")
+            params.append(utility_id)
+        if address_contains:
+            wheres.append("address ILIKE ?")
+            params.append(f"%{address_contains}%")
+        where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = f"""
+            SELECT utility_id, address, date_from, date_to, reason, scraped_at
+            FROM power_outages_detail
+            {where_sql}
+            ORDER BY scraped_at DESC, address
+            LIMIT {limit}
+        """
+        cursor = conn.execute(sql, params)
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+    except Exception as e:
+        log.error(f"Ошибка query_power_addresses: {e}")
+        return []
+    finally:
+        conn.close()

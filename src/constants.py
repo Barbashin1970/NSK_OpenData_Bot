@@ -28,7 +28,8 @@ DEFAULT_TTL_HOURS = 24
 POWER_TTL_MINUTES  = 30
 POWER_HISTORY_DAYS = 7
 POWER_FUTURE_DAYS  = 7
-NSK_051_URL = "http://051.novo-sibirsk.ru/sitepages/off.aspx"
+NSK_051_URL  = "http://051.novo-sibirsk.ru/sitepages/off.aspx"
+NSK_051_BASE = "http://051.novo-sibirsk.ru"
 
 # ── Кэш — экология и метеорология ────────────────────────────────────────────
 ECOLOGY_TTL_MINUTES   = 15   # Open-Meteo обновляется ~каждые 15 мин

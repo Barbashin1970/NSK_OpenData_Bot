@@ -179,6 +179,74 @@ def execute_plan(plan: Plan) -> dict[str, Any]:
         return {"error": str(e)}
 
 
+def execute_construction(plan: Plan) -> dict[str, Any]:
+    """Выполняет запросы к таблице construction_permits.
+
+    Поддерживаемые операции: COUNT | GROUP | FILTER | TOP_N
+    extra_filters["permit_type"] = "construction" | "commissioning" | None (оба)
+    """
+    from .construction_cache import (
+        query_permits, count_permits, group_permits_by_district,
+        is_construction_stale,
+    )
+    from .construction_scraper import fetch_all_permits
+    from .construction_cache import upsert_permits
+
+    # Автообновление если устарело
+    if is_construction_stale():
+        records = fetch_all_permits()
+        if records:
+            upsert_permits(records)
+
+    district = plan.district
+    permit_type = plan.extra_filters.get("permit_type") or None
+    op = plan.operation
+
+    try:
+        if op == "COUNT":
+            count = count_permits(
+                permit_type=permit_type,
+                district_filter=district,
+            )
+            return {
+                "operation": "COUNT",
+                "count": count,
+                "rows": [],
+                "columns": [],
+            }
+
+        elif op == "GROUP":
+            rows = group_permits_by_district(permit_type=permit_type)
+            return {
+                "operation": "GROUP",
+                "rows": rows,
+                "columns": ["район", "количество"],
+                "count": sum(r.get("количество", 0) for r in rows),
+            }
+
+        else:  # FILTER / TOP_N / default
+            lim = plan.limit or 20
+            rows = query_permits(
+                permit_type=permit_type,
+                district_filter=district,
+                limit=lim,
+            )
+            cols = [
+                "permit_type", "number", "address", "object_name",
+                "developer", "issue_date", "valid_until", "district",
+            ]
+            return {
+                "operation": "FILTER",
+                "rows": [{k: r.get(k, "") for k in cols} for r in rows],
+                "columns": cols,
+                "count": len(rows),
+            }
+
+    except Exception as e:
+        log.error(f"Ошибка execute_construction: {e}")
+        return {"error": str(e)}
+
+
 def execute_ecology(plan: Plan) -> dict[str, Any]:
     """Выполняет запросы к таблицам экологии (dim_stations + fact_measurements).
 
@@ -267,8 +335,16 @@ def execute_power(plan: Plan) -> dict[str, Any]:
     district = plan.district
     op = plan.operation
 
-    # Извлекаем фильтр по типу утилиты (электро / тепло / вода / газ)
-    utility_filter = plan.extra_filters.get("utility", "электроснабж")
+    # Извлекаем фильтр по типу утилиты (электро / тепло / вода / газ / all)
+    # Если ключ не задан (старые вызовы) — дефолт электроснабжение.
+    # Если ключ есть, но значение пустое — значит «все типы» (utility_filter=None).
+    _utility_raw = plan.extra_filters.get("utility", None)
+    if _utility_raw is None:
+        utility_filter: str | None = "электроснабж"
+    elif _utility_raw == "":
+        utility_filter = None   # запрос по всем типам ЖКХ
+    else:
+        utility_filter = _utility_raw
 
     try:
         if op == "POWER_STATUS":

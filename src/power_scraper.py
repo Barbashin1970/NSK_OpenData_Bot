@@ -22,7 +22,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-from .constants import NSK_051_URL, SCRAPER_HEADERS, SCRAPER_TIMEOUT
+from .constants import NSK_051_URL, NSK_051_BASE, SCRAPER_HEADERS, SCRAPER_TIMEOUT
 
 log = logging.getLogger(__name__)
 
@@ -137,6 +137,90 @@ def scrape_summary() -> list[dict[str, Any]]:
     return records
 
 
+def fetch_outages_detail(
+    system_id: str,
+    district_href: str,
+) -> list[dict[str, Any]]:
+    """Скрапит детальную страницу offfull.aspx для одного system+district.
+
+    Возвращает список записей с конкретными адресами:
+    {
+        utility_id, district_href, address, date_from, date_to,
+        reason, scraped_at
+    }
+    """
+    url = f"{NSK_051_BASE}{district_href}" if district_href.startswith("/") else district_href
+    try:
+        resp = requests.get(url, headers=SCRAPER_HEADERS, timeout=SCRAPER_TIMEOUT)
+        resp.raise_for_status()
+    except Exception as e:
+        log.warning(f"offfull.aspx недоступна ({url}): {e}")
+        return []
+
+    scraped_at = datetime.now(timezone.utc).isoformat()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    records: list[dict] = []
+
+    # Страница содержит таблицу cult_off_full_table (или аналогичную)
+    table = soup.find("table", class_=re.compile(r"cult_off"))
+    if not table:
+        # Fallback: первая таблица на странице
+        table = soup.find("table")
+    if not table:
+        return []
+
+    rows = table.find_all("tr")
+    # Первая строка — заголовки
+    headers: list[str] = []
+    if rows:
+        headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
+
+    for row in rows[1:]:
+        cells = [td.get_text(strip=True) for td in row.find_all("td")]
+        if not cells or len(cells) < 2:
+            continue
+        # Пытаемся найти адрес в колонках (разные шаблоны на странице)
+        row_dict: dict[str, str] = {}
+        for i, h in enumerate(headers):
+            if i < len(cells):
+                row_dict[h] = cells[i]
+
+        # Нормируем ключевые поля
+        address = (
+            row_dict.get("Адрес", "")
+            or row_dict.get("адрес", "")
+            or (cells[0] if cells else "")
+        )
+        date_from = (
+            row_dict.get("Дата начала", "")
+            or row_dict.get("С", "")
+        )
+        date_to = (
+            row_dict.get("Дата окончания", "")
+            or row_dict.get("По", "")
+            or row_dict.get("До", "")
+        )
+        reason = row_dict.get("Причина", "") or row_dict.get("Вид работ", "")
+
+        if address:
+            records.append({
+                "id": _make_id(scraped_at, system_id, address, date_from),
+                "utility_id": system_id,
+                "district_href": district_href,
+                "address": address,
+                "date_from": date_from,
+                "date_to": date_to,
+                "reason": reason,
+                "scraped_at": scraped_at,
+                "source_url": url,
+            })
+
+    return records
+
+
 def fetch_all_outages() -> list[dict[str, Any]]:
-    """Основная функция получения данных об отключениях."""
+    """Основная функция получения данных об отключениях.
+
+    Возвращает сводку по районам из scrape_summary().
+    """
     return scrape_summary()

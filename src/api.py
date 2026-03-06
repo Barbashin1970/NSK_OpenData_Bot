@@ -42,9 +42,11 @@ GET /ask?q=топ-5+аптек+в+центральном+районе
 | Источник | TTL | Что содержит |
 |---|---|---|
 | [opendata.novo-sibirsk.ru](http://opendata.novo-sibirsk.ru) | 24 ч | Парковки, школы, аптеки, библиотеки и др. |
-| [051.novo-sibirsk.ru](http://051.novo-sibirsk.ru) | 30 мин | Отключения ЖКХ в реальном времени |
-| [Open-Meteo](https://open-meteo.com) | 15 мин | PM2.5, PM10, AQI, погода по 10 районам (бесплатно) |
+| [051.novo-sibirsk.ru](http://051.novo-sibirsk.ru) | 30 мин | Отключения ЖКХ: электро, тепло, вода, газ |
+| [portal.novo-sibirsk.ru/dsa](http://portal.novo-sibirsk.ru/dsa/) | 24 ч | Разрешения на строительство и ввод в эксплуатацию |
+| [Open-Meteo](https://open-meteo.com) | 15 мин | PM2.5, PM10, AQI, погода по 11 точкам (бесплатно) |
 | CityAir API | 15 мин | Телеметрия физических датчиков (требует `CITYAIR_API_KEY`) |
+| [2GIS Public Transport](https://dev.2gis.com/api) | real-time | Маршруты общественного транспорта (требует `TWOGIS_API_KEY`, данные не сохраняются) |
 
 ## Поддерживаемые темы
 
@@ -60,8 +62,9 @@ GET /ask?q=топ-5+аптек+в+центральном+районе
 | `sport_orgs` | Спортивные организации | ~89 |
 | `parks` | Парки | ~1 |
 | `culture` | Организации культуры | ~11 |
-| `power_outages` | Отключения ЖКХ | реальное время |
+| `power_outages` | Отключения ЖКХ (электро/тепло/вода/газ) | реальное время |
 | `ecology` | Качество воздуха + погода | реальное время |
+| `construction` | Разрешения на строительство/ввод | 24 ч |
 
 ## Типы операций
 
@@ -394,7 +397,8 @@ const NSKTests = (() => {
           parking:'Парковки', stops:'Остановки', schools:'Школы',
           kindergartens:'Детсады', libraries:'Библиотеки', pharmacies:'Аптеки',
           parks:'Парки', sport_grounds:'Спортплощадки', sport_orgs:'Спортклубы',
-          culture:'Культура', power_outages:'Отключения ЖКХ', ecology:'Экология 🍃',
+          culture:'Культура', power_outages:'Отключения ЖКХ', ecology:'Экология',
+          construction:'Стройки/разрешения',
         };
         d.checks.forEach(c => {
           const chip = document.createElement('span');
@@ -535,6 +539,25 @@ def run_tests():
         except Exception:
             health_checks.append({"topic": "ecology", "status": "missing",
                                   "msg": "Ошибка проверки экологии"})
+
+        # ── Разрешения на строительство ──────────────────────────────────────
+        try:
+            from .construction_cache import get_construction_meta, is_construction_stale
+            constr_meta = get_construction_meta()
+            if constr_meta.get("total", 0) > 0:
+                stale = is_construction_stale()
+                total_c = constr_meta["total"]
+                health_checks.append({
+                    "topic": "construction",
+                    "status": "stale" if stale else "ok",
+                    "msg": f"{total_c} разрешений",
+                })
+            else:
+                health_checks.append({"topic": "construction", "status": "missing",
+                                      "msg": "Нет данных о разрешениях"})
+        except Exception:
+            health_checks.append({"topic": "construction", "status": "missing",
+                                  "msg": "Ошибка проверки строительства"})
 
         yield _sse({"type": "health", "checks": health_checks})
 
@@ -867,7 +890,25 @@ def get_ask(
             **result,
         }
 
-    # ── Отключения электроснабжения ──────────────────────────────────────────
+    # ── Разрешения на строительство ──────────────────────────────────────────
+    if topic == "construction":
+        from .executor import execute_construction
+        from .construction_cache import get_construction_meta
+        result = execute_construction(plan)
+        meta = get_construction_meta()
+        return {
+            "query": q,
+            "topic": topic,
+            "topic_name": route_result.name,
+            "confidence": round(route_result.confidence, 3),
+            "operation": plan.operation,
+            "district": plan.district,
+            "extra_filters": plan.extra_filters,
+            "construction_meta": meta,
+            **result,
+        }
+
+    # ── Отключения ЖКХ ───────────────────────────────────────────────────────
     if topic == "power_outages":
         from .executor import execute_power
         from .power_cache import is_power_stale, get_power_meta, upsert_outages
@@ -918,6 +959,59 @@ def get_ask(
             "last_updated": cache_info.get("last_updated"),
             "rows": cache_info.get("rows"),
         },
+        **result,
+    }
+
+
+@app.get(
+    "/transit",
+    tags=["Запросы"],
+    summary="Маршрут на общественном транспорте (2GIS, real-time)",
+    response_description="Маршруты с сегментами. Данные не сохраняются (pass-through).",
+)
+def get_transit(
+    from_district: str = Query(
+        ...,
+        description="Район отправления. Например: `Советский район`, `Кольцово`",
+        example="Советский район",
+    ),
+    to_district: str = Query(
+        ...,
+        description="Район назначения. Например: `Центральный район`",
+        example="Центральный район",
+    ),
+) -> dict:
+    """
+    Строит маршрут на общественном транспорте между двумя районами Новосибирска
+    через 2GIS Public Transport API.
+
+    **Важно:** данные не сохраняются на сервере согласно лицензии 2ГИС (law.2gis.ru/api-rules).
+    Каждый запрос — это real-time вызов к API 2ГИС.
+
+    Требует переменную окружения `TWOGIS_API_KEY` (получить: dev.2gis.com).
+    """
+    from .transport_api import transit_route, DISTRICT_COORDS
+
+    from_coords = DISTRICT_COORDS.get(from_district)
+    to_coords = DISTRICT_COORDS.get(to_district)
+
+    if not from_coords:
+        return {
+            "error": f"Район отправления не найден: {from_district!r}",
+            "available": list(DISTRICT_COORDS.keys()),
+        }
+    if not to_coords:
+        return {
+            "error": f"Район назначения не найден: {to_district!r}",
+            "available": list(DISTRICT_COORDS.keys()),
+        }
+
+    result = transit_route(from_coords, to_coords)
+    return {
+        "from": from_district,
+        "to": to_district,
+        "from_coords": {"lng": from_coords[0], "lat": from_coords[1]},
+        "to_coords": {"lng": to_coords[0], "lat": to_coords[1]},
         **result,
     }
 

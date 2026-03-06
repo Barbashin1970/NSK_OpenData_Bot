@@ -12,7 +12,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .router import extract_district, extract_limit, extract_street, extract_sub_district
+from .router import (
+    extract_district, extract_limit, extract_street, extract_sub_district,
+    _detect_utility, UTILITY_FILTER_MAP,
+)
 
 # Паттерны для распознавания типа операции (pre-compiled)
 COUNT_PATTERNS = re.compile(
@@ -154,6 +157,18 @@ def make_plan(query: str, topic: str | None) -> Plan:
         extra_filters["audience"] = "children"
     elif AUDIENCE_ADULT_PATTERNS.search(q):
         extra_filters["audience"] = "adults"
+
+    # Для темы отключений ЖКХ — определяем тип ресурса
+    if topic == "power_outages":
+        utility_key = _detect_utility(q)
+        extra_filters["utility"] = UTILITY_FILTER_MAP.get(utility_key, "")
+
+    # Для темы строительства — тип разрешения
+    if topic == "construction":
+        if re.search(r"ввод|эксплуатац|введён|сдан", q):
+            extra_filters["permit_type"] = "commissioning"
+        elif re.search(r"строительств|стройк|разрешен", q):
+            extra_filters["permit_type"] = "construction"
 
     return Plan(
         operation=operation,
