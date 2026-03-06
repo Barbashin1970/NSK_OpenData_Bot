@@ -676,6 +676,7 @@ def run_tests():
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
             bufsize=1,
         )
 
