@@ -494,50 +494,98 @@ const NSKTests = (() => {
     btn.className = 'running';
     btn.textContent = '⟳ Загружаю данные…';
 
-    addLine('Запуск обновления всех 10 наборов данных…', 'info');
-    addLine('Это займёт 1–2 минуты. Пожалуйста, подождите.', 'dim');
+    addLine('Запуск полного обновления системы…', 'info');
+    addLine('Открытые данные · Экология · Отключения ЖКХ', 'dim');
+    addLine('', '');
 
+    let totalOk = 0, totalErr = 0;
+
+    // ── 1. Открытые данные (10 наборов) ─────────────────────────────────────
+    addLine('▶ Открытые данные мэрии (10 наборов)…', 'info');
     try {
       const resp = await fetch('/update', { method: 'POST' });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       const updated = data.updated || {};
-      let ok = 0, err = 0;
-      addLine('', '');
       for (const [tid, info] of Object.entries(updated)) {
         if (info.success) {
-          ok++;
+          totalOk++;
           addLine('  ✓ ' + tid + ' — ' + (info.rows || 0) + ' строк', 'passed');
         } else {
-          err++;
+          totalErr++;
           addLine('  ✗ ' + tid + ' — ошибка загрузки', 'failed');
         }
       }
-      addLine('', '');
-      if (err === 0) {
-        addLine('Все наборы данных обновлены (' + ok + ').', 'passed');
-        btn.className = 'done-ok';
-        btn.textContent = '✓ Данные загружены';
-        result().textContent = '✓ Данные обновлены (' + ok + ')';
-        result().className = 'ok';
-      } else {
-        addLine('Загружено: ' + ok + ', ошибок: ' + err + '.', 'warn');
-        btn.className = 'done-err';
-        btn.textContent = '⚠ Частичная загрузка';
-        result().textContent = '⚠ ' + err + ' ошибок';
-        result().className = 'fail';
-      }
-      addLine('Нажмите «Тестирование» чтобы обновить статус данных.', 'dim');
     } catch (e) {
-      addLine('Ошибка: ' + e.message, 'failed');
-      btn.className = 'done-err';
-      btn.textContent = '✗ Ошибка';
-      result().textContent = '✗ ' + e.message;
-      result().className = 'fail';
-    } finally {
-      btn.disabled = false;
-      runB.disabled = false;
+      totalErr++;
+      addLine('  ✗ Открытые данные: ' + e.message, 'failed');
     }
+
+    // ── 2. Экология и погода ─────────────────────────────────────────────────
+    addLine('', '');
+    addLine('▶ Экология и погода (Open-Meteo)…', 'info');
+    try {
+      const resp = await fetch('/ecology/update', { method: 'POST' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      if (data.success) {
+        totalOk++;
+        addLine(
+          '  ✓ ecology — ' + (data.records_loaded || 0) + ' измерений · ' +
+          (data.districts_covered || 0) + ' районов · ' + (data.source || ''),
+          'passed'
+        );
+      } else {
+        totalErr++;
+        addLine('  ✗ ecology — данные не загружены', 'failed');
+      }
+    } catch (e) {
+      totalErr++;
+      addLine('  ✗ Экология: ' + e.message, 'failed');
+    }
+
+    // ── 3. Отключения ЖКХ ───────────────────────────────────────────────────
+    addLine('', '');
+    addLine('▶ Отключения ЖКХ (051.novo-sibirsk.ru)…', 'info');
+    try {
+      const resp = await fetch('/power/update', { method: 'POST' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      if (data.success) {
+        totalOk++;
+        addLine(
+          '  ✓ power_outages — ' + (data.records_loaded || 0) + ' записей · ' +
+          'аварийных: ' + (data.active_houses || 0) + ' д. · ' +
+          'плановых: ' + (data.planned_houses || 0) + ' д.',
+          'passed'
+        );
+      } else {
+        totalErr++;
+        addLine('  ✗ power_outages — данные не загружены', 'failed');
+      }
+    } catch (e) {
+      totalErr++;
+      addLine('  ✗ Отключения ЖКХ: ' + e.message, 'failed');
+    }
+
+    // ── Итог ─────────────────────────────────────────────────────────────────
+    addLine('', '');
+    if (totalErr === 0) {
+      addLine('Все источники данных обновлены (' + totalOk + ' успешно).', 'passed');
+      btn.className = 'done-ok';
+      btn.textContent = '✓ Все данные загружены';
+      result().textContent = '✓ Обновлено (' + totalOk + ')';
+      result().className = 'ok';
+    } else {
+      addLine('Загружено: ' + totalOk + ', ошибок: ' + totalErr + '.', 'warn');
+      btn.className = 'done-err';
+      btn.textContent = '⚠ Частичная загрузка';
+      result().textContent = '⚠ ' + totalErr + ' ошибок';
+      result().className = 'fail';
+    }
+    addLine('Нажмите «Тестирование» чтобы обновить статус данных.', 'dim');
+    btn.disabled = false;
+    runB.disabled = false;
   }
 
   return { toggle, close, run, updateAll };
@@ -1440,6 +1488,39 @@ def post_ecology_update() -> dict:
         "districts_covered": meta.get("districts_covered", 0),
         "last_updated": meta.get("last_updated", ""),
         "source": "open-meteo+cityair" if has_cityair else "open-meteo",
+    }
+
+
+@app.post(
+    "/power/update",
+    tags=["Управление"],
+    summary="Обновить данные об отключениях ЖКХ",
+    response_description="Статус обновления: количество загруженных записей",
+)
+def post_power_update() -> dict:
+    """
+    Принудительно загружает актуальные данные об отключениях ЖКХ с
+    [051.novo-sibirsk.ru](http://051.novo-sibirsk.ru).
+
+    В штатном режиме обновление происходит автоматически при запросах через `/ask`
+    (тема `power_outages`) если TTL (30 мин) истёк.
+
+    Загружает все типы ресурсов: электроснабжение, теплоснабжение, горячая вода,
+    холодная вода, газоснабжение.
+    """
+    from .power_scraper import fetch_all_outages
+    from .power_cache import upsert_outages, get_power_meta
+
+    records = fetch_all_outages()
+    count = upsert_outages(records)
+    meta = get_power_meta()
+    return {
+        "success": count > 0,
+        "records_loaded": count,
+        "active_houses": meta.get("active_houses", 0),
+        "planned_houses": meta.get("planned_houses", 0),
+        "last_scraped": meta.get("last_scraped", ""),
+        "source": "051.novo-sibirsk.ru",
     }
 
 
