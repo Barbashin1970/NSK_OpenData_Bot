@@ -124,9 +124,9 @@ const EXAMPLES = [
   "отключения электричества сейчас",
   "качество воздуха в городе",
   "погода в Академгородке",
+  "риски для жизни в городе",
   "детские спортивные организации",
   "школы в Советском районе",
-  "плановые отключения",
   "что ты умеешь",
 ];
 
@@ -487,6 +487,154 @@ function aqiColor(aqi) {
   return                  { bg: 'bg-red-100',     text: 'text-red-700',     label: 'Опасное' };
 }
 
+// ─── Life Indices (вычисляются client-side из ECO_STATUS rows) ────────────────
+function computeLifeIndices(rows) {
+  if (!rows || !rows.length) return null;
+  const n = v => v != null ? Number(v) : null;
+  const vals = key => rows.map(r => n(r[key])).filter(v => v !== null);
+
+  const temps = vals('temperature_c'), winds = vals('wind_speed_ms');
+  const pm25s = vals('pm25'), aqis = vals('aqi');
+
+  const avg = lst => lst.length ? lst.reduce((a,b)=>a+b,0)/lst.length : null;
+  const min = lst => lst.length ? Math.min(...lst) : null;
+
+  const avgT = avg(temps), avgW = avg(winds), avgP = avg(pm25s), avgA = avg(aqis);
+  const minT = min(temps);
+
+  // Индекс автомобилиста: 0=безопасно, 10=очень опасно
+  let driver = 0;
+  if (avgT != null) {
+    if (avgT >= -3 && avgT <= 2) driver += 5;    // чёрный лёд
+    else if (avgT < -3 && avgT >= -10) driver += 2; // обычный лёд
+    if (avgT < -25) driver += 3;
+    else if (avgT < -20) driver += 2;
+    else if (avgT < -10) driver += 1;
+  }
+  if (avgW != null && avgW > 12) driver += 2;
+  else if (avgW != null && avgW > 8) driver += 1;
+  driver = Math.min(10, Math.max(0, Math.round(driver)));
+  const driverLabel = driver <= 2 ? 'Безопасно' : driver <= 5 ? 'Осторожно' : driver <= 7 ? 'Опасно' : 'Крайне опасно';
+  const driverColor = driver <= 2 ? 'text-emerald-600' : driver <= 5 ? 'text-yellow-600' : driver <= 7 ? 'text-orange-600' : 'text-red-600';
+  const driverBg    = driver <= 2 ? 'bg-emerald-50 border-emerald-200' : driver <= 5 ? 'bg-yellow-50 border-yellow-200' : driver <= 7 ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200';
+
+  // Индекс прогулки: 0=сиди дома, 10=идеально
+  let walk = 10;
+  if (avgP != null) {
+    if (avgP > 35) walk -= 4;
+    else if (avgP > 25) walk -= 2;
+    else if (avgP > 15) walk -= 1;
+  }
+  if (avgA != null) {
+    if (avgA > 80) walk -= 3;
+    else if (avgA > 60) walk -= 2;
+    else if (avgA > 40) walk -= 1;
+  }
+  if (avgT != null) {
+    if (avgT < -25) walk -= 3;
+    else if (avgT < -15) walk -= 2;
+    else if (avgT < -5) walk -= 1;
+  }
+  if (avgW != null && avgW > 10) walk -= 1;
+  walk = Math.min(10, Math.max(0, Math.round(walk)));
+  const walkLabel = walk >= 8 ? 'Отличные условия' : walk >= 6 ? 'Хорошие условия' : walk >= 4 ? 'Ограниченно' : 'Рекомендуется остаться дома';
+  const walkColor = walk >= 8 ? 'text-emerald-600' : walk >= 6 ? 'text-green-600' : walk >= 4 ? 'text-yellow-600' : 'text-red-600';
+  const walkBg    = walk >= 8 ? 'bg-emerald-50 border-emerald-200' : walk >= 6 ? 'bg-green-50 border-green-200' : walk >= 4 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200';
+
+  // Индекс коммунального напряжения: 0=норма, 10=критично
+  let utility = 0;
+  if (minT != null) {
+    if (minT < -30) utility += 4;
+    else if (minT < -20) utility += 3;
+    else if (minT < -10) utility += 2;
+    else if (minT < -5) utility += 1;
+  }
+  if (avgW != null && avgP != null && avgW < 1.5 && avgP > 20) utility += 2;
+  utility = Math.min(10, Math.max(0, Math.round(utility)));
+  const utilLabel = utility <= 2 ? 'Норма' : utility <= 5 ? 'Повышенная нагрузка' : utility <= 7 ? 'Высокое напряжение' : 'Критично';
+  const utilColor = utility <= 2 ? 'text-emerald-600' : utility <= 5 ? 'text-yellow-600' : utility <= 7 ? 'text-orange-600' : 'text-red-600';
+  const utilBg    = utility <= 2 ? 'bg-emerald-50 border-emerald-200' : utility <= 5 ? 'bg-yellow-50 border-yellow-200' : utility <= 7 ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200';
+
+  return {
+    driver:  { score: driver,  label: driverLabel,  color: driverColor,  bg: driverBg,  icon: '🚗', name: 'Индекс водителя' },
+    walk:    { score: walk,    label: walkLabel,    color: walkColor,    bg: walkBg,    icon: '🚶', name: 'Индекс прогулки' },
+    utility: { score: utility, label: utilLabel,    color: utilColor,    bg: utilBg,    icon: '🏗️', name: 'Коммунальное напряжение' },
+  };
+}
+
+function renderLifeIndices(indices) {
+  if (!indices) return '';
+  return `
+    <div class="grid grid-cols-3 gap-3 mb-4">
+      ${['driver','walk','utility'].map(key => {
+        const ix = indices[key];
+        const barPct = key === 'walk'
+          ? ix.score * 10          // walk: higher = better, bar goes right
+          : ix.score * 10;         // driver/utility: higher = worse, still visual scale
+        const barClass = key === 'walk'
+          ? (ix.score >= 7 ? 'bg-emerald-400' : ix.score >= 5 ? 'bg-yellow-400' : 'bg-red-400')
+          : (ix.score <= 3 ? 'bg-emerald-400' : ix.score <= 6 ? 'bg-yellow-400' : 'bg-red-400');
+        const scoreDisplay = key === 'walk'
+          ? `${ix.score}/10`
+          : `${ix.score}/10`;
+        return `
+          <div class="border rounded-2xl p-4 ${ix.bg} flex flex-col gap-1">
+            <div class="flex items-center justify-between">
+              <span class="text-lg">${ix.icon}</span>
+              <span class="text-xl font-bold ${ix.color}">${scoreDisplay}</span>
+            </div>
+            <div class="text-xs font-semibold text-slate-700 leading-tight">${ix.name}</div>
+            <div class="text-xs ${ix.color} font-medium">${ix.label}</div>
+            <div class="mt-1 h-1.5 bg-white/60 rounded-full overflow-hidden">
+              <div class="${barClass} h-full rounded-full transition-all" style="width:${barPct}%"></div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ─── Risk Cards ────────────────────────────────────────────────────────────────
+function renderRiskCards(risks) {
+  if (!risks || !risks.length) return '';
+  const cards = risks.map(r => {
+    const isCritical = r.severity === 'critical';
+    const bg    = isCritical ? 'bg-red-50 border-red-200'     : 'bg-amber-50 border-amber-200';
+    const hdr   = isCritical ? 'bg-red-100/60 border-red-200' : 'bg-amber-100/60 border-amber-200';
+    const badge = isCritical
+      ? `<span class="bg-red-100 text-red-700 border border-red-300 text-xs px-2 py-0.5 rounded-full font-bold">Критично</span>`
+      : `<span class="bg-amber-100 text-amber-700 border border-amber-300 text-xs px-2 py-0.5 rounded-full font-bold">Внимание</span>`;
+    return `
+      <div class="border rounded-2xl overflow-hidden ${bg}">
+        <div class="px-4 py-3 border-b ${hdr} flex items-center gap-3">
+          <span class="text-xl">${r.icon || '⚠️'}</span>
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold text-sm text-slate-800 leading-tight">${esc(r.title)}</div>
+            <div class="text-xs text-slate-500 mt-0.5">${esc(r.metrics || '')}</div>
+          </div>
+          ${badge}
+        </div>
+        <div class="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div>
+            <div class="font-semibold text-slate-500 uppercase tracking-wider text-[10px] mb-1">👤 Горожанам</div>
+            <p class="text-slate-700 leading-relaxed">${esc(r.citizen || '')}</p>
+          </div>
+          <div>
+            <div class="font-semibold text-slate-500 uppercase tracking-wider text-[10px] mb-1">🏛️ Службам города</div>
+            <p class="text-slate-700 leading-relaxed">${esc(r.official || '')}</p>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+  return `
+    <div class="space-y-3">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Активные риски</span>
+        <span class="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-bold">${risks.length}</span>
+      </div>
+      ${cards}
+    </div>`;
+}
+
 function renderEcology(data) {
   const op   = data.operation;
   const rows = data.rows || [];
@@ -495,7 +643,7 @@ function renderEcology(data) {
     ? String(meta.last_updated).substring(0, 16).replace('T', ' ')
     : '—';
 
-  if (!rows.length) {
+  if (op !== 'ECO_RISKS' && !rows.length) {
     return `
       <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center">
         <span class="text-3xl block mb-3">🍃</span>
@@ -504,8 +652,30 @@ function renderEcology(data) {
       </div>`;
   }
 
+  // ── ECO_RISKS ─────────────────────────────────────────────────────────────
+  if (op === 'ECO_RISKS') {
+    const risks = data.risks || rows;  // /ask отдаёт risks, прямой /ecology/risks — тоже
+    if (!risks.length) {
+      return `
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-8 text-center">
+          <span class="text-3xl block mb-2">✅</span>
+          <p class="text-emerald-700 font-semibold text-base">Рисков не обнаружено</p>
+          <p class="text-sm text-emerald-600 mt-1">Текущие показатели воздуха и погоды в пределах нормы</p>
+          <p class="text-xs text-slate-400 mt-3">⏱ ${metaTs}</p>
+        </div>`;
+    }
+    return `
+      <div class="space-y-4">
+        ${renderRiskCards(risks)}
+        <p class="text-xs text-slate-400 text-right">⏱ ${metaTs}</p>
+      </div>`;
+  }
+
   // ── ECO_STATUS ────────────────────────────────────────────────────────────
   if (op === 'ECO_STATUS') {
+    const indices = computeLifeIndices(rows);
+    const risks   = data.risks || [];   // backend включает risks в ECO_STATUS ответ
+
     const cards = rows.map(r => {
       const c    = aqiColor(r.aqi);
       const pm25 = r.pm25  != null ? Number(r.pm25).toFixed(1)           : '—';
@@ -534,13 +704,29 @@ function renderEcology(data) {
         </div>`;
     }).join('');
 
-    return `
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
-          <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🍃 Качество воздуха по районам</span>
-          <span class="text-xs text-slate-400">⏱ ${metaTs}</span>
+    const risksBanner = risks.length ? `
+      <div class="mx-4 mb-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex items-center gap-3 cursor-pointer hover:bg-amber-100 transition-colors"
+           onclick="setQuery('риски для жизни в городе')">
+        <span class="text-lg">${risks[0].icon || '⚠️'}</span>
+        <div class="flex-1 min-w-0">
+          <span class="text-xs font-semibold text-amber-800">${risks.length > 1 ? `${risks.length} активных риска` : '1 активный риск'}: </span>
+          <span class="text-xs text-amber-700">${esc(risks.map(r=>r.scenario).join(' · '))}</span>
         </div>
-        <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${cards}</div>
+        <span class="text-xs text-amber-600 font-semibold whitespace-nowrap">Подробнее →</span>
+      </div>` : '';
+
+    return `
+      <div class="space-y-4">
+        ${renderLifeIndices(indices)}
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
+            <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🍃 Качество воздуха по районам</span>
+            <span class="text-xs text-slate-400">⏱ ${metaTs}</span>
+          </div>
+          ${risksBanner}
+          <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${cards}</div>
+        </div>
+        ${risks.length ? renderRiskCards(risks) : ''}
       </div>`;
   }
 

@@ -186,9 +186,11 @@ def execute_ecology(plan: Plan) -> dict[str, Any]:
       ECO_STATUS  — текущие показатели (последний снимок, по районам)
       ECO_PDK     — превышения ПДК PM2.5 > 35 мкг/м³ за сегодня
       ECO_HISTORY — история по дням за N дней
+      ECO_RISKS   — прескриптивная аналитика: карточки рисков + рекомендации
     """
     from .ecology_cache import (
         query_current, query_pdk_exceedances, query_history, get_ecology_meta,
+        query_risks,
     )
 
     district = plan.district
@@ -229,6 +231,16 @@ def execute_ecology(plan: Plan) -> dict[str, Any]:
                 "columns": cols,
                 "count": len(rows),
                 "days": days,
+            }
+
+        elif op == "ECO_RISKS":
+            risks = query_risks(district_filter=district)
+            return {
+                "operation": op,
+                "rows": risks,
+                "columns": ["id", "scenario", "severity", "icon", "title",
+                            "metrics", "citizen", "official"],
+                "count": len(risks),
             }
 
         else:

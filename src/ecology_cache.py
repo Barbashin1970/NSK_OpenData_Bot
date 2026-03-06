@@ -287,6 +287,162 @@ def query_pdk_exceedances(district_filter: str | None = None) -> list[dict]:
         conn.close()
 
 
+def query_risks(district_filter: str | None = None) -> list[dict]:
+    """Вычисляет риски на основе текущих данных + суточной дельты температуры.
+
+    Сценарии (ТЗ §2):
+      smog_trap    — ветер < 1.5 м/с + PM2.5 > 20 мкг/м³ (экологическая ловушка)
+      pdk          — PM2.5 > 35 мкг/м³ (превышение нормы ВОЗ)
+      ice          — температура в диапазоне -3..+2°C (риск чёрного льда)
+      temp_shock   — суточная дельта температуры ≤ −15°C (температурный шок)
+      severe_cold  — температура ниже −20°C (экстремальный холод)
+    """
+    from datetime import date, timedelta
+
+    rows = query_current(district_filter)
+    if not rows:
+        return []
+
+    # Агрегированные метрики по всем выбранным районам
+    def _vals(key):
+        return [r[key] for r in rows if r.get(key) is not None]
+
+    temps = _vals("temperature_c")
+    winds = _vals("wind_speed_ms")
+    pm25s = _vals("pm25")
+    hums  = _vals("humidity_pct")
+
+    avg = lambda lst: round(sum(lst) / len(lst), 1) if lst else None
+    avg_temp = avg(temps)
+    avg_wind = avg(winds)
+    avg_pm25 = avg(pm25s)
+    avg_hum  = round(sum(hums) / len(hums)) if hums else None
+    min_temp = round(min(temps), 1) if temps else None
+
+    # 24-часовая дельта температуры через query_history
+    temp_delta_24h: float | None = None
+    try:
+        history = query_history(district_filter=district_filter, days=2)
+        today_str = str(date.today())
+        yest_str  = str(date.today() - timedelta(days=1))
+        t_today = [r["темп_ср"] for r in history
+                   if str(r.get("день", ""))[:10] == today_str and r.get("темп_ср") is not None]
+        t_yest  = [r["темп_ср"] for r in history
+                   if str(r.get("день", ""))[:10] == yest_str  and r.get("темп_ср") is not None]
+        if t_today and t_yest:
+            temp_delta_24h = round(sum(t_today) / len(t_today) - sum(t_yest) / len(t_yest), 1)
+    except Exception:
+        pass
+
+    risks: list[dict] = []
+
+    # ── Сценарий В: Экологическая ловушка / Чёрное небо ──────────────────────
+    if avg_wind is not None and avg_pm25 is not None and avg_wind < 1.5 and avg_pm25 > 20:
+        severity = "critical" if avg_pm25 > 35 else "warning"
+        risks.append({
+            "id": "smog_trap",
+            "scenario": "Экологическая ловушка",
+            "severity": severity,
+            "icon": "🌫️",
+            "title": "Безветрие блокирует рассеивание выбросов",
+            "metrics": f"Ветер {avg_wind} м/с · PM2.5 {avg_pm25} мкг/м³",
+            "citizen": (
+                "Не открывайте окна для проветривания ночью. "
+                "Включите домашние очистители воздуха. "
+                "Отложите пробежки и интенсивные занятия на улице."
+            ),
+            "official": (
+                "Рассмотреть объявление режима НМУ (неблагоприятных метеоусловий). "
+                "Выпустить предписания предприятиям снизить выбросы на 15–20%."
+            ),
+        })
+
+    # ── Превышение нормы ВОЗ по PM2.5 ────────────────────────────────────────
+    if avg_pm25 is not None and avg_pm25 > 35:
+        risks.append({
+            "id": "pdk",
+            "scenario": "Превышение нормы ВОЗ",
+            "severity": "critical",
+            "icon": "☢️",
+            "title": f"PM2.5 = {avg_pm25} мкг/м³ — норма превышена в {round(avg_pm25 / 35, 1)}×",
+            "metrics": f"Норма ВОЗ: 35 мкг/м³ · Текущее: {avg_pm25} мкг/м³",
+            "citizen": (
+                "Ограничьте время на улице. "
+                "Носите маску класса FFP2 / N95. "
+                "Не проветривайте помещение, закройте окна."
+            ),
+            "official": (
+                "Задействовать систему экстренного оповещения населения. "
+                "Рекомендовать отмену открытых массовых мероприятий."
+            ),
+        })
+
+    # ── Сценарий А: Риск чёрного льда ────────────────────────────────────────
+    if avg_temp is not None and -3.0 <= avg_temp <= 2.0:
+        hum_note = f" · Влажность {avg_hum}%" if avg_hum else ""
+        risks.append({
+            "id": "ice",
+            "scenario": "Риск гололёда",
+            "severity": "warning",
+            "icon": "🧊",
+            "title": f"Температура {avg_temp:+.1f}°C — зона риска чёрного льда",
+            "metrics": f"Температура {avg_temp:+.1f}°C{hum_note}",
+            "citizen": (
+                "Опасность скрытого обледенения дорог и тротуаров. "
+                "Закладывайте +20–30 минут на маршрут. "
+                "Пешеходам — избегать крутых спусков, рассмотрите метро вместо авто."
+            ),
+            "official": (
+                "Превентивно вывести пескоразбрасывающую технику на мосты и магистрали. "
+                "Обработать пешеходные зоны у больниц, школ, остановок."
+            ),
+        })
+
+    # ── Сценарий Б: Температурный шок ────────────────────────────────────────
+    if temp_delta_24h is not None and temp_delta_24h <= -15.0:
+        risks.append({
+            "id": "temp_shock",
+            "scenario": "Температурный шок",
+            "severity": "critical",
+            "icon": "⚠️",
+            "title": f"Резкое похолодание на {abs(temp_delta_24h):.0f}°C за сутки",
+            "metrics": f"Дельта температуры за 24 ч: {temp_delta_24h:+.1f}°C",
+            "citizen": (
+                "Прогрейте автомобиль с вечера — есть риск не завестись утром. "
+                "Младшие классы школ возможно перейдут на дистант. "
+                "Одевайтесь многослойно."
+            ),
+            "official": (
+                "Требуется резкое повышение температуры теплоносителя на ТЭЦ. "
+                "Максимальный риск порывов в изношенных трубопроводах (Ленинский, Кировский р-н). "
+                "Аварийные бригады ЖКХ — режим повышенной готовности."
+            ),
+        })
+
+    # ── Экстремальный холод ───────────────────────────────────────────────────
+    if min_temp is not None and min_temp < -20.0:
+        risks.append({
+            "id": "severe_cold",
+            "scenario": "Экстремальный холод",
+            "severity": "critical" if min_temp < -30.0 else "warning",
+            "icon": "🥶",
+            "title": f"Экстремальные морозы: до {min_temp:.0f}°C",
+            "metrics": f"Минимум по районам: {min_temp:.0f}°C",
+            "citizen": (
+                "Ограничьте нахождение на улице. "
+                "Особое внимание: пожилые, дети, домашние животные. "
+                "Прогрейте автомобиль заранее."
+            ),
+            "official": (
+                "Открыть пункты обогрева и ночлежки. "
+                "Аварийные бригады — дежурный режим. "
+                "Контролировать теплоснабжение социальных объектов (школы, больницы, дома престарелых)."
+            ),
+        })
+
+    return risks
+
+
 def query_history(district_filter: str | None = None, days: int = 7) -> list[dict]:
     """История по дням за N дней с агрегацией по показателям.
 

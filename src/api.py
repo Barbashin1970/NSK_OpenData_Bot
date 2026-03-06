@@ -797,6 +797,10 @@ def get_ask(
 
         result = execute_ecology(plan)
         meta = get_ecology_meta()
+        # Для ECO_STATUS добавляем риски в ответ
+        if plan.operation == "ECO_STATUS":
+            from .ecology_cache import query_risks
+            result["risks"] = query_risks(district_filter=plan.district)
         return {
             "query": q,
             "topic": topic,
@@ -1253,4 +1257,82 @@ def post_ecology_update() -> dict:
         "districts_covered": meta.get("districts_covered", 0),
         "last_updated": meta.get("last_updated", ""),
         "source": "open-meteo+cityair" if has_cityair else "open-meteo",
+    }
+
+
+@app.get(
+    "/ecology/risks",
+    tags=["Экология"],
+    summary="Прескриптивная аналитика: карточки рисков + рекомендации",
+    response_description="Список активных рисков с рекомендациями для горожан и диспетчеров",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "operation": "ECO_RISKS",
+                        "district": None,
+                        "count": 2,
+                        "risks": [
+                            {
+                                "id": "smog_trap",
+                                "scenario": "Экологическая ловушка",
+                                "severity": "warning",
+                                "icon": "🌫️",
+                                "title": "Безветрие блокирует рассеивание выбросов",
+                                "metrics": "Ветер 0.8 м/с · PM2.5 28.3 мкг/м³",
+                                "citizen": "Не открывайте окна ночью...",
+                                "official": "Рассмотреть объявление режима НМУ...",
+                            }
+                        ],
+                        "ecology_meta": {"last_updated": "2026-03-05T10:15:00+07:00"},
+                    }
+                }
+            }
+        }
+    },
+)
+def get_ecology_risks(
+    district: str | None = Query(
+        None,
+        description="Фильтр по району. Без параметра — анализ по всем районам.",
+    ),
+) -> dict:
+    """
+    Прескриптивная аналитика: вычисляет активные риски на основе текущих данных.
+
+    ### Обнаруживаемые сценарии
+
+    | ID | Сценарий | Триггер |
+    |---|---|---|
+    | `smog_trap` | Экологическая ловушка | Ветер < 1.5 м/с + PM2.5 > 20 мкг/м³ |
+    | `pdk` | Превышение нормы ВОЗ | PM2.5 > 35 мкг/м³ |
+    | `ice` | Риск гололёда | Температура от −3°C до +2°C |
+    | `temp_shock` | Температурный шок | Суточная дельта ≤ −15°C |
+    | `severe_cold` | Экстремальный холод | Температура < −20°C |
+
+    ### Поля каждого риска
+
+    | Поле | Описание |
+    |---|---|
+    | `id` | Идентификатор сценария |
+    | `severity` | `warning` или `critical` |
+    | `icon` | Эмодзи-иконка |
+    | `title` | Краткое описание |
+    | `metrics` | Значения, вызвавшие триггер |
+    | `citizen` | Рекомендация для горожанина |
+    | `official` | Рекомендация для диспетчера мэрии |
+
+    Эквивалентно запросу: `GET /ask?q=риски+для+жизни+в+городе`
+    """
+    _ecology_auto_update()
+    from .ecology_cache import query_risks, get_ecology_meta
+    risks = query_risks(district_filter=district)
+    meta = get_ecology_meta()
+    return {
+        "operation": "ECO_RISKS",
+        "district": district,
+        "count": len(risks),
+        "risks": risks,
+        "ecology_meta": meta,
     }
