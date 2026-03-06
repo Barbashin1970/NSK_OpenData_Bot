@@ -116,22 +116,30 @@ def is_power_stale(ttl_minutes: int = POWER_TTL_MINUTES) -> bool:
         return True
 
 
-def get_power_meta() -> dict:
-    """Возвращает метаданные: последнее обновление, кол-во записей, активных/плановых домов."""
+def get_power_meta(utility_filter: str | None = None) -> dict:
+    """Возвращает метаданные: последнее обновление, кол-во записей, активных/плановых домов.
+
+    utility_filter — если задан (например "электроснабж"), считает дома только по
+    этому типу ресурса, чтобы цифры в шапке совпадали со строками таблицы.
+    """
     try:
         init_power_table()
         conn = _get_conn()
         try:
             last = conn.execute("SELECT MAX(scraped_at) FROM power_outages").fetchone()[0] or ""
             total = conn.execute("SELECT COUNT(*) FROM power_outages").fetchone()[0]
-            latest_sql = (
-                "WHERE scraped_at = (SELECT MAX(scraped_at) FROM power_outages)"
-            )
+            latest_cond = "scraped_at = (SELECT MAX(scraped_at) FROM power_outages)"
+            uf_cond = " AND utility ILIKE ?" if utility_filter else ""
+            uf_params = [f"%{utility_filter}%"] if utility_filter else []
             active = conn.execute(
-                f"SELECT COALESCE(SUM(houses), 0) FROM power_outages {latest_sql} AND group_type='active'"
+                f"SELECT COALESCE(SUM(houses), 0) FROM power_outages"
+                f" WHERE {latest_cond} AND group_type='active'{uf_cond}",
+                uf_params,
             ).fetchone()[0]
             planned = conn.execute(
-                f"SELECT COALESCE(SUM(houses), 0) FROM power_outages {latest_sql} AND group_type='planned'"
+                f"SELECT COALESCE(SUM(houses), 0) FROM power_outages"
+                f" WHERE {latest_cond} AND group_type='planned'{uf_cond}",
+                uf_params,
             ).fetchone()[0]
             return {
                 "last_scraped": last,
