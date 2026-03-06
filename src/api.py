@@ -386,11 +386,17 @@ const NSKTests = (() => {
       const d = JSON.parse(e.data);
       if (d.type === 'health') {
         hGrid().innerHTML = '';
+        const _topicLabels = {
+          parking:'Парковки', stops:'Остановки', schools:'Школы',
+          kindergartens:'Детсады', libraries:'Библиотеки', pharmacies:'Аптеки',
+          parks:'Парки', sport_grounds:'Спортплощадки', sport_orgs:'Спортклубы',
+          culture:'Культура', power_outages:'Отключения ЖКХ', ecology:'Экология 🍃',
+        };
         d.checks.forEach(c => {
           const chip = document.createElement('span');
           chip.className = 'nsk-hc ' + c.status;
           chip.title = c.msg;
-          chip.textContent = c.topic + (c.status !== 'ok' ? ' ⚠' : '');
+          chip.textContent = (_topicLabels[c.topic] || c.topic) + (c.status !== 'ok' ? ' ⚠' : '');
           hGrid().appendChild(chip);
         });
       } else if (d.type === 'start') {
@@ -416,23 +422,37 @@ const NSKTests = (() => {
       } else if (d.type === 'done') {
         source.close(); source = null;
         runBtn().disabled = false;
-        setProgress(100, d.passed, d.failed, d.total);
-        fill().style.background = d.failed > 0
-          ? 'linear-gradient(90deg,#dc2626,#ef4444)'
-          : 'linear-gradient(90deg,#16a34a,#4ade80)';
-        if (d.failed === 0 && d.returncode === 0) {
-          result().textContent = '✓ Все тесты прошли (' + d.passed + ')';
-          result().className = 'ok';
-          dot().className = 'dot ok';
-          addLine('', '');
-          addLine('Все ' + d.passed + ' тестов прошли успешно.', 'passed');
+        if (d.no_pytest) {
+          // pytest не установлен в production-окружении
+          setProgress(0, 0, 0, 0);
+          pctTxt().textContent = 'N/A';
+          passCnt().textContent = '— прошли';
+          failCnt().textContent = '— упали';
+          fill().style.width = '0%';
+          fill().style.background = '#334155';
+          result().textContent = '⚠ pytest не установлен';
+          result().className = '';
+          result().style.color = '#94a3b8';
+          dot().className = 'dot';
         } else {
-          result().textContent = '✗ Упало: ' + d.failed;
-          result().className = 'fail';
-          dot().className = 'dot fail';
-          addLine('', '');
-          addLine('Упавшие тесты:', 'warn');
-          d.failed_lines.forEach(l => addLine('  ' + l, 'failed'));
+          setProgress(100, d.passed, d.failed, d.total);
+          fill().style.background = d.failed > 0
+            ? 'linear-gradient(90deg,#dc2626,#ef4444)'
+            : 'linear-gradient(90deg,#16a34a,#4ade80)';
+          if (d.failed === 0 && d.returncode === 0) {
+            result().textContent = '✓ Все тесты прошли (' + d.passed + ')';
+            result().className = 'ok';
+            dot().className = 'dot ok';
+            addLine('', '');
+            addLine('Все ' + d.passed + ' тестов прошли успешно.', 'passed');
+          } else {
+            result().textContent = '✗ Упало: ' + d.failed;
+            result().className = 'fail';
+            dot().className = 'dot fail';
+            addLine('', '');
+            addLine('Упавшие тесты:', 'warn');
+            d.failed_lines.forEach(l => addLine('  ' + l, 'failed'));
+          }
         }
       }
     };
@@ -491,9 +511,39 @@ def run_tests():
             health_checks.append({"topic": "power_outages", "status": "missing",
                                   "msg": "Ошибка при проверке"})
 
+        # ── Экология и погода ────────────────────────────────────────────────
+        try:
+            from .ecology_cache import init_ecology_tables, get_ecology_meta, is_ecology_stale
+            init_ecology_tables()
+            eco_meta = get_ecology_meta()
+            if eco_meta.get("last_updated"):
+                stale = is_ecology_stale()
+                districts = eco_meta.get("districts_covered", 0)
+                ts = str(eco_meta["last_updated"])[:16].replace("T", " ")
+                health_checks.append({
+                    "topic": "ecology",
+                    "status": "stale" if stale else "ok",
+                    "msg": f"AQI/PM2.5 · {districts} р-нов · {ts}",
+                })
+            else:
+                health_checks.append({"topic": "ecology", "status": "missing",
+                                      "msg": "Нет данных экологии"})
+        except Exception:
+            health_checks.append({"topic": "ecology", "status": "missing",
+                                  "msg": "Ошибка проверки экологии"})
+
         yield _sse({"type": "health", "checks": health_checks})
 
         # ── Запуск pytest ────────────────────────────────────────────────────
+        import importlib.util
+        if importlib.util.find_spec("pytest") is None:
+            yield _sse({"type": "log", "line": "⚠ pytest не установлен в этом окружении."})
+            yield _sse({"type": "log", "line": "Тестирование доступно только в локальной разработке."})
+            yield _sse({"type": "log", "line": "Для запуска локально: pip install pytest && python -m pytest tests/"})
+            yield _sse({"type": "done", "passed": 0, "failed": 0, "total": 0,
+                        "returncode": -1, "failed_lines": [], "no_pytest": True})
+            return
+
         project_root = Path(__file__).parent.parent
         proc = subprocess.Popen(
             [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "--no-header", "-q"],
