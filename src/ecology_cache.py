@@ -55,6 +55,24 @@ CREATE TABLE IF NOT EXISTS fact_measurements (
 )
 """
 
+# Постоянный архив дневных агрегатов — не очищается автоматически (хранится до 365 дней).
+# Ключ: (day, district) — upsert при каждом обновлении за текущий день.
+_DDL_DAILY_ARCHIVE = """
+CREATE TABLE IF NOT EXISTS ecology_daily_archive (
+    day           VARCHAR,      -- 'YYYY-MM-DD'
+    district      VARCHAR,
+    pm25_avg      DOUBLE,
+    pm25_max      DOUBLE,
+    pm10_avg      DOUBLE,
+    aqi_avg       DOUBLE,
+    temp_avg      DOUBLE,
+    wind_avg      DOUBLE,
+    humidity_avg  DOUBLE,
+    snapshots     INTEGER,
+    PRIMARY KEY (day, district)
+)
+"""
+
 
 def init_ecology_tables() -> None:
     """Создаёт таблицы если их нет."""
@@ -63,8 +81,54 @@ def init_ecology_tables() -> None:
     try:
         conn.execute(_DDL_STATIONS)
         conn.execute(_DDL_MEASUREMENTS)
+        conn.execute(_DDL_DAILY_ARCHIVE)
     finally:
         conn.close()
+
+
+def _save_daily_archive(conn) -> None:
+    """Пересчитывает и сохраняет агрегаты за сегодня в ecology_daily_archive.
+
+    Вызывается после каждого upsert измерений — обновляет строку (today, district).
+    Архив хранится постоянно (удаляются только записи старше 365 дней).
+    """
+    try:
+        conn.execute("""
+            DELETE FROM ecology_daily_archive
+            WHERE day < STRFTIME(CURRENT_DATE - INTERVAL '365 days', '%Y-%m-%d')
+        """)
+        conn.execute("""
+            INSERT INTO ecology_daily_archive
+                (day, district, pm25_avg, pm25_max, pm10_avg, aqi_avg,
+                 temp_avg, wind_avg, humidity_avg, snapshots)
+            SELECT
+                STRFTIME(CAST(f.measured_at AS TIMESTAMP), '%Y-%m-%d') AS day,
+                s.district,
+                ROUND(AVG(f.pm25), 1),
+                ROUND(MAX(f.pm25), 1),
+                ROUND(AVG(f.pm10), 1),
+                ROUND(AVG(f.aqi), 0),
+                ROUND(AVG(f.temperature_c), 1),
+                ROUND(AVG(f.wind_speed_ms), 1),
+                ROUND(AVG(f.humidity_pct), 0),
+                COUNT(*)
+            FROM fact_measurements f
+            JOIN dim_stations s ON f.station_id = s.station_id
+            WHERE STRFTIME(CAST(f.measured_at AS TIMESTAMP), '%Y-%m-%d')
+                  = STRFTIME(CURRENT_DATE, '%Y-%m-%d')
+            GROUP BY day, s.district
+            ON CONFLICT (day, district) DO UPDATE SET
+                pm25_avg     = excluded.pm25_avg,
+                pm25_max     = excluded.pm25_max,
+                pm10_avg     = excluded.pm10_avg,
+                aqi_avg      = excluded.aqi_avg,
+                temp_avg     = excluded.temp_avg,
+                wind_avg     = excluded.wind_avg,
+                humidity_avg = excluded.humidity_avg,
+                snapshots    = excluded.snapshots
+        """)
+    except Exception as e:
+        log.warning(f"Ошибка обновления daily archive: {e}")
 
 
 def upsert_stations(stations: list[dict] | None = None) -> None:
@@ -153,6 +217,7 @@ def upsert_measurements(records: list[dict[str, Any]]) -> int:
             except Exception as e:
                 log.error(f"Ошибка upsert записи {r.get('id')}: {e}")
         log.info(f"Ecology upsert: {count} записей")
+        _save_daily_archive(conn)
         return count
     finally:
         conn.close()
@@ -448,18 +513,27 @@ def query_history(district_filter: str | None = None, days: int = 7) -> list[dic
 
     Интент ТЗ §5: «Динамика PM2.5 в Советском районе за неделю».
     Также даёт корреляцию wind_speed_ms vs pm25 (§5 — влияние погоды на смог).
+
+    Стратегия: данные за последние ECOLOGY_HISTORY_DAYS дней берутся из
+    fact_measurements (полные снимки); более старые данные — из
+    ecology_daily_archive (постоянный архив дневных агрегатов, до 365 дней).
     """
     init_ecology_tables()
     conn = _get_conn()
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff_day = str((datetime.now(timezone.utc) - timedelta(days=days)).date())
+
+        dist_filter_raw = district_filter.split()[0] if district_filter else None
+
+        # ── Данные из скользящего окна (fact_measurements) ───────────────────
         wheres = ["f.measured_at >= ?"]
         params: list = [cutoff]
-        if district_filter:
+        if dist_filter_raw:
             wheres.append("s.district ILIKE ?")
-            params.append(f"%{district_filter.split()[0]}%")
+            params.append(f"%{dist_filter_raw}%")
         where_sql = "WHERE " + " AND ".join(wheres)
-        sql = f"""
+        sql_recent = f"""
             SELECT
                 STRFTIME(CAST(f.measured_at AS TIMESTAMP), '%Y-%m-%d') AS день,
                 s.district                                              AS район,
@@ -473,11 +547,46 @@ def query_history(district_filter: str | None = None, days: int = 7) -> list[dic
             JOIN dim_stations s ON f.station_id = s.station_id
             {where_sql}
             GROUP BY день, район
-            ORDER BY день DESC, район
         """
-        cursor = conn.execute(sql, params)
+        cursor = conn.execute(sql_recent, params)
         cols = [d[0] for d in cursor.description]
-        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+        recent_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        recent_days = {(r["день"], r["район"]) for r in recent_rows}
+
+        # ── Данные из постоянного архива (ecology_daily_archive) ─────────────
+        # Используем только те дни, которых нет в скользящем окне
+        archive_rows: list[dict] = []
+        if days > ECOLOGY_HISTORY_DAYS:
+            archive_wheres = ["a.day >= ?"]
+            archive_params: list = [cutoff_day]
+            if dist_filter_raw:
+                archive_wheres.append("a.district ILIKE ?")
+                archive_params.append(f"%{dist_filter_raw}%")
+            archive_where_sql = "WHERE " + " AND ".join(archive_wheres)
+            sql_archive = f"""
+                SELECT
+                    a.day          AS день,
+                    a.district     AS район,
+                    a.pm25_avg     AS pm25_ср,
+                    a.pm25_max     AS pm25_макс,
+                    a.aqi_avg      AS aqi_ср,
+                    a.temp_avg     AS темп_ср,
+                    a.wind_avg     AS ветер_ср,
+                    a.snapshots    AS снимков
+                FROM ecology_daily_archive a
+                {archive_where_sql}
+            """
+            cur2 = conn.execute(sql_archive, archive_params)
+            cols2 = [d[0] for d in cur2.description]
+            for row in cur2.fetchall():
+                d = dict(zip(cols2, row))
+                if (d["день"], d["район"]) not in recent_days:
+                    archive_rows.append(d)
+
+        all_rows = recent_rows + archive_rows
+        all_rows.sort(key=lambda r: (r["день"], r["район"]), reverse=False)
+        all_rows.sort(key=lambda r: r["день"], reverse=True)
+        return all_rows
     except Exception as e:
         log.error(f"Ошибка query_history: {e}")
         return []

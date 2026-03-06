@@ -185,13 +185,16 @@ _WEATHER_KEYWORDS = [
 
 _ECOLOGY_PRIMARY = ["воздух", "загрязн", "pm2", "pm10", "aqi", "смог", "экологи", "пыль", "дыш", "гарь", "no2", "частиц"]
 _WEATHER_PRIMARY = ["погод", "температур", "ветер", "ветра", "ветру", "ветром", "давлен", "влажност", "метеор"]
+# Риски / прескриптивная аналитика — тоже относятся к теме экологии
+_RISKS_PRIMARY   = ["риск", "гололед", "нму", "чёрн", "черн", "ловушк", "шок", "индекс водит", "индекс прогул"]
 
 
 def _route_ecology(q: str) -> "RouteResult | None":
     """Проверяет, относится ли запрос к экологии или метеорологии."""
     has_eco     = any(m in q for m in _ECOLOGY_PRIMARY)
     has_weather = any(m in q for m in _WEATHER_PRIMARY)
-    if not has_eco and not has_weather:
+    has_risks   = any(m in q for m in _RISKS_PRIMARY)
+    if not has_eco and not has_weather and not has_risks:
         return None
 
     score = 0.0
@@ -209,11 +212,11 @@ def _route_ecology(q: str) -> "RouteResult | None":
 
     if score == 0:
         score = 1.0
-        matched = ["экология" if has_eco else "погода"]
+        matched = ["экология" if has_eco else ("погода" if has_weather else "риски")]
 
     all_count = len(all_kw)
     confidence = min(1.0, score / max(all_count, 1) * 8)
-    confidence = max(confidence, 0.45 if has_eco else 0.40)
+    confidence = max(confidence, 0.45 if (has_eco or has_risks) else 0.40)
     return RouteResult(
         topic="ecology",
         confidence=confidence,
