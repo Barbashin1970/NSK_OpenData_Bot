@@ -128,8 +128,6 @@ const EXAMPLES = [
   "погода в Академгородке",
   "погода в Кольцово",
   "риски для жизни в городе",
-  "новостройки по районам",
-  "разрешения на ввод в эксплуатацию",
   "детские спортивные организации",
   "школы в Советском районе",
   "что ты умеешь",
@@ -217,7 +215,6 @@ function renderResult(data) {
   else if (op === 'TOP_N' || op === 'FILTER')  html += renderTable(data);
   else if (op && op.startsWith('POWER_'))      html += renderPower(data);
   else if (op && op.startsWith('ECO_'))        html += renderEcology(data);
-  else if (data.topic === 'construction')      html += renderConstruction(data);
   else if (op === 'INFO')                      html += renderInfo(data);
   else if (op === 'DISTRICTS')                 html += renderDistricts(data);
   else if (op === 'UNKNOWN')                   html += renderUnknown(data);
@@ -236,8 +233,7 @@ function renderResult(data) {
 // ─── Meta header ─────────────────────────────────────────────────────────────
 function metaHeader(data) {
   if (!data.topic) return '';
-  const conf = data.confidence != null
-    ? `<span class="text-slate-400 text-xs">${Math.round(data.confidence * 100)}% уверенность</span>` : '';
+  const conf = '';
   const dist = data.district
     ? `<span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-medium">${esc(data.district)}</span>` : '';
   const street = data.street
@@ -659,64 +655,6 @@ function renderRiskCards(risks) {
     </div>`;
 }
 
-function renderConstruction(data) {
-  const rows = data.rows || [];
-  const op   = data.operation;
-  const meta = data.construction_meta || {};
-
-  const permitLabel = { construction: 'Разрешение на строительство', commissioning: 'Ввод в эксплуатацию' };
-
-  if (op === 'COUNT') {
-    return `<div class="result-card">
-      <div class="text-3xl font-bold text-blue-600">${data.count ?? 0}</div>
-      <div class="text-slate-500 text-sm mt-1">разрешений в реестре</div>
-      ${meta.last_scraped ? `<div class="text-xs text-slate-400 mt-2">Данные: ${meta.last_scraped.slice(0,10)}</div>` : ''}
-    </div>`;
-  }
-  if (op === 'GROUP') {
-    return renderGroup(data);
-  }
-
-  if (!rows.length) {
-    return `<div class="result-card text-slate-500">Данные о разрешениях не найдены.
-      ${meta.total === 0 ? '<br><span class="text-xs">Попробуйте позже — данные загружаются автоматически.</span>' : ''}
-    </div>`;
-  }
-
-  const typeColors = {
-    construction:  'bg-blue-50 text-blue-700 border-blue-200',
-    commissioning: 'bg-green-50 text-green-700 border-green-200',
-  };
-
-  let html = `<div class="result-card">
-    <div class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
-      Разрешения · ${data.count ?? rows.length} записей
-    </div>
-    <div class="flex flex-col gap-2">`;
-  for (const r of rows) {
-    const tColor = typeColors[r.permit_type] || 'bg-slate-50 text-slate-600 border-slate-200';
-    const tLabel = permitLabel[r.permit_type] || r.permit_type;
-    html += `<div class="border border-slate-100 rounded-xl p-3 bg-white hover:bg-slate-50 transition-colors">
-      <div class="flex items-start gap-2 flex-wrap">
-        <span class="text-xs px-2 py-0.5 rounded-full border ${tColor} shrink-0">${esc(tLabel)}</span>
-        ${r.number ? `<span class="text-xs text-slate-400">№ ${esc(r.number)}</span>` : ''}
-        ${r.issue_date ? `<span class="text-xs text-slate-400">${esc(r.issue_date)}</span>` : ''}
-      </div>
-      ${r.address ? `<div class="text-sm font-medium text-slate-700 mt-1">${esc(r.address)}</div>` : ''}
-      ${r.object_name ? `<div class="text-xs text-slate-500">${esc(r.object_name)}</div>` : ''}
-      ${r.developer ? `<div class="text-xs text-slate-400 mt-0.5">Застройщик: ${esc(r.developer)}</div>` : ''}
-      ${r.district ? `<div class="text-xs text-blue-500 mt-0.5">${esc(r.district)}</div>` : ''}
-    </div>`;
-  }
-  html += `</div>`;
-  if (meta.last_scraped) {
-    html += `<div class="text-xs text-slate-400 mt-3">Данные: ${meta.last_scraped.slice(0,10)}</div>`;
-  }
-  html += `</div>`;
-  return html;
-}
-
-
 function renderEcology(data) {
   const op   = data.operation;
   const rows = data.rows || [];
@@ -919,8 +857,6 @@ const _WORKING_QUESTIONS = [
   "школы в Кировском районе",
   "детские спортивные организации",
   "превышение ПДК по PM2.5",
-  "новостройки по районам",
-  "разрешения на строительство в Советском",
 ];
 
 function renderUnknown(data) {

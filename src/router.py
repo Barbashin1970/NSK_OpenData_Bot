@@ -395,62 +395,6 @@ def _route_power(q: str) -> "RouteResult | None":
     )
 
 
-# ── Строительство и разрешения ───────────────────────────────────────────────
-_CONSTRUCTION_KEYWORDS = [
-    "разрешение на строительство",
-    "разрешение на ввод",
-    "строительство объект",
-    "стройка",
-    "новостройк",
-    "капитальн строительств",
-    "введён в эксплуатацию",
-    "ввод в эксплуатацию",
-    "застройщик",
-]
-_CONSTRUCTION_PRIMARY = [
-    "разрешен", "стройк", "новостройк", "застройщик", "капстрой", "снос здани"
-]
-# Контекст — слова, которые уточняют что речь идёт о строительстве
-_CONSTRUCTION_CONTEXT = ["строительств", "объект", "дом", "здани"]
-
-
-def _route_construction(q: str) -> "RouteResult | None":
-    """Проверяет, относится ли запрос к разрешениям на строительство."""
-    has_primary = any(m in q for m in _CONSTRUCTION_PRIMARY)
-    has_context = any(m in q for m in _CONSTRUCTION_CONTEXT)
-
-    # Нужен хотя бы один явный признак строительства
-    if not has_primary and not (
-        "разрешен" in q and has_context
-    ):
-        return None
-
-    score = 0.0
-    matched: list[str] = []
-    for kw in _CONSTRUCTION_KEYWORDS:
-        kw_norm = kw.lower()
-        kw_parts = kw_norm.split()
-        all_match = all(
-            re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in kw_parts
-        )
-        if all_match:
-            matched.append(kw)
-            score += len(kw_parts) ** 1.5
-
-    if score == 0:
-        score = 1.0
-        matched = ["строительство"]
-
-    confidence = min(1.0, score / max(len(_CONSTRUCTION_KEYWORDS), 1) * 5)
-    confidence = max(confidence, 0.5)
-    return RouteResult(
-        topic="construction",
-        confidence=confidence,
-        name="Разрешения на строительство",
-        matched_keywords=matched,
-    )
-
-
 # ── Дизамбигуация «парки» vs «парковки» ──────────────────────────────────────
 # Слова, которые однозначно указывают на парковки (не на зелёные парки).
 # Если хотя бы одно из них есть в запросе — parks-результат удаляется.
@@ -476,11 +420,6 @@ def route(query: str) -> list[RouteResult]:
     ecology_result = _route_ecology(q)
     if ecology_result:
         results.append(ecology_result)
-
-    # Тема разрешений на строительство (не в YAML-реестре)
-    construction_result = _route_construction(q)
-    if construction_result:
-        results.append(construction_result)
 
     for topic_id, ds in registry.items():
         keywords: list[str] = ds.get("keywords", [])

@@ -163,13 +163,6 @@ def make_plan(query: str, topic: str | None) -> Plan:
         utility_key = _detect_utility(q)
         extra_filters["utility"] = UTILITY_FILTER_MAP.get(utility_key, "")
 
-    # Для темы строительства — тип разрешения
-    if topic == "construction":
-        if re.search(r"ввод|эксплуатац|введён|сдан", q):
-            extra_filters["permit_type"] = "commissioning"
-        elif re.search(r"строительств|стройк|разрешен", q):
-            extra_filters["permit_type"] = "construction"
-
     return Plan(
         operation=operation,
         topic=topic,

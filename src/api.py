@@ -43,7 +43,6 @@ GET /ask?q=топ-5+аптек+в+центральном+районе
 |---|---|---|
 | [opendata.novo-sibirsk.ru](http://opendata.novo-sibirsk.ru) | 24 ч | Парковки, школы, аптеки, библиотеки и др. |
 | [051.novo-sibirsk.ru](http://051.novo-sibirsk.ru) | 30 мин | Отключения ЖКХ: электро, тепло, вода, газ |
-| [portal.novo-sibirsk.ru/dsa](http://portal.novo-sibirsk.ru/dsa/) | 24 ч | Разрешения на строительство и ввод в эксплуатацию |
 | [Open-Meteo](https://open-meteo.com) | 15 мин | PM2.5, PM10, AQI, погода по 11 точкам (бесплатно) |
 | CityAir API | 15 мин | Телеметрия физических датчиков (требует `CITYAIR_API_KEY`) |
 | [2GIS Public Transport](https://dev.2gis.com/api) | real-time | Маршруты общественного транспорта (требует `TWOGIS_API_KEY`, данные не сохраняются) |
@@ -64,7 +63,6 @@ GET /ask?q=топ-5+аптек+в+центральном+районе
 | `culture` | Организации культуры | ~11 |
 | `power_outages` | Отключения ЖКХ (электро/тепло/вода/газ) | реальное время |
 | `ecology` | Качество воздуха + погода | реальное время |
-| `construction` | Разрешения на строительство/ввод | 24 ч |
 
 ## Типы операций
 
@@ -398,7 +396,6 @@ const NSKTests = (() => {
           kindergartens:'Детсады', libraries:'Библиотеки', pharmacies:'Аптеки',
           parks:'Парки', sport_grounds:'Спортплощадки', sport_orgs:'Спортклубы',
           culture:'Культура', power_outages:'Отключения ЖКХ', ecology:'Экология',
-          construction:'Стройки/разрешения',
         };
         d.checks.forEach(c => {
           const chip = document.createElement('span');
@@ -539,25 +536,6 @@ def run_tests():
         except Exception:
             health_checks.append({"topic": "ecology", "status": "missing",
                                   "msg": "Ошибка проверки экологии"})
-
-        # ── Разрешения на строительство ──────────────────────────────────────
-        try:
-            from .construction_cache import get_construction_meta, is_construction_stale
-            constr_meta = get_construction_meta()
-            if constr_meta.get("total", 0) > 0:
-                stale = is_construction_stale()
-                total_c = constr_meta["total"]
-                health_checks.append({
-                    "topic": "construction",
-                    "status": "stale" if stale else "ok",
-                    "msg": f"{total_c} разрешений",
-                })
-            else:
-                health_checks.append({"topic": "construction", "status": "missing",
-                                      "msg": "Нет данных о разрешениях"})
-        except Exception:
-            health_checks.append({"topic": "construction", "status": "missing",
-                                  "msg": "Ошибка проверки строительства"})
 
         yield _sse({"type": "health", "checks": health_checks})
 
@@ -887,24 +865,6 @@ def get_ask(
             "sub_district": plan.sub_district,
             "ecology_meta": {k: str(v) if not isinstance(v, (int, float, str, bool, type(None))) else v
                              for k, v in meta.items()},
-            **result,
-        }
-
-    # ── Разрешения на строительство ──────────────────────────────────────────
-    if topic == "construction":
-        from .executor import execute_construction
-        from .construction_cache import get_construction_meta
-        result = execute_construction(plan)
-        meta = get_construction_meta()
-        return {
-            "query": q,
-            "topic": topic,
-            "topic_name": route_result.name,
-            "confidence": round(route_result.confidence, 3),
-            "operation": plan.operation,
-            "district": plan.district,
-            "extra_filters": plan.extra_filters,
-            "construction_meta": meta,
             **result,
         }
 
