@@ -209,6 +209,7 @@ function renderResult(data) {
   else if (op && op.startsWith('ECO_'))        html += renderEcology(data);
   else if (op === 'INFO')                      html += renderInfo(data);
   else if (op === 'DISTRICTS')                 html += renderDistricts(data);
+  else if (op === 'UNKNOWN')                   html += renderUnknown(data);
   else                                         html += renderTable(data);
 
   el.innerHTML = html;
@@ -810,6 +811,51 @@ function renderEcology(data) {
 
   // Fallback
   return renderTable(data);
+}
+
+// ─── UNKNOWN (off-topic) ──────────────────────────────────────────────────────
+const _UNKNOWN_MESSAGES = [
+  "Об этом я ничего не знаю — но зато я хорошо знаю Новосибирск! Спросите меня о городе:",
+  "Это не моя тема. Я специализируюсь на открытых данных города и отвечу точно, если спросите:",
+  "Интересный вопрос — но он выходит за рамки моих данных. Я разбираюсь только в жизни Новосибирска. Например:",
+  "Боюсь, такое мне не по силам. Зато я знаю всё о школах, аптеках, воздухе и отключениях в городе:",
+  "Это за пределами моих возможностей — я работаю только с открытыми данными Новосибирска. Попробуйте спросить:",
+  "Я понимаю вопрос, но не могу на него ответить: мои данные только о городской инфраструктуре. Вот что точно работает:",
+];
+
+const _WORKING_QUESTIONS = [
+  "сколько парковок по районам",
+  "библиотеки для детей в Советском",
+  "топ-5 аптек в Центральном районе",
+  "отключения электричества сейчас",
+  "качество воздуха в городе",
+  "погода в Академгородке",
+  "риски для жизни в городе",
+  "школы в Кировском районе",
+  "детские спортивные организации",
+  "превышение ПДК по PM2.5",
+];
+
+function renderUnknown(data) {
+  const msg = _UNKNOWN_MESSAGES[Math.floor(Math.random() * _UNKNOWN_MESSAGES.length)];
+  const shuffled = [..._WORKING_QUESTIONS].sort(() => Math.random() - 0.5);
+  const [q1, q2] = shuffled;
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 max-w-lg mx-auto text-center">
+      <span class="text-4xl block mb-4">🤔</span>
+      <p class="text-slate-600 text-sm leading-relaxed mb-6">${esc(msg)}</p>
+      <p class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-3">Попробуйте спросить</p>
+      <div class="flex flex-col gap-2.5 text-left">
+        <button class="w-full bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300
+                       rounded-xl px-4 py-3 text-sm text-slate-700 hover:text-blue-700
+                       transition-colors cursor-pointer text-left"
+                onclick="setQuery(${JSON.stringify(q1)})">${esc(q1)}</button>
+        <button class="w-full bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300
+                       rounded-xl px-4 py-3 text-sm text-slate-700 hover:text-blue-700
+                       transition-colors cursor-pointer text-left"
+                onclick="setQuery(${JSON.stringify(q2)})">${esc(q2)}</button>
+      </div>
+    </div>`;
 }
 
 // ─── INFO ─────────────────────────────────────────────────────────────────────

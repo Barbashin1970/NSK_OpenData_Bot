@@ -778,8 +778,7 @@ def get_ask(
             return {"query": q, "operation": "INFO", "topics": topics_list}
         return {
             "query": q,
-            "error": "Не удалось определить тему",
-            "available_topics": list(load_registry().keys()),
+            "operation": "UNKNOWN",
         }
 
     topic = route_result.topic
