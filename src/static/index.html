@@ -212,6 +212,7 @@ const ROLE_CHIPS = {
     "превышение ПДК по PM2.5",
     "качество воздуха по всем районам",
     "динамика PM2.5 за неделю",
+    "остановки по районам",
     "сколько парковок по районам",
     "школы по районам",
     "детские сады по районам",
@@ -300,17 +301,20 @@ async function loadRoleDashboard() {
   const dashEl = document.getElementById('dashContent');
   dashEl.innerHTML = '<div class="text-slate-400 text-sm text-center py-3">Загрузка данных...</div>';
   try {
-    const [powerResp, ecoResp, risksResp] = await Promise.all([
+    const fetches = [
       fetch('/ask?q=' + encodeURIComponent('отключения ЖКХ сейчас')),
       fetch('/ecology/status'),
       fetch('/ecology/risks'),
-    ]);
-    const power = powerResp.ok ? await powerResp.json() : null;
-    const eco   = ecoResp.ok  ? await ecoResp.json()   : null;
-    const risks = risksResp.ok ? await risksResp.json() : null;
+    ];
+    if (currentRole === 'official') fetches.push(fetch('/transit/districts'));
+    const results = await Promise.all(fetches);
+    const power   = results[0].ok ? await results[0].json() : null;
+    const eco     = results[1].ok ? await results[1].json() : null;
+    const risks   = results[2].ok ? await results[2].json() : null;
+    const transit = (currentRole === 'official' && results[3]?.ok) ? await results[3].json() : null;
     dashEl.innerHTML = currentRole === 'mayor'
       ? renderMayorDashboard(power, eco, risks)
-      : renderOfficialDashboard(power, eco, risks);
+      : renderOfficialDashboard(power, eco, risks, transit);
     requestAnimationFrame(() => {
       document.querySelectorAll('.bar-fill[data-pct]').forEach(b => { b.style.width = b.dataset.pct + '%'; });
     });
@@ -328,7 +332,39 @@ function _dashAqiClass(aqi) {
   return               { bg:'bg-red-50',      border:'border-red-200',     text:'text-red-700',     label:'Опасное' };
 }
 
-function renderOfficialDashboard(power, eco, risks) {
+function renderTransitWidget(transit) {
+  if (!transit || transit.error || !transit.rows?.length) {
+    return `<div class="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-400 flex items-center gap-2">
+      🚌 <span>Данные об остановках не загружены —
+        <button class="text-blue-500 hover:underline" onclick="askNow('остановки по районам')">загрузить</button>
+      </span>
+    </div>`;
+  }
+  const rows = transit.rows;
+  const total = transit.total_stops || rows.reduce((s,r)=>s+r.stops_count,0);
+  const maxVal = Math.max(...rows.map(r => r.stops_count), 1);
+  const barsHtml = rows.slice(0, 10).map(r => {
+    const pct = Math.round(r.stops_count / maxVal * 100);
+    const dist = (r.district || '').replace(' район','').replace('Центральный','Централ.');
+    return `<div class="flex items-center gap-2">
+      <span class="text-xs text-slate-500 w-20 truncate flex-shrink-0" title="${esc(r.district||'')}">${esc(dist)}</span>
+      <div class="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+        <div class="bar-fill bg-gradient-to-r from-violet-400 to-indigo-400 h-1.5 rounded-full w-0" data-pct="${pct}"></div>
+      </div>
+      <span class="text-xs font-semibold text-slate-600 w-6 text-right flex-shrink-0">${r.stops_count}</span>
+    </div>`;
+  }).join('');
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🚌 Остановки транспорта по районам</span>
+        <span class="text-xs text-slate-400">${total} всего · <button class="text-blue-600 hover:underline" onclick="askNow('остановки по районам')">детали →</button></span>
+      </div>
+      <div class="px-4 py-3 space-y-2">${barsHtml}</div>
+    </div>`;
+}
+
+function renderOfficialDashboard(power, eco, risks, transit) {
   const pm = power?.power_meta || {};
   const activeH  = pm.active_houses  || 0;
   const plannedH = pm.planned_houses || 0;
@@ -397,6 +433,7 @@ function renderOfficialDashboard(power, eco, risks) {
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${kpiHtml}</div>
       ${pwrTable}
+      ${renderTransitWidget(transit)}
       ${ecoChips ? `<div class="flex flex-wrap gap-2 items-center">
         <span class="text-xs text-slate-400">AQI по районам:</span>${ecoChips}</div>` : ''}
     </div>`;

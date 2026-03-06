@@ -1100,6 +1100,61 @@ def get_transit(
     }
 
 
+@app.get(
+    "/transit/districts",
+    tags=["Запросы"],
+    summary="Транспортная инфраструктура по районам (без ключа API)",
+    response_description="Число остановок наземного транспорта по районам",
+)
+def get_transit_districts() -> dict:
+    """
+    Возвращает число остановок наземного пассажирского транспорта по районам
+    из кэша [opendata.novo-sibirsk.ru](http://opendata.novo-sibirsk.ru).
+
+    **Ключ API не требуется.** Данные берутся из темы `stops` (TTL 24ч).
+
+    Для обновления данных: `POST /update?topic=stops`
+    """
+    from .cache import _get_conn, table_exists
+
+    if not table_exists("stops"):
+        return {
+            "error": "Данные об остановках не загружены",
+            "hint": "POST /update?topic=stops",
+            "rows": [],
+            "total_stops": 0,
+            "count": 0,
+        }
+
+    conn = _get_conn()
+    try:
+        cursor = conn.execute("""
+            SELECT
+                AdrDistr AS district,
+                COUNT(*) AS stops_count
+            FROM topic_stops
+            WHERE AdrDistr IS NOT NULL AND AdrDistr != ''
+            GROUP BY AdrDistr
+            ORDER BY stops_count DESC
+        """)
+        cols = [d[0] for d in cursor.description]
+        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        total = sum(r["stops_count"] for r in rows)
+        return {
+            "operation": "TRANSIT_DISTRICTS",
+            "count": len(rows),
+            "total_stops": total,
+            "rows": rows,
+            "columns": cols,
+            "source": "opendata.novo-sibirsk.ru · остановки наземного транспорта",
+        }
+    except Exception as e:
+        log.error(f"Ошибка /transit/districts: {e}")
+        return {"error": str(e), "rows": [], "total_stops": 0, "count": 0}
+    finally:
+        conn.close()
+
+
 @app.post(
     "/update",
     tags=["Управление"],
