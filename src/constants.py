@@ -48,6 +48,7 @@ NSK_ECOLOGY_STATIONS: list[dict] = [
     {"station_id": "nsk_leninsky",  "district": "Ленинский район",       "address": "Ленинский р-н",         "latitude": 54.9460, "longitude": 82.8800},
     {"station_id": "nsk_october",   "district": "Октябрьский район",     "address": "Октябрьский р-н",       "latitude": 54.9940, "longitude": 82.8190},
     {"station_id": "nsk_pervomay",  "district": "Первомайский район",    "address": "Первомайский р-н",      "latitude": 54.8780, "longitude": 82.8710},
+    {"station_id": "nsk_koltsovo",  "district": "Кольцово",              "address": "Наукоград Кольцово",    "latitude": 54.9394, "longitude": 83.1818},
 ]
 
 # ── Scraper headers (Browser UA для 051) ─────────────────────────────────────
