@@ -26,6 +26,47 @@
     .bar-fill { transition: width .7s cubic-bezier(.4,0,.2,1); }
     .search-glow:focus { box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
     input::placeholder { color: #94a3b8; }
+
+    /* ── Role system ────────────────────────────────────────────────────────── */
+    #roleSwitcher { position: relative; }
+    #roleBtn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 11px; background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.22); border-radius: 12px;
+      color: white; font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background .15s, border-color .15s; white-space: nowrap;
+      line-height: 1;
+    }
+    #roleBtn:hover { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.4); }
+    #roleBtn .role-arrow { opacity: .6; font-size: 9px; transition: transform .2s; }
+    #roleBtn.open .role-arrow { transform: rotate(180deg); }
+    .role-dropdown {
+      position: absolute; top: calc(100% + 8px); right: 0;
+      background: white; border-radius: 16px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08);
+      border: 1px solid #e2e8f0;
+      min-width: 260px; overflow: hidden; z-index: 200;
+      animation: roleDropIn .18s cubic-bezier(.4,0,.2,1);
+    }
+    @keyframes roleDropIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
+    .role-opt {
+      display: flex; align-items: center; gap: 12px;
+      padding: 13px 16px; cursor: pointer; transition: background .1s;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .role-opt:last-child { border-bottom: none; }
+    .role-opt:hover { background: #f8fafc; }
+    .role-opt.active { background: #eff6ff; }
+    .role-opt .role-icon { font-size: 22px; flex-shrink: 0; width: 30px; text-align: center; }
+    .role-opt .role-info { flex: 1; }
+    .role-opt .role-name { font-weight: 700; font-size: 13px; color: #1e293b; }
+    .role-opt .role-desc { font-size: 11px; color: #94a3b8; margin-top: 1px; line-height: 1.3; }
+    .role-opt.active .role-name { color: #1d4ed8; }
+    .role-opt .role-check { color: #1d4ed8; font-size: 14px; flex-shrink: 0; }
+
+    /* ── Role dashboard ─────────────────────────────────────────────────────── */
+    .dash-kpi { transition: box-shadow .15s, transform .15s; cursor: default; }
+    .dash-kpi:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
   </style>
 </head>
 <body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
@@ -43,15 +84,27 @@
           <p class="text-blue-300 text-xs mt-0.5">Открытые данные мэрии Новосибирска · opendata.novo-sibirsk.ru</p>
         </div>
       </div>
-      <a href="/docs" target="_blank"
-         class="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-xl border border-white/20 transition-all whitespace-nowrap"
-         title="Открыть документацию REST API (Swagger UI)">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
-        </svg>
-        API Docs
-      </a>
+      <div class="flex items-center gap-2">
+        <!-- Role Switcher -->
+        <div id="roleSwitcher">
+          <button id="roleBtn" onclick="toggleRoleMenu()">
+            <span id="roleBtnIcon">👤</span>
+            <span id="roleBtnName">Горожанин</span>
+            <span class="role-arrow">▾</span>
+          </button>
+          <div id="roleDropdown" class="role-dropdown hidden"></div>
+        </div>
+        <!-- API Docs -->
+        <a href="/docs" target="_blank"
+           class="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-xl border border-white/20 transition-all whitespace-nowrap"
+           title="Открыть документацию REST API (Swagger UI)">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+          </svg>
+          API Docs
+        </a>
+      </div>
     </div>
 
     <!-- Search bar -->
@@ -75,6 +128,13 @@
     <div id="chips" class="flex flex-wrap gap-2 mt-4"></div>
   </div>
 </header>
+
+<!-- ═══════════════════ ROLE DASHBOARD ═══════════════════ -->
+<div id="roleDashboard" class="hidden bg-white border-b border-slate-200 shadow-sm">
+  <div class="max-w-4xl mx-auto px-4 py-5">
+    <div id="dashContent" class="text-slate-400 text-sm text-center py-2">Загрузка...</div>
+  </div>
+</div>
 
 <!-- ═══════════════════ MAIN ═══════════════════ -->
 <main class="max-w-4xl mx-auto px-4 py-7 space-y-7">
@@ -117,31 +177,311 @@
 <script>
 
 // ─── Example queries ────────────────────────────────────────────────────────
-const EXAMPLES = [
-  "сколько парковок по районам",
-  "библиотеки для детей",
-  "топ-5 аптек",
-  "отключения электричества сейчас",
-  "нет горячей воды в Ленинском районе",
-  "отключение отопления сегодня",
-  "качество воздуха в городе",
-  "погода в Академгородке",
-  "погода в Кольцово",
-  "риски для жизни в городе",
-  "детские спортивные организации",
-  "школы в Советском районе",
-  "что ты умеешь",
-];
+// ─── Role config ──────────────────────────────────────────────────────────────
+const ROLES = {
+  citizen:  { icon: '👤', name: 'Горожанин',             desc: 'Ежедневные запросы для жителей города' },
+  official: { icon: '🏙️', name: 'Служащий умного города', desc: 'Аналитика по районам для сотрудников мэрии' },
+  mayor:    { icon: '🏛️', name: 'Мэр',                   desc: 'Сводные KPI и принятие решений по всему городу' },
+};
+
+let currentRole = localStorage.getItem('nsk_role') || 'citizen';
+
+// ─── Role-specific chips ───────────────────────────────────────────────────────
+const ROLE_CHIPS = {
+  citizen: [
+    "нет горячей воды",
+    "библиотеки для детей",
+    "топ-5 аптек",
+    "отключения электричества сейчас",
+    "нет горячей воды в Ленинском районе",
+    "отключение отопления сегодня",
+    "качество воздуха в городе",
+    "погода в Академгородке",
+    "погода в Кольцово",
+    "риски для жизни в городе",
+    "детские спортивные организации",
+    "школы в Советском районе",
+    "что ты умеешь",
+  ],
+  official: [
+    "аварийные отключения ЖКХ сейчас",
+    "плановые отключения на неделю",
+    "отключения тепла сейчас",
+    "отключения воды сейчас",
+    "история отключений за неделю",
+    "превышение ПДК по PM2.5",
+    "качество воздуха по всем районам",
+    "динамика PM2.5 за неделю",
+    "сколько парковок по районам",
+    "школы по районам",
+    "детские сады по районам",
+    "спортивные организации по районам",
+  ],
+  mayor: [
+    "отключения ЖКХ сейчас",
+    "риски для жизни в городе",
+    "качество воздуха в городе",
+    "динамика качества воздуха",
+    "история отключений за неделю",
+    "школы по районам",
+    "сколько парковок по районам",
+    "аптеки в городе",
+  ],
+};
 
 function buildChips() {
   const el = document.getElementById('chips');
-  el.innerHTML = EXAMPLES.map(q =>
+  const chips = ROLE_CHIPS[currentRole] || ROLE_CHIPS.citizen;
+  el.innerHTML = chips.map(q =>
     `<button class="chip px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs rounded-full border border-white/20 cursor-pointer"
       data-query="${esc(q)}">${q}</button>`
   ).join('');
   el.querySelectorAll('[data-query]').forEach(btn =>
     btn.addEventListener('click', () => setQuery(btn.dataset.query))
   );
+}
+
+// ─── Role system ──────────────────────────────────────────────────────────────
+function updateRoleBtn() {
+  const r = ROLES[currentRole];
+  document.getElementById('roleBtnIcon').textContent = r.icon;
+  document.getElementById('roleBtnName').textContent = r.name;
+}
+
+function setRole(role) {
+  currentRole = role;
+  localStorage.setItem('nsk_role', role);
+  document.getElementById('roleDropdown').classList.add('hidden');
+  document.getElementById('roleBtn').classList.remove('open');
+  updateRoleBtn();
+  buildChips();
+  const dash = document.getElementById('roleDashboard');
+  if (role === 'official' || role === 'mayor') {
+    dash.classList.remove('hidden');
+    loadRoleDashboard();
+  } else {
+    dash.classList.add('hidden');
+  }
+}
+
+function toggleRoleMenu() {
+  const dd = document.getElementById('roleDropdown');
+  const btn = document.getElementById('roleBtn');
+  const isOpen = !dd.classList.contains('hidden');
+  if (isOpen) {
+    dd.classList.add('hidden');
+    btn.classList.remove('open');
+  } else {
+    dd.innerHTML = Object.entries(ROLES).map(([key, r]) => `
+      <div class="role-opt${key === currentRole ? ' active' : ''}" onclick="setRole('${key}')">
+        <span class="role-icon">${r.icon}</span>
+        <div class="role-info">
+          <div class="role-name">${r.name}</div>
+          <div class="role-desc">${r.desc}</div>
+        </div>
+        ${key === currentRole ? '<span class="role-check">✓</span>' : ''}
+      </div>
+    `).join('');
+    dd.classList.remove('hidden');
+    btn.classList.add('open');
+  }
+}
+
+document.addEventListener('click', function(e) {
+  const sw = document.getElementById('roleSwitcher');
+  if (sw && !sw.contains(e.target)) {
+    document.getElementById('roleDropdown').classList.add('hidden');
+    document.getElementById('roleBtn').classList.remove('open');
+  }
+});
+
+// ─── Role Dashboards ──────────────────────────────────────────────────────────
+async function loadRoleDashboard() {
+  const dashEl = document.getElementById('dashContent');
+  dashEl.innerHTML = '<div class="text-slate-400 text-sm text-center py-3">Загрузка данных...</div>';
+  try {
+    const [powerResp, ecoResp, risksResp] = await Promise.all([
+      fetch('/ask?q=' + encodeURIComponent('отключения ЖКХ сейчас')),
+      fetch('/ecology/status'),
+      fetch('/ecology/risks'),
+    ]);
+    const power = powerResp.ok ? await powerResp.json() : null;
+    const eco   = ecoResp.ok  ? await ecoResp.json()   : null;
+    const risks = risksResp.ok ? await risksResp.json() : null;
+    dashEl.innerHTML = currentRole === 'mayor'
+      ? renderMayorDashboard(power, eco, risks)
+      : renderOfficialDashboard(power, eco, risks);
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.bar-fill[data-pct]').forEach(b => { b.style.width = b.dataset.pct + '%'; });
+    });
+  } catch(e) {
+    dashEl.innerHTML = '<div class="text-red-400 text-sm text-center py-3">Ошибка загрузки данных панели</div>';
+  }
+}
+
+function _dashAqiClass(aqi) {
+  if (!aqi) return { bg:'bg-slate-50', border:'border-slate-200', text:'text-slate-500', label:'—' };
+  if (aqi <= 20) return { bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700', label:'Отличное' };
+  if (aqi <= 40) return { bg:'bg-green-50',   border:'border-green-200',   text:'text-green-700',   label:'Хорошее' };
+  if (aqi <= 60) return { bg:'bg-yellow-50',  border:'border-yellow-200',  text:'text-yellow-700',  label:'Умеренное' };
+  if (aqi <= 80) return { bg:'bg-orange-50',  border:'border-orange-200',  text:'text-orange-700',  label:'Плохое' };
+  return               { bg:'bg-red-50',      border:'border-red-200',     text:'text-red-700',     label:'Опасное' };
+}
+
+function renderOfficialDashboard(power, eco, risks) {
+  const pm = power?.power_meta || {};
+  const activeH  = pm.active_houses  || 0;
+  const plannedH = pm.planned_houses || 0;
+  const ecoRows  = eco?.rows || [];
+  const aqis     = ecoRows.map(r => r.aqi).filter(v => v != null);
+  const avgAqi   = aqis.length ? Math.round(aqis.reduce((a,b)=>a+b,0)/aqis.length) : null;
+  const riskCount = risks?.count || 0;
+  const ac = _dashAqiClass(avgAqi);
+
+  const kpis = [
+    { icon:'🔴', label:'Аварийных домов',  val: activeH.toLocaleString('ru-RU'),
+      color:'text-red-600',    bg:'bg-red-50',    border:'border-red-200',    note:'по всем видам ЖКХ' },
+    { icon:'🟡', label:'Плановых домов',   val: plannedH.toLocaleString('ru-RU'),
+      color:'text-amber-600',  bg:'bg-amber-50',  border:'border-amber-200',  note:'запланированные' },
+    { icon:'🍃', label:'AQI (средний)',    val: avgAqi != null ? String(avgAqi) : '—',
+      color: ac.text, bg: ac.bg, border: ac.border, note: ac.label },
+    { icon:'⚠️', label:'Активных рисков', val: String(riskCount),
+      color: riskCount > 0 ? 'text-amber-700' : 'text-emerald-600',
+      bg:    riskCount > 0 ? 'bg-amber-50'    : 'bg-emerald-50',
+      border:riskCount > 0 ? 'border-amber-200' : 'border-emerald-200',
+      note:  riskCount > 0 ? 'требуют внимания' : 'рисков нет' },
+  ];
+
+  const kpiHtml = kpis.map(k => `
+    <div class="dash-kpi border rounded-2xl p-4 ${k.bg} ${k.border}">
+      <div class="flex items-center gap-1.5 mb-2">
+        <span class="text-base">${k.icon}</span>
+        <span class="text-xs text-slate-500 font-medium leading-tight">${k.label}</span>
+      </div>
+      <div class="text-3xl font-bold ${k.color} leading-none tracking-tight">${k.val}</div>
+      <div class="text-xs text-slate-400 mt-1">${k.note}</div>
+    </div>
+  `).join('');
+
+  const pwrRows = (power?.rows || []).filter(r => r.group_type === 'active').slice(0, 5);
+  const pwrTable = pwrRows.length ? `
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Аварийные отключения · топ по районам</span>
+        <button class="text-xs text-blue-600 hover:underline" onclick="askNow('аварийные отключения ЖКХ сейчас')">Подробнее →</button>
+      </div>
+      <table class="w-full">
+        <tbody>${pwrRows.map(r => `
+          <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+            <td class="px-4 py-2.5 text-xs text-slate-500 w-28">${esc((r.utility||'').split(' ')[0])}</td>
+            <td class="px-4 py-2.5 text-sm text-slate-700 font-medium">${esc(r.district||'—')}</td>
+            <td class="px-4 py-2.5 text-sm font-bold text-red-600 text-right">${r.houses||'—'} д.</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  const ecoChips = ecoRows.slice(0, 8).map(r => {
+    const c2 = aqiColor(r.aqi);
+    const dist = (r.district||'').replace(' район','');
+    return `<span class="${c2.bg} ${c2.text} border border-current/20 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity"
+      onclick="askNow('качество воздуха в ${esc(dist)} районе')">${dist}: ${r.aqi??'—'}</span>`;
+  }).join('');
+
+  const ts = new Date().toLocaleString('ru-RU', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+  return `
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-slate-700">📊 Панель диспетчера · ${ts}</h3>
+        <button onclick="loadRoleDashboard()" class="text-xs text-blue-600 hover:underline">↻ Обновить</button>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${kpiHtml}</div>
+      ${pwrTable}
+      ${ecoChips ? `<div class="flex flex-wrap gap-2 items-center">
+        <span class="text-xs text-slate-400">AQI по районам:</span>${ecoChips}</div>` : ''}
+    </div>`;
+}
+
+function renderMayorDashboard(power, eco, risks) {
+  const pm = power?.power_meta || {};
+  const activeH  = pm.active_houses  || 0;
+  const plannedH = pm.planned_houses || 0;
+  const riskCount = risks?.count || 0;
+  const riskItems = risks?.risks || [];
+  const ecoRows = eco?.rows || [];
+  const aqis  = ecoRows.map(r => r.aqi).filter(v => v != null);
+  const pm25s = ecoRows.map(r => r.pm25).filter(v => v != null);
+  const avgAqi  = aqis.length  ? Math.round(aqis.reduce((a,b)=>a+b,0)/aqis.length) : null;
+  const avgPm25 = pm25s.length ? (pm25s.reduce((a,b)=>a+b,0)/pm25s.length).toFixed(1) : '—';
+  const ac = _dashAqiClass(avgAqi);
+
+  const isEmergency = activeH > 500 || riskCount > 2;
+  const statusBg   = isEmergency ? 'bg-red-100 border-red-300 text-red-700'
+                   : riskCount > 0 ? 'bg-amber-100 border-amber-300 text-amber-700'
+                   : 'bg-emerald-100 border-emerald-300 text-emerald-700';
+  const statusText = isEmergency ? '🔴 Нештатная ситуация'
+                   : riskCount > 0 ? '🟡 Требует внимания' : '🟢 Штатный режим';
+
+  const bigStats = [
+    { label:'Домов без ЖКХ (аварийно)', val: activeH.toLocaleString('ru-RU'),    icon:'🔴',
+      color:'text-red-700',   bg:'bg-red-50',   border:'border-red-200',
+      sub:'электро · тепло · вода · газ', link:"askNow('аварийные отключения ЖКХ сейчас')" },
+    { label:'Плановых отключений (домов)', val: plannedH.toLocaleString('ru-RU'), icon:'📋',
+      color:'text-amber-700', bg:'bg-amber-50', border:'border-amber-200',
+      sub:'запланировано', link:"askNow('плановые отключения на неделю')" },
+    { label:'Качество воздуха (AQI ср.)', val: avgAqi != null ? String(avgAqi) : '—', icon:'🍃',
+      color: ac.text, bg: ac.bg, border: ac.border,
+      sub: ac.label + ' · PM2.5 ср. ' + avgPm25 + ' мкг/м³', link:"askNow('качество воздуха в городе')" },
+    { label:'Активных угроз городу', val: String(riskCount), icon:'⚠️',
+      color: riskCount > 0 ? 'text-amber-700' : 'text-emerald-600',
+      bg:    riskCount > 0 ? 'bg-amber-50'    : 'bg-emerald-50',
+      border:riskCount > 0 ? 'border-amber-200' : 'border-emerald-200',
+      sub: riskCount > 0 ? riskItems.map(r=>r.scenario).join(' · ') : 'рисков не обнаружено',
+      link:"askNow('риски для жизни в городе')" },
+  ];
+
+  const statsHtml = bigStats.map(s => `
+    <div class="dash-kpi bg-white border ${s.border} rounded-2xl p-5 flex flex-col gap-2 shadow-sm cursor-pointer"
+         onclick="${s.link}">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">${s.icon}</span>
+        <span class="text-xs text-slate-500 font-medium leading-snug">${s.label}</span>
+      </div>
+      <div class="text-4xl font-black ${s.color} leading-none tracking-tight">${s.val}</div>
+      <div class="text-xs text-slate-400 leading-snug">${esc(s.sub)}</div>
+    </div>`).join('');
+
+  const risksHtml = riskItems.length ? `
+    <div class="space-y-2">
+      <div class="text-xs font-semibold uppercase tracking-widest text-slate-400">Активные угрозы</div>
+      ${riskItems.slice(0,3).map(r => {
+        const isCrit = r.severity === 'critical';
+        return `<div class="flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer hover:opacity-80 transition-opacity
+          ${isCrit ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}"
+          onclick="askNow('риски для жизни в городе')">
+          <span class="text-xl flex-shrink-0">${r.icon||'⚠️'}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold ${isCrit ? 'text-red-700' : 'text-amber-700'} leading-tight">${esc(r.title)}</div>
+            <div class="text-xs text-slate-500 mt-0.5">${esc(r.metrics||'')}</div>
+          </div>
+          <div class="text-xs font-semibold whitespace-nowrap ${isCrit ? 'text-red-600' : 'text-amber-600'}">${isCrit ? '🔴 Критично' : '🟡 Внимание'}</div>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+
+  const ts = new Date().toLocaleString('ru-RU', {day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit'});
+  return `
+    <div class="space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 class="text-sm font-bold text-slate-700">🏛️ Сводка по городу · ${ts}</h3>
+          <span class="inline-block mt-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${statusBg}">${statusText}</span>
+        </div>
+        <button onclick="loadRoleDashboard()" class="text-xs text-blue-600 hover:underline">↻ Обновить</button>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${statsHtml}</div>
+      ${risksHtml}
+    </div>`;
 }
 
 function setQuery(q) {
@@ -1020,9 +1360,14 @@ function renderTopics(topics) {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+updateRoleBtn();
 buildChips();
 loadTopics();
 document.getElementById('queryInput').focus();
+if (currentRole !== 'citizen') {
+  document.getElementById('roleDashboard').classList.remove('hidden');
+  loadRoleDashboard();
+}
 
 // Footer time
 (function updateTime() {
