@@ -292,6 +292,19 @@ _NAV_BAR_HTML = """
   }
   #nsk-panel-result.ok   { color: #4ade80; }
   #nsk-panel-result.fail { color: #f87171; }
+  #nsk-update-btn {
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.22);
+    color: #cbd5e1; border-radius: 8px;
+    padding: 7px 14px; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  #nsk-update-btn:hover:not(:disabled) { background: rgba(255,255,255,.18); color: #f1f5f9; border-color: rgba(255,255,255,.45); }
+  #nsk-update-btn:disabled { opacity: .4; cursor: not-allowed; }
+  #nsk-update-btn.running { color: #facc15; border-color: #854d0e; background: rgba(250,204,21,.08); }
+  #nsk-update-btn.done-ok { color: #4ade80; border-color: #166534; background: rgba(74,222,128,.08); }
+  #nsk-update-btn.done-err { color: #f87171; border-color: #991b1b; background: rgba(248,113,113,.08); }
+  #nsk-panel-footer { flex-wrap: wrap; row-gap: 6px; }
 </style>
 
 <div id="nsk-nav">
@@ -332,7 +345,8 @@ _NAV_BAR_HTML = """
     </div>
   </div>
   <div id="nsk-panel-footer">
-    <button id="nsk-run-btn" onclick="NSKTests.run()">&#9654; Запустить тестирование</button>
+    <button id="nsk-run-btn" onclick="NSKTests.run()">&#9654; Тестирование</button>
+    <button id="nsk-update-btn" onclick="NSKTests.updateAll()">&#8635; Загрузить все данные</button>
     <span id="nsk-panel-result"></span>
   </div>
 </div>
@@ -468,7 +482,65 @@ const NSKTests = (() => {
       addLine('Ошибка подключения к /run-tests', 'failed');
     };
   }
-  return { toggle, close, run };
+  async function updateAll() {
+    const btn = document.getElementById('nsk-update-btn');
+    const runB = runBtn();
+    panel().classList.add('open');
+    body().innerHTML = '';
+    result().textContent = '';
+    result().className = '';
+    btn.disabled = true;
+    runB.disabled = true;
+    btn.className = 'running';
+    btn.textContent = '⟳ Загружаю данные…';
+
+    addLine('Запуск обновления всех 10 наборов данных…', 'info');
+    addLine('Это займёт 1–2 минуты. Пожалуйста, подождите.', 'dim');
+
+    try {
+      const resp = await fetch('/update', { method: 'POST' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      const updated = data.updated || {};
+      let ok = 0, err = 0;
+      addLine('', '');
+      for (const [tid, info] of Object.entries(updated)) {
+        if (info.success) {
+          ok++;
+          addLine('  ✓ ' + tid + ' — ' + (info.rows || 0) + ' строк', 'passed');
+        } else {
+          err++;
+          addLine('  ✗ ' + tid + ' — ошибка загрузки', 'failed');
+        }
+      }
+      addLine('', '');
+      if (err === 0) {
+        addLine('Все наборы данных обновлены (' + ok + ').', 'passed');
+        btn.className = 'done-ok';
+        btn.textContent = '✓ Данные загружены';
+        result().textContent = '✓ Данные обновлены (' + ok + ')';
+        result().className = 'ok';
+      } else {
+        addLine('Загружено: ' + ok + ', ошибок: ' + err + '.', 'warn');
+        btn.className = 'done-err';
+        btn.textContent = '⚠ Частичная загрузка';
+        result().textContent = '⚠ ' + err + ' ошибок';
+        result().className = 'fail';
+      }
+      addLine('Нажмите «Тестирование» чтобы обновить статус данных.', 'dim');
+    } catch (e) {
+      addLine('Ошибка: ' + e.message, 'failed');
+      btn.className = 'done-err';
+      btn.textContent = '✗ Ошибка';
+      result().textContent = '✗ ' + e.message;
+      result().className = 'fail';
+    } finally {
+      btn.disabled = false;
+      runB.disabled = false;
+    }
+  }
+
+  return { toggle, close, run, updateAll };
 })();
 </script>
 """
