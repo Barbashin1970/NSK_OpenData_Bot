@@ -950,11 +950,11 @@ def get_ask(
             upsert_outages(fetch_all_outages())
 
         result = execute_power(plan)
-        # Вычисляем тот же utility_filter, что использует execute_power,
+        # Вычисляем те же фильтры, что использует execute_power,
         # чтобы цифры в шапке совпадали с числами в строках таблицы
         _raw = plan.extra_filters.get("utility", None)
         _uf = "электроснабж" if _raw is None else (_raw or None)
-        meta = get_power_meta(utility_filter=_uf)
+        meta = get_power_meta(utility_filter=_uf, district_filter=plan.district)
         return {
             "query": q,
             "topic": topic,

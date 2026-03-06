@@ -116,11 +116,16 @@ def is_power_stale(ttl_minutes: int = POWER_TTL_MINUTES) -> bool:
         return True
 
 
-def get_power_meta(utility_filter: str | None = None) -> dict:
+def get_power_meta(
+    utility_filter: str | None = None,
+    district_filter: str | None = None,
+) -> dict:
     """Возвращает метаданные: последнее обновление, кол-во записей, активных/плановых домов.
 
-    utility_filter — если задан (например "электроснабж"), считает дома только по
-    этому типу ресурса, чтобы цифры в шапке совпадали со строками таблицы.
+    utility_filter  — если задан (например "электроснабж"), считает только этот тип ресурса.
+    district_filter — если задан (например "Ленинский"), считает только этот район.
+    Оба фильтра должны совпадать с теми, что переданы в query_power, чтобы цифры в шапке
+    совпадали с числами строк таблицы.
     """
     try:
         init_power_table()
@@ -129,17 +134,24 @@ def get_power_meta(utility_filter: str | None = None) -> dict:
             last = conn.execute("SELECT MAX(scraped_at) FROM power_outages").fetchone()[0] or ""
             total = conn.execute("SELECT COUNT(*) FROM power_outages").fetchone()[0]
             latest_cond = "scraped_at = (SELECT MAX(scraped_at) FROM power_outages)"
-            uf_cond = " AND utility ILIKE ?" if utility_filter else ""
-            uf_params = [f"%{utility_filter}%"] if utility_filter else []
+            extra_conds: list[str] = []
+            extra_params: list[str] = []
+            if utility_filter:
+                extra_conds.append("utility ILIKE ?")
+                extra_params.append(f"%{utility_filter}%")
+            if district_filter:
+                extra_conds.append("district ILIKE ?")
+                extra_params.append(f"%{district_filter}%")
+            extra_sql = (" AND " + " AND ".join(extra_conds)) if extra_conds else ""
             active = conn.execute(
                 f"SELECT COALESCE(SUM(houses), 0) FROM power_outages"
-                f" WHERE {latest_cond} AND group_type='active'{uf_cond}",
-                uf_params,
+                f" WHERE {latest_cond} AND group_type='active'{extra_sql}",
+                extra_params,
             ).fetchone()[0]
             planned = conn.execute(
                 f"SELECT COALESCE(SUM(houses), 0) FROM power_outages"
-                f" WHERE {latest_cond} AND group_type='planned'{uf_cond}",
-                uf_params,
+                f" WHERE {latest_cond} AND group_type='planned'{extra_sql}",
+                extra_params,
             ).fetchone()[0]
             return {
                 "last_scraped": last,
