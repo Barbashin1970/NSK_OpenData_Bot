@@ -940,6 +940,14 @@ def get_ask(
         examples={"default": {"summary": "Группировка по районам", "value": "сколько парковок по районам"}},
         min_length=2,
     ),
+    with_coords: bool = Query(
+        False,
+        description=(
+            "Обогатить строки результата координатами (_lat, _lon) через 2GIS Geocoder. "
+            "Работает только для операций FILTER и TOP_N с адресными данными. "
+            "Требует настроенный 2GIS API ключ; без ключа строки возвращаются без изменений."
+        ),
+    ),
 ) -> dict:
     """
     Основной endpoint. Принимает запрос на русском языке, автоматически определяет
@@ -1068,6 +1076,13 @@ def get_ask(
 
     result = execute_plan(plan)
 
+    # ── Геокодирование (опционально) ──────────────────────────────────────────
+    if with_coords and plan.operation in ("FILTER", "TOP_N") and result.get("rows"):
+        from .geocoder import geocode_rows
+        result["rows"] = geocode_rows(result["rows"])
+        result["coords_enriched"] = True
+        result["coords_source"] = "2GIS Geocoder (кеш + API)"
+
     cache_info = load_meta().get(topic, {})
     cache_info.update(get_table_info(topic))
 
@@ -1195,6 +1210,55 @@ def get_transit_districts() -> dict:
         return {"error": str(e), "rows": [], "total_stops": 0, "count": 0}
     finally:
         conn.close()
+
+
+@app.get(
+    "/twogis/geocode",
+    tags=["2GIS"],
+    summary="Геокодировать адрес (адрес → координаты)",
+    response_description="Координаты объекта или сообщение о недоступности",
+)
+def get_geocode(
+    q: str = Query(..., description="Адрес для геокодирования. Например: `ул. Красный проспект, 25`"),
+    city: str = Query("Новосибирск", description="Город (префикс к запросу)"),
+) -> dict:
+    """
+    Конвертирует адресную строку в координаты через 2GIS Geocoder API.
+
+    - Результаты кешируются в DuckDB (повторные запросы мгновенны, ключ не нужен).
+    - Если ключ не задан и адрес не в кеше → `available: false`.
+    - Используйте `GET /twogis/geocache-stats` чтобы увидеть размер кеша.
+    """
+    from .geocoder import geocode
+
+    key = _get_twogis_key()
+    result = geocode(q, city)
+
+    if result is None:
+        if not key:
+            return {"available": False, "reason": "2GIS ключ не задан. POST /twogis/key"}
+        return {"available": True, "found": False, "query": q}
+
+    return {
+        "available": True,
+        "found": True,
+        "query": q,
+        "lat": result["lat"],
+        "lon": result["lon"],
+        "full_name": result["full_name"],
+        "source": result["source"],
+    }
+
+
+@app.get(
+    "/twogis/geocache-stats",
+    tags=["2GIS"],
+    summary="Статистика кеша геокодирования",
+)
+def get_geocache_stats() -> dict:
+    """Показывает количество адресов, сохранённых в кеше геокодирования."""
+    from .geocoder import geocode_stats
+    return geocode_stats()
 
 
 @app.get(
