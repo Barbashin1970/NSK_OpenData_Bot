@@ -1646,45 +1646,62 @@ function _renderMap() {
     ].join(';');
     container.appendChild(tooltip);
 
-    const markerInfos = [];
+    const markerRows = [];
     _currentMapRows.forEach(row => {
-      const marker = new mapgl.Marker(_mapInstance, {
-        coordinates: [row._lon, row._lat],
-      });
-      markerInfos.push({ row, marker });
+      new mapgl.Marker(_mapInstance, { coordinates: [row._lon, row._lat] });
+      markerRows.push(row);
     });
 
-    // Tooltip via proximity detection — map.project() converts lngLat to px
-    container.addEventListener('mousemove', (e) => {
-      const rect = container.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      let hovered = null;
-      let minDist = 30;
-      if (typeof _mapInstance.project === 'function') {
-        for (const {row} of markerInfos) {
-          const pt = _mapInstance.project([row._lon, row._lat]);
-          const dx = pt.x - mx, dy = pt.y - my;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < minDist) { minDist = dist; hovered = row; }
-        }
+    // Tooltip via map-native mousemove event (e.lngLat + e.point).
+    // Geographic proximity scaled by zoom — no map.project() needed.
+    _mapInstance.on('mousemove', (e) => {
+      // Normalize lngLat: 2GIS MapGL может вернуть массив [lng,lat] или объект
+      let lng, lat;
+      if (!e.lngLat) return;
+      if (Array.isArray(e.lngLat)) {
+        [lng, lat] = e.lngLat;
+      } else {
+        lng = e.lngLat.lng ?? e.lngLat.lon ?? 0;
+        lat = e.lngLat.lat ?? 0;
       }
+
+      // Порог в градусах: ~0.003° ≈ 20–30px на zoom 13; уменьшается при зуме
+      const zoom = (typeof _mapInstance.getZoom === 'function') ? _mapInstance.getZoom() : 13;
+      const thr = 0.003 / Math.pow(2, Math.max(0, zoom - 13));
+      const thrSq = thr * thr;
+
+      let hovered = null;
+      let minDist = Infinity;
+      const cosLat = Math.cos(lat * Math.PI / 180);
+      for (const row of markerRows) {
+        const dx = (row._lon - lng) * cosLat;
+        const dy = row._lat - lat;
+        const dSq = dx * dx + dy * dy;
+        if (dSq < thrSq && dSq < minDist) { minDist = dSq; hovered = row; }
+      }
+
       if (hovered) {
         tooltip.innerHTML = _buildMarkerLabel(hovered);
         tooltip.style.display = 'block';
-        let x = mx + 14;
-        let y = my - 14;
-        if (x + 250 > container.offsetWidth) x = mx - 250;
-        if (y < 0) y = my + 14;
+        // Позиция: e.point {x,y} если есть, иначе из originalEvent
+        let px, py;
+        if (e.point) {
+          px = e.point.x; py = e.point.y;
+        } else if (e.originalEvent) {
+          const rect = container.getBoundingClientRect();
+          px = e.originalEvent.clientX - rect.left;
+          py = e.originalEvent.clientY - rect.top;
+        } else { px = 10; py = 10; }
+        let x = px + 14, y = py - 14;
+        if (x + 250 > container.offsetWidth) x = px - 250;
+        if (y < 0) y = py + 14;
         tooltip.style.left = x + 'px';
         tooltip.style.top  = y + 'px';
       } else {
         tooltip.style.display = 'none';
       }
     });
-    container.addEventListener('mouseleave', () => {
-      tooltip.style.display = 'none';
-    });
+    _mapInstance.on('mouseout', () => { tooltip.style.display = 'none'; });
   } catch(e) {
     container.innerHTML = '<div class="p-4 text-sm text-red-500">Ошибка инициализации карты: ' + esc(String(e)) + '</div>';
   }
