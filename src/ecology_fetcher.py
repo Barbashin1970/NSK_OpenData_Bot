@@ -156,6 +156,73 @@ def _fetch_cityair(station: dict) -> dict | None:
         return None
 
 
+def _fetch_openmeteo_forecast(station: dict) -> list[dict] | None:
+    """Запрашивает 7-дневный ежедневный прогноз погоды с Open-Meteo Forecast API.
+
+    Возвращает список из ≤7 записей (один на день) или None при ошибке.
+    Поля: forecast_date, temp_max, temp_min, wind_max, precipitation, weathercode.
+    """
+    data = _get_with_retry(_OPENMETEO_WEATHER_URL, {
+        "latitude":        station["latitude"],
+        "longitude":       station["longitude"],
+        "daily":           "temperature_2m_max,temperature_2m_min,wind_speed_10m_max,"
+                           "precipitation_sum,weathercode",
+        "wind_speed_unit": "ms",
+        "timezone":        "Asia/Novosibirsk",
+        "forecast_days":   7,
+    })
+    if not data or "daily" not in data:
+        return None
+
+    daily = data["daily"]
+    times    = daily.get("time", [])
+    temp_max = daily.get("temperature_2m_max", [])
+    temp_min = daily.get("temperature_2m_min", [])
+    wind_max = daily.get("wind_speed_10m_max", [])
+    precip   = daily.get("precipitation_sum", [])
+    wcode    = daily.get("weathercode", [])
+
+    records = []
+    for i, day in enumerate(times):
+        records.append({
+            "forecast_date": str(day),
+            "temp_max":      temp_max[i] if i < len(temp_max) else None,
+            "temp_min":      temp_min[i] if i < len(temp_min) else None,
+            "wind_max":      wind_max[i] if i < len(wind_max) else None,
+            "precipitation": precip[i]   if i < len(precip)   else None,
+            "weathercode":   int(wcode[i]) if i < len(wcode) and wcode[i] is not None else None,
+        })
+    return records
+
+
+def fetch_all_forecast() -> list[dict[str, Any]]:
+    """Получает 7-дневный прогноз погоды для всех станций (районов) Новосибирска.
+
+    Возвращает список flat-записей для upsert в eco_forecast.
+    """
+    from datetime import datetime, timezone
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    records: list[dict] = []
+
+    for station in NSK_ECOLOGY_STATIONS:
+        sid = station["station_id"]
+        daily = _fetch_openmeteo_forecast(station)
+        if not daily:
+            log.warning(f"Прогноз: нет данных для станции {sid}")
+            continue
+        for day_rec in daily:
+            records.append({
+                "id":           f"{sid}_{day_rec['forecast_date']}",
+                "station_id":   sid,
+                "district":     station["district"],
+                **day_rec,
+                "fetched_at":   fetched_at,
+            })
+
+    log.info(f"Forecast ETL: собрано {len(records)} записей ({len(NSK_ECOLOGY_STATIONS)} станций × 7 дней)")
+    return records
+
+
 def fetch_all_ecology() -> list[dict[str, Any]]:
     """Основная ETL-функция: собирает данные со всех источников для всех районов.
 

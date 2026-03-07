@@ -184,14 +184,15 @@ def execute_ecology(plan: Plan) -> dict[str, Any]:
     """Выполняет запросы к таблицам экологии (dim_stations + fact_measurements).
 
     Поддерживаемые операции:
-      ECO_STATUS  — текущие показатели (последний снимок, по районам)
-      ECO_PDK     — превышения ПДК PM2.5 > 35 мкг/м³ за сегодня
-      ECO_HISTORY — история по дням за N дней
-      ECO_RISKS   — прескриптивная аналитика: карточки рисков + рекомендации
+      ECO_STATUS   — текущие показатели (последний снимок, по районам)
+      ECO_PDK      — превышения ПДК PM2.5 > 35 мкг/м³ за сегодня
+      ECO_HISTORY  — история по дням за N дней
+      ECO_RISKS    — прескриптивная аналитика: карточки рисков + рекомендации
+      ECO_FORECAST — 7-дневный прогноз погоды (Open-Meteo daily forecast)
     """
     from .ecology_cache import (
         query_current, query_pdk_exceedances, query_history, get_ecology_meta,
-        query_risks,
+        query_risks, query_forecast,
     )
 
     district = plan.district
@@ -242,6 +243,21 @@ def execute_ecology(plan: Plan) -> dict[str, Any]:
                 "columns": ["id", "scenario", "severity", "icon", "title",
                             "metrics", "citizen", "official"],
                 "count": len(risks),
+            }
+
+        elif op == "ECO_FORECAST":
+            days = min(plan.limit, 7) if plan.limit and plan.limit > 0 else 7
+            rows = query_forecast(district_filter=district, days=days)
+            cols = ["forecast_date", "day_name", "temp_max", "temp_min",
+                    "wind_max", "precipitation", "weathercode",
+                    "weather_icon", "weather_desc",
+                    "ice_risk", "cold_risk", "snow_risk"]
+            return {
+                "operation": op,
+                "rows": [{k: r.get(k) for k in cols} for r in rows],
+                "columns": cols,
+                "count": len(rows),
+                "days": days,
             }
 
         else:

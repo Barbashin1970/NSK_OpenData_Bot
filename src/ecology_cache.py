@@ -74,6 +74,57 @@ CREATE TABLE IF NOT EXISTS ecology_daily_archive (
 """
 
 
+_DDL_FORECAST = """
+CREATE TABLE IF NOT EXISTS eco_forecast (
+    id            VARCHAR PRIMARY KEY,   -- station_id + forecast_date
+    station_id    VARCHAR,
+    district      VARCHAR,
+    forecast_date VARCHAR,              -- 'YYYY-MM-DD'
+    temp_max      DOUBLE,
+    temp_min      DOUBLE,
+    wind_max      DOUBLE,
+    precipitation DOUBLE,
+    weathercode   INTEGER,
+    fetched_at    VARCHAR
+)
+"""
+
+# WMO Weather Interpretation Codes → (иконка, описание)
+WMO_WEATHER: dict[int, tuple[str, str]] = {
+    0:  ("☀️",  "Ясно"),
+    1:  ("🌤",  "Преим. ясно"),
+    2:  ("⛅",  "Перем. облачность"),
+    3:  ("☁️",  "Пасмурно"),
+    45: ("🌫",  "Туман"),
+    48: ("🌫",  "Иней из тумана"),
+    51: ("🌦",  "Морось"),
+    53: ("🌦",  "Умер. морось"),
+    55: ("🌧",  "Сильная морось"),
+    61: ("🌧",  "Небольшой дождь"),
+    63: ("🌧",  "Умер. дождь"),
+    65: ("🌧",  "Сильный дождь"),
+    71: ("🌨",  "Небольшой снег"),
+    73: ("🌨",  "Умер. снег"),
+    75: ("❄️",  "Сильный снег"),
+    77: ("🌨",  "Снежная крупа"),
+    80: ("🌦",  "Ливень"),
+    82: ("⛈",  "Сильный ливень"),
+    85: ("🌨",  "Снегопад"),
+    86: ("❄️",  "Сильный снегопад"),
+    95: ("⛈",  "Гроза"),
+    96: ("⛈",  "Гроза с градом"),
+    99: ("⛈",  "Гроза с сильным градом"),
+}
+
+
+def _wmo_label(code: int | None) -> tuple[str, str]:
+    """Возвращает (иконка, описание) для WMO-кода."""
+    if code is None:
+        return ("❓", "Нет данных")
+    # Ближайший ключ для неточных кодов (некоторые API дают 82 вместо 80)
+    return WMO_WEATHER.get(code, ("🌡", f"Код {code}"))
+
+
 def init_ecology_tables() -> None:
     """Создаёт таблицы если их нет."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -82,6 +133,7 @@ def init_ecology_tables() -> None:
         conn.execute(_DDL_STATIONS)
         conn.execute(_DDL_MEASUREMENTS)
         conn.execute(_DDL_DAILY_ARCHIVE)
+        conn.execute(_DDL_FORECAST)
     finally:
         conn.close()
 
@@ -565,6 +617,144 @@ def seed_history_placeholder(
         log.info("seed_history_placeholder: вставлено %d строк (%d дней × %d станций)",
                  inserted, days, len(NSK_ECOLOGY_STATIONS))
         return inserted
+    finally:
+        conn.close()
+
+
+def upsert_forecast(records: list[dict]) -> int:
+    """Сохраняет 7-дневный прогноз погоды в eco_forecast.
+
+    Перезаписывает существующие записи по (station_id, forecast_date).
+    """
+    if not records:
+        return 0
+    init_ecology_tables()
+    conn = _get_conn()
+    try:
+        count = 0
+        for r in records:
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO eco_forecast
+                        (id, station_id, district, forecast_date,
+                         temp_max, temp_min, wind_max, precipitation, weathercode, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (id) DO UPDATE SET
+                        temp_max      = excluded.temp_max,
+                        temp_min      = excluded.temp_min,
+                        wind_max      = excluded.wind_max,
+                        precipitation = excluded.precipitation,
+                        weathercode   = excluded.weathercode,
+                        fetched_at    = excluded.fetched_at
+                    """,
+                    [
+                        r["id"], r["station_id"], r.get("district", ""),
+                        r["forecast_date"],
+                        r.get("temp_max"), r.get("temp_min"),
+                        r.get("wind_max"), r.get("precipitation"),
+                        r.get("weathercode"), r["fetched_at"],
+                    ],
+                )
+                count += 1
+            except Exception as e:
+                log.error(f"Forecast upsert error {r.get('id')}: {e}")
+        log.info(f"Forecast upsert: {count} записей")
+        return count
+    finally:
+        conn.close()
+
+
+def is_forecast_stale(ttl_hours: int = 6) -> bool:
+    """True если прогноз не обновлялся более ttl_hours часов или отсутствует."""
+    try:
+        init_ecology_tables()
+        conn = _get_conn()
+        try:
+            row = conn.execute("SELECT MAX(fetched_at) FROM eco_forecast").fetchone()
+            last = row[0] if row else None
+            if not last:
+                return True
+            last_dt = datetime.fromisoformat(last)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) - last_dt > timedelta(hours=ttl_hours)
+        finally:
+            conn.close()
+    except Exception:
+        return True
+
+
+def query_forecast(district_filter: str | None = None, days: int = 7) -> list[dict]:
+    """Возвращает 7-дневный прогноз погоды агрегированный по дням.
+
+    Если district_filter задан — только данные по этому району.
+    Иначе — среднее по всем районам (агрегированное по городу).
+
+    Возвращает список dict с полями:
+      forecast_date, day_name, temp_max, temp_min, wind_max,
+      precipitation, weathercode, weather_icon, weather_desc,
+      ice_risk, cold_risk, snow_risk
+    """
+    init_ecology_tables()
+    conn = _get_conn()
+    try:
+        today = str(datetime.now(timezone.utc).date())
+        cutoff = str((datetime.now(timezone.utc) + timedelta(days=days)).date())
+
+        wheres = ["forecast_date > ?", "forecast_date <= ?"]
+        params: list = [today, cutoff]
+        if district_filter:
+            d = district_filter.split()[0]
+            wheres.append("district ILIKE ?")
+            params.append(f"%{d}%")
+
+        where_sql = "WHERE " + " AND ".join(wheres)
+        sql = f"""
+            SELECT
+                forecast_date,
+                ROUND(AVG(temp_max), 1)      AS temp_max,
+                ROUND(AVG(temp_min), 1)      AS temp_min,
+                ROUND(MAX(wind_max), 1)      AS wind_max,
+                ROUND(AVG(precipitation), 1) AS precipitation,
+                -- Берём самый частый weathercode через медианный агрегат
+                CAST(ROUND(AVG(weathercode)) AS INTEGER) AS weathercode
+            FROM eco_forecast
+            {where_sql}
+            GROUP BY forecast_date
+            ORDER BY forecast_date
+        """
+        cursor = conn.execute(sql, params)
+        cols = [d[0] for d in cursor.description]
+        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+        # Обогащаем каждый день: иконка, описание, флаги рисков
+        ru_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        ru_months = ["янв", "фев", "мар", "апр", "май", "июн",
+                     "июл", "авг", "сен", "окт", "ноя", "дек"]
+        from datetime import date as _date
+        for r in rows:
+            dt = _date.fromisoformat(r["forecast_date"])
+            r["day_name"] = f"{ru_days[dt.weekday()]} {dt.day} {ru_months[dt.month - 1]}"
+            icon, desc = _wmo_label(r["weathercode"])
+            r["weather_icon"] = icon
+            r["weather_desc"] = desc
+            t_max = r["temp_max"]
+            t_min = r["temp_min"]
+            # Риск гололёда: суточный диапазон проходит через 0°C
+            r["ice_risk"] = bool(t_min is not None and t_max is not None
+                                 and t_min <= 0 <= t_max or
+                                 (t_min is not None and -3 <= t_min <= 2))
+            # Риск сильного мороза: мин < −20°C
+            r["cold_risk"] = bool(t_min is not None and t_min < -20)
+            # Риск снегопада: осадки + код снега
+            wc = r.get("weathercode") or 0
+            r["snow_risk"] = bool(r.get("precipitation", 0) and 70 <= wc <= 86)
+
+        return rows
+    except Exception as e:
+        log.error(f"Ошибка query_forecast: {e}")
+        return []
     finally:
         conn.close()
 

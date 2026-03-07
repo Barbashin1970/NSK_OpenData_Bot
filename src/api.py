@@ -1092,12 +1092,19 @@ def get_ask(
     # ── Экология и метеорология ───────────────────────────────────────────────
     if topic == "ecology":
         from .executor import execute_ecology
-        from .ecology_cache import is_ecology_stale, get_ecology_meta, upsert_stations, upsert_measurements
-        from .ecology_fetcher import fetch_all_ecology
+        from .ecology_cache import (
+            is_ecology_stale, get_ecology_meta, upsert_stations, upsert_measurements,
+            is_forecast_stale, upsert_forecast,
+        )
+        from .ecology_fetcher import fetch_all_ecology, fetch_all_forecast
 
         if is_ecology_stale():
             upsert_stations()
             upsert_measurements(fetch_all_ecology())
+
+        # Прогноз обновляется раз в 6 часов (независимо от измерений)
+        if is_forecast_stale():
+            upsert_forecast(fetch_all_forecast())
 
         result = execute_ecology(plan)
         meta = get_ecology_meta()
@@ -1650,12 +1657,17 @@ def post_cameras_update() -> dict:
 # ── Ecology endpoints ─────────────────────────────────────────────────────────
 
 def _ecology_auto_update() -> None:
-    """Обновляет данные экологии если TTL истёк."""
-    from .ecology_cache import is_ecology_stale, upsert_stations, upsert_measurements
-    from .ecology_fetcher import fetch_all_ecology
+    """Обновляет данные экологии и прогноза если TTL истёк."""
+    from .ecology_cache import (
+        is_ecology_stale, upsert_stations, upsert_measurements,
+        is_forecast_stale, upsert_forecast,
+    )
+    from .ecology_fetcher import fetch_all_ecology, fetch_all_forecast
     if is_ecology_stale():
         upsert_stations()
         upsert_measurements(fetch_all_ecology())
+    if is_forecast_stale():
+        upsert_forecast(fetch_all_forecast())
 
 
 @app.get(

@@ -1082,7 +1082,7 @@ function renderEcology(data) {
     ? String(meta.last_updated).substring(0, 16).replace('T', ' ')
     : '—';
 
-  if (op !== 'ECO_RISKS' && !rows.length) {
+  if (op !== 'ECO_RISKS' && op !== 'ECO_FORECAST' && !rows.length) {
     return `
       <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center">
         <span class="text-3xl block mb-3">🍃</span>
@@ -1244,6 +1244,83 @@ function renderEcology(data) {
         <div class="overflow-x-auto">
           <table class="w-full"><thead>${head}</thead><tbody>${body}</tbody></table>
         </div>
+      </div>`;
+  }
+
+  // ── ECO_FORECAST ──────────────────────────────────────────────────────────
+  if (op === 'ECO_FORECAST') {
+    const days = data.days || 7;
+    const dist = data.district ? ` · ${data.district}` : ' · по городу';
+    if (!rows.length) {
+      return `
+        <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center">
+          <span class="text-3xl block mb-3">📅</span>
+          <p class="text-slate-500 text-sm">Прогнозные данные ещё загружаются.<br>Попробуйте через несколько секунд.</p>
+        </div>`;
+    }
+
+    const cards = rows.map(r => {
+      const tMax = r.temp_max != null ? `${r.temp_max > 0 ? '+' : ''}${r.temp_max}°` : '—';
+      const tMin = r.temp_min != null ? `${r.temp_min > 0 ? '+' : ''}${r.temp_min}°` : '—';
+      const wind = r.wind_max != null ? `${r.wind_max} м/с` : '—';
+      const prec = r.precipitation != null ? `${r.precipitation} мм` : '0 мм';
+
+      // Риски
+      let risks = '';
+      if (r.cold_risk)  risks += `<span class="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">🥶 Сильный мороз</span> `;
+      if (r.ice_risk)   risks += `<span class="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">🧊 Риск гололёда</span> `;
+      if (r.snow_risk)  risks += `<span class="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">❄️ Снегопад</span> `;
+
+      // Цвет карточки по температуре
+      const tNum = r.temp_min ?? r.temp_max ?? 0;
+      const cardBg = tNum < -20 ? 'bg-blue-50 border-blue-200'
+                   : tNum < 0   ? 'bg-slate-50 border-slate-200'
+                   : tNum < 10  ? 'bg-green-50 border-green-100'
+                   :              'bg-amber-50 border-amber-100';
+
+      return `
+        <div class="rounded-2xl border ${cardBg} p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-semibold text-slate-700">${esc(r.day_name || r.forecast_date)}</span>
+            <span class="text-2xl" title="${esc(r.weather_desc || '')}">${esc(r.weather_icon || '🌡')}</span>
+          </div>
+          <div class="flex items-end gap-3">
+            <span class="text-2xl font-bold text-slate-800">${tMax}</span>
+            <span class="text-base text-slate-500 mb-0.5">${tMin}</span>
+          </div>
+          <div class="text-xs text-slate-500">${esc(r.weather_desc || '')}</div>
+          <div class="flex gap-3 text-xs text-slate-500">
+            <span>💨 ${wind}</span>
+            <span>🌧 ${prec}</span>
+          </div>
+          ${risks ? `<div class="flex flex-wrap gap-1 mt-1">${risks}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    // Предупреждения для муниципальных служб (из первых 2 дней)
+    const warningDays = rows.slice(0, 3);
+    const warnings = [];
+    if (warningDays.some(r => r.cold_risk))
+      warnings.push('❗ Экстремальные морозы ожидаются в ближайшие дни — усилить теплоснабжение социальных объектов, открыть пункты обогрева.');
+    if (warningDays.some(r => r.ice_risk))
+      warnings.push('⚠️ Риск гололёда по прогнозу — вывести пескоразбрасывающую технику на мосты, перекрёстки, пешеходные зоны у больниц и школ.');
+    if (warningDays.some(r => r.snow_risk))
+      warnings.push('🌨 Ожидается снегопад — подготовить снегоуборочную технику, скорректировать расписание общественного транспорта.');
+
+    const warningsHtml = warnings.length ? `
+      <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
+        <div class="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Рекомендации для городских служб</div>
+        ${warnings.map(w => `<p class="text-sm text-amber-800">${w}</p>`).join('')}
+      </div>` : '';
+
+    return `
+      <div class="space-y-4">
+        <div class="flex items-center gap-2 text-sm text-slate-500">
+          <span>📅 Прогноз на ${days} дней${dist}</span>
+          <span class="text-xs text-slate-400">· Open-Meteo · обн. каждые 6 ч</span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${cards}</div>
+        ${warningsHtml}
       </div>`;
   }
 
