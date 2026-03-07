@@ -395,14 +395,51 @@ def _route_power(q: str) -> "RouteResult | None":
     )
 
 
-# ── Дизамбигуация «парки» vs «парковки» ──────────────────────────────────────
-# Слова, которые однозначно указывают на парковки (не на зелёные парки).
-# Если хотя бы одно из них есть в запросе — parks-результат удаляется.
-_PARKING_SIGNALS = re.compile(
-    r"парковк|парковоч|стоянк|машиноместо|паркован|припаркова"
-)
-# Точное слово «парк» (не является префиксом «парковки»).
-_PARK_EXACT = re.compile(r"(?<![а-яёa-z])парк(?![а-яё])")
+# ── Камеры фиксации нарушений ПДД ────────────────────────────────────────────
+_CAMERAS_KEYWORDS = [
+    "камер",
+    "видеофиксац",
+    "видеокамер",
+    "радар",
+    "стационарн камер",
+    "гибдд камер",
+    "фиксац скорост",
+    "превышен скорост",
+    "камер наблюден",
+    "дорожн камер",
+]
+_CAMERAS_PRIMARY = ["камер", "видеофиксац", "радар", "видеокамер", "дорожн камер"]
+
+
+def _route_cameras(q: str) -> "RouteResult | None":
+    """Проверяет, относится ли запрос к камерам фиксации нарушений."""
+    if not any(m in q for m in _CAMERAS_PRIMARY):
+        return None
+
+    score = 0.0
+    matched: list[str] = []
+    for kw in _CAMERAS_KEYWORDS:
+        kw_norm = _normalize(kw)
+        kw_parts = kw_norm.split()
+        all_match = all(
+            re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in kw_parts
+        )
+        if all_match:
+            matched.append(kw)
+            score += len(kw_parts) ** 1.5
+
+    if score == 0:
+        score = 1.0
+        matched = ["камеры"]
+
+    confidence = min(1.0, score / max(len(_CAMERAS_KEYWORDS), 1) * 6)
+    confidence = max(confidence, 0.55)
+    return RouteResult(
+        topic="cameras",
+        confidence=confidence,
+        name="Камеры фиксации нарушений ПДД",
+        matched_keywords=matched,
+    )
 
 
 def route(query: str) -> list[RouteResult]:
@@ -420,6 +457,11 @@ def route(query: str) -> list[RouteResult]:
     ecology_result = _route_ecology(q)
     if ecology_result:
         results.append(ecology_result)
+
+    # Тема камер фиксации нарушений (не в YAML-реестре, обрабатывается отдельно)
+    cameras_result = _route_cameras(q)
+    if cameras_result:
+        results.append(cameras_result)
 
     for topic_id, ds in registry.items():
         keywords: list[str] = ds.get("keywords", [])
@@ -454,23 +496,6 @@ def route(query: str) -> list[RouteResult]:
                 confidence=confidence,
                 name=ds.get("name", topic_id),
                 matched_keywords=matched,
-            ))
-
-    # ── Дизамбигуация parks vs parking ───────────────────────────────────────
-    # Если в запросе есть явные признаки парковки — убираем parks из результатов.
-    if _PARKING_SIGNALS.search(q):
-        results = [r for r in results if r.topic != "parks"]
-
-    # Если встречается точное слово «парк» (без суффиксов парковки),
-    # и parks ещё не найден — добавляем с базовой уверенностью.
-    if _PARK_EXACT.search(q) and not _PARKING_SIGNALS.search(q):
-        if not any(r.topic == "parks" for r in results):
-            ds = registry.get("parks", {})
-            results.append(RouteResult(
-                topic="parks",
-                confidence=0.4,
-                name=ds.get("name", "Парки"),
-                matched_keywords=["парк"],
             ))
 
     results.sort(key=lambda r: r.confidence, reverse=True)

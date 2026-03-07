@@ -70,6 +70,7 @@ GET /ask?q=топ-5+аптек+в+центральном+районе
 | [Open-Meteo](https://open-meteo.com) | 15 мин | PM2.5, PM10, AQI, погода по 11 точкам (бесплатно) |
 | CityAir API | 15 мин | Телеметрия физических датчиков (требует `CITYAIR_API_KEY`) |
 | [2GIS Public Transport](https://dev.2gis.com/api) | real-time | Маршруты общественного транспорта (требует `TWOGIS_API_KEY`, данные не сохраняются) |
+| [OpenStreetMap Overpass API](https://overpass-api.de) | 7 дн | Стационарные камеры фиксации нарушений ПДД · лицензия ODbL |
 
 ## Поддерживаемые темы
 
@@ -83,8 +84,8 @@ GET /ask?q=топ-5+аптек+в+центральном+районе
 | `pharmacies` | Аптеки | ~27 |
 | `sport_grounds` | Спортплощадки | ~142 |
 | `sport_orgs` | Спортивные организации | ~89 |
-| `parks` | Парки | ~1 |
 | `culture` | Организации культуры | ~11 |
+| `cameras` | Камеры фиксации нарушений ПДД | ~60 (OSM) |
 | `power_outages` | Отключения ЖКХ (электро/тепло/вода/газ) | реальное время |
 | `ecology` | Качество воздуха + погода | реальное время |
 
@@ -105,6 +106,7 @@ GET /ask?q=топ-5+аптек+в+центральном+районе
 | «воздух», «экология», «смог» | `ECO_STATUS` | Качество воздуха + погода |
 | «ПДК», «превышен», «опасн» | `ECO_PDK` | Превышения PM2.5 > 35 мкг/м³ |
 | «динамика», «тренд», «неделю» | `ECO_HISTORY` | История AQI/PM по дням |
+| «камер», «видеофиксац», «радар» | `FILTER` | Список камер с координатами |
 
 ## Районы Новосибирска и прилегающие территории
 
@@ -139,6 +141,15 @@ _TAGS_METADATA = [
     {
         "name": "Управление",
         "description": "Загрузка и обновление данных из внешних источников.",
+    },
+    {
+        "name": "Камеры",
+        "description": (
+            "Стационарные камеры фиксации нарушений ПДД в Новосибирске. "
+            "Источник: OpenStreetMap (Overpass API, тег `highway=speed_camera`). "
+            "Координаты предзагружены из OSM — геокодирование не требуется. "
+            "Лицензия данных: ODbL (openstreetmap.org/copyright). TTL = 7 дней."
+        ),
     },
     {
         "name": "2GIS",
@@ -609,6 +620,26 @@ const NSKTests = (() => {
       addLine('  ✗ Отключения ЖКХ: ' + e.message, 'failed');
     }
 
+    // ── 4. Камеры фиксации нарушений (OSM) ──────────────────────────────────
+    addLine('', '');
+    addLine('▶ Камеры фиксации нарушений (OpenStreetMap / Overpass API)…', 'info');
+    try {
+      const resp = await fetch('/cameras/update', { method: 'POST' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      const info = (data.updated || {}).cameras || {};
+      if (info.success) {
+        totalOk++;
+        addLine('  ✓ cameras — ' + (info.rows || 0) + ' камер · OSM ODbL', 'passed');
+      } else {
+        totalErr++;
+        addLine('  ✗ cameras — данные не загружены (Overpass API недоступен?)', 'failed');
+      }
+    } catch (e) {
+      totalErr++;
+      addLine('  ✗ Камеры: ' + e.message, 'failed');
+    }
+
     // ── Итог ─────────────────────────────────────────────────────────────────
     addLine('', '');
     if (totalErr === 0) {
@@ -697,6 +728,26 @@ def run_tests():
         except Exception:
             health_checks.append({"topic": "ecology", "status": "missing",
                                   "msg": "Ошибка проверки экологии"})
+
+        # ── Камеры фиксации ──────────────────────────────────────────────────
+        try:
+            from .cameras_cache import get_cameras_meta, is_cameras_stale, count_cameras
+            cam_meta = get_cameras_meta()
+            if cam_meta.get("last_updated"):
+                stale = is_cameras_stale()
+                n = cam_meta.get("total_rows", count_cameras())
+                ts = str(cam_meta["last_updated"])[:16].replace("T", " ")
+                health_checks.append({
+                    "topic": "cameras",
+                    "status": "stale" if stale else "ok",
+                    "msg": f"{n} камер · OSM · {ts}",
+                })
+            else:
+                health_checks.append({"topic": "cameras", "status": "missing",
+                                      "msg": "Нет данных о камерах"})
+        except Exception:
+            health_checks.append({"topic": "cameras", "status": "missing",
+                                  "msg": "Ошибка проверки камер"})
 
         yield _sse({"type": "health", "checks": health_checks})
 
@@ -1066,6 +1117,60 @@ def get_ask(
             **result,
         }
 
+    # ── Камеры фиксации нарушений ПДД (OSM Overpass) ─────────────────────────
+    if topic == "cameras":
+        from .cameras_cache import (
+            query_cameras, count_cameras, get_cameras_meta,
+            upsert_cameras, is_cameras_stale,
+        )
+        from .cameras_fetcher import fetch_cameras
+
+        if is_cameras_stale():
+            fetched = fetch_cameras()
+            if fetched:
+                upsert_cameras(fetched)
+
+        op = plan.operation
+        meta = get_cameras_meta()
+        total = count_cameras()
+
+        if op == "COUNT":
+            return {
+                "query": q,
+                "topic": topic,
+                "topic_name": route_result.name,
+                "confidence": round(route_result.confidence, 3),
+                "operation": "COUNT",
+                "count": total,
+                "rows": [],
+                "columns": [],
+                "cameras_meta": {
+                    "last_updated": str(meta.get("last_updated") or ""),
+                    "total_rows": meta.get("total_rows", 0),
+                    "source": "OpenStreetMap · Overpass API",
+                },
+            }
+        else:
+            lim = plan.limit or 60
+            rows = query_cameras(limit=lim)
+            return {
+                "query": q,
+                "topic": topic,
+                "topic_name": route_result.name,
+                "confidence": round(route_result.confidence, 3),
+                "operation": "FILTER",
+                "count": total,
+                "rows": rows,
+                "columns": ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref"],
+                "coords_enriched": True,
+                "coords_source": "OpenStreetMap (предзагружены)",
+                "cameras_meta": {
+                    "last_updated": str(meta.get("last_updated") or ""),
+                    "total_rows": meta.get("total_rows", 0),
+                    "source": "OpenStreetMap · Overpass API",
+                },
+            }
+
     # ── Стандартные темы opendata ─────────────────────────────────────────────
     if not table_exists(topic):
         return {
@@ -1398,7 +1503,7 @@ def post_update(
         description=(
             "ID темы для обновления. Если не указан — обновляются все 10 тем (~1–2 мин).\n\n"
             "Доступные ID: `parking`, `stops`, `schools`, `kindergartens`, "
-            "`libraries`, `pharmacies`, `parks`, `sport_grounds`, `sport_orgs`, `culture`"
+            "`libraries`, `pharmacies`, `sport_grounds`, `sport_orgs`, `culture`"
         ),
         examples={"default": {"summary": "Конкретная тема", "value": "parking"}},
     ),
@@ -1414,6 +1519,9 @@ def post_update(
 
     > **Отключения ЖКХ** (`power_outages`) обновляются автоматически при запросах
     > через `/ask` (TTL 30 мин). Принудительно в CLI: `bot power update`.
+
+    > **Камеры фиксации** (`cameras`) имеют отдельный эндпоинт: `POST /cameras/update`
+    > (источник — OpenStreetMap Overpass API, TTL 7 дней).
     """
     from .cli import _do_update
     from .registry import list_topics
@@ -1425,6 +1533,88 @@ def post_update(
         results[t] = {"rows": rows, "success": rows > 0}
 
     return {"updated": results}
+
+
+# ── Cameras endpoints ─────────────────────────────────────────────────────────
+
+@app.get(
+    "/cameras",
+    tags=["Камеры"],
+    summary="Список камер фиксации нарушений ПДД",
+    response_description="Массив камер с координатами (_lat, _lon) и мета-информацией",
+)
+def get_cameras(
+    limit: int = Query(60, ge=1, le=200, description="Максимум записей в ответе"),
+) -> dict:
+    """
+    Возвращает список стационарных камер фиксации нарушений ПДД в Новосибирске.
+
+    Данные берутся из кеша OSM (Overpass API, тег `highway=speed_camera`).
+    При первом запросе или по истечении TTL (7 дней) кеш обновляется автоматически.
+
+    ### Поля каждой камеры
+
+    | Поле | Тип | Описание |
+    |---|---|---|
+    | `osm_id` | string | ID объекта в OpenStreetMap |
+    | `_lat` | float | Широта |
+    | `_lon` | float | Долгота |
+    | `maxspeed` | string | Ограничение скорости (например `60`) |
+    | `name` | string | Название камеры (если задано в OSM) |
+    | `direction` | string | Направление съёмки в градусах (если задано) |
+    | `ref` | string | Номер / ссылка (если задано) |
+
+    **Лицензия:** данные OpenStreetMap, ODbL — [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright)
+
+    Эквивалентно запросу: `GET /ask?q=камеры+видеофиксации`
+    """
+    from .cameras_cache import query_cameras, count_cameras, get_cameras_meta, upsert_cameras, is_cameras_stale
+    from .cameras_fetcher import fetch_cameras
+
+    if is_cameras_stale():
+        fetched = fetch_cameras()
+        if fetched:
+            upsert_cameras(fetched)
+
+    rows = query_cameras(limit=limit)
+    meta = get_cameras_meta()
+    return {
+        "operation": "FILTER",
+        "count": count_cameras(),
+        "rows": rows,
+        "columns": ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref"],
+        "coords_enriched": True,
+        "coords_source": "OpenStreetMap (предзагружены)",
+        "cameras_meta": {
+            "last_updated": str(meta.get("last_updated") or ""),
+            "total_rows": meta.get("total_rows", 0),
+            "source": "OpenStreetMap · Overpass API · highway=speed_camera",
+            "bbox": "54.70,82.60,55.25,83.40 (Новосибирск)",
+            "license": "ODbL · openstreetmap.org/copyright",
+        },
+    }
+
+
+@app.post(
+    "/cameras/update",
+    tags=["Камеры"],
+    summary="Обновить данные о камерах фиксации нарушений (OSM)",
+    response_description="Статус обновления: rows и success",
+)
+def post_cameras_update() -> dict:
+    """
+    Принудительно обновляет данные о стационарных камерах фиксации нарушений ПДД
+    из OpenStreetMap через Overpass API.
+
+    TTL: 7 дней. При запросах через `/ask?q=камеры` обновление происходит автоматически.
+
+    **Источник:** OpenStreetMap, лицензия ODbL (openstreetmap.org/copyright).
+    """
+    from .cameras_fetcher import fetch_cameras
+    from .cameras_cache import upsert_cameras
+    cameras = fetch_cameras()
+    rows = upsert_cameras(cameras)
+    return {"updated": {"cameras": {"rows": rows, "success": rows > 0}}}
 
 
 # ── Ecology endpoints ─────────────────────────────────────────────────────────

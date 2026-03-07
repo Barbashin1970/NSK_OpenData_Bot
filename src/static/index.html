@@ -207,6 +207,7 @@ const ROLE_CHIPS = {
     {q: "риски для жизни в городе"},
     {q: "детские спортивные организации", geo: true},
     {q: "школы в Советском районе", geo: true},
+    {q: "камеры видеофиксации", geo: true},
     {q: "что ты умеешь"},
   ],
   official: [
@@ -223,6 +224,7 @@ const ROLE_CHIPS = {
     {q: "аптеки в Ленинском районе", geo: true},
     {q: "библиотеки города", geo: true},
     {q: "культурные организации", geo: true},
+    {q: "камеры фиксации нарушений", geo: true},
   ],
   mayor: [
     {q: "отключения ЖКХ сейчас"},
@@ -235,6 +237,7 @@ const ROLE_CHIPS = {
     {q: "топ-5 аптек", geo: true},
     {q: "культурные организации", geo: true},
     {q: "аптеки в Центральном районе", geo: true},
+    {q: "камеры видеофиксации на дорогах", geo: true},
   ],
 };
 
@@ -1419,6 +1422,7 @@ let _mapglKey = null;
 let _mapInstance = null;
 let _currentMapRows = null;
 let _lastMapQuery = '';
+let _lastMapCoordsEnriched = false; // true если ответ уже содержит _lat/_lon (камеры)
 
 async function initMapgl() {
   try {
@@ -1435,6 +1439,7 @@ async function initMapgl() {
 
 function _resetMap() {
   _currentMapRows = null;
+  _lastMapCoordsEnriched = false;
   if (_mapInstance) {
     try { _mapInstance.destroy(); } catch(e) {}
     _mapInstance = null;
@@ -1446,6 +1451,7 @@ function maybeShowMapBtn(data, query) {
   if (!['FILTER', 'TOP_N'].includes(data.operation)) return;
   if (!data.rows || !data.rows.length) return;
   _lastMapQuery = query;
+  _lastMapCoordsEnriched = Boolean(data.coords_enriched);
   const el = document.getElementById('resultArea');
   const wrap = document.createElement('div');
   wrap.id = 'mapBtnArea';
@@ -1478,9 +1484,10 @@ async function loadMap() {
   }
 
   btn.disabled = true;
-  btn.textContent = '⏳ Геокодирование адресов...';
+  const _coordsPre = _lastMapCoordsEnriched;
+  btn.textContent = _coordsPre ? '⏳ Загрузка...' : '⏳ Геокодирование адресов...';
   status.classList.remove('hidden');
-  status.textContent = 'Это может занять до 30 с при первом запросе';
+  status.textContent = _coordsPre ? '' : 'Это может занять до 30 с при первом запросе';
 
   try {
     const r = await fetch('/ask?q=' + encodeURIComponent(_lastMapQuery) + '&with_coords=true');
@@ -1518,9 +1525,17 @@ async function loadMap() {
 }
 
 function _buildMarkerLabel(row) {
+  // Камера фиксации (OSM): osm_id, maxspeed, name, ref
+  if (row.osm_id !== undefined) {
+    const title = row.name || 'Камера фиксации';
+    const speed = row.maxspeed ? `<span style="color:#fbbf24">⚡ ${row.maxspeed} км/ч</span>` : '';
+    const ref   = row.ref ? `<span style="color:#94a3b8">${row.ref}</span>` : '';
+    const parts = [speed, ref].filter(Boolean).join(' · ');
+    return `<b style="display:block;margin-bottom:2px">${title}</b>${parts}`;
+  }
   // Имя объекта — перебираем известные поля по всем датасетам
   const name = row.Name || row.BiblName || row.SchoolName || row.OrgName
-             || row.SportOrgName || row.ParkName || row.CultureName || '';
+             || row.SportOrgName || row.CultureName || '';
   // Адрес — улица + дом
   const street = row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '';
   const house  = row.AdrDom   || row.Dom    || row.House  || '';

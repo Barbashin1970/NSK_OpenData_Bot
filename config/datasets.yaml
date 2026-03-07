@@ -179,38 +179,6 @@ datasets:
         - Phone
         - Site
 
-  parks:
-    name: "Парки"
-    description: "Муниципальные парки культуры и отдыха"
-    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=24"
-    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data24/data-20260212T0324-structure-20260212T0324.CSV"
-    format: csv
-    keywords:
-      - парки           # покажи парки, парки по районам
-      - парков          # список парков, сколько парков (родительный падеж)
-      - парке           # в парке, про парки (предложный падеж)
-      - парк культур
-      - парк отдых
-      - парк новосибирска
-      - лесопарк
-      - сквер
-      - зон отдых
-      - место отдых
-      - пко
-      - зеленая зон
-      - муниципальный парк
-    fields:
-      district_col: AdrDistr
-      street_col: AdrStreet
-      name_col: ParkName
-      display_cols:
-        - ParkName
-        - AdrDistr
-        - AdrStreet
-        - AdrDom
-        - Phone
-        - Site
-
   sport_grounds:
     name: "Спортплощадки"
     description: "Спортивные площадки города Новосибирска"
