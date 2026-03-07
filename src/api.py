@@ -1168,7 +1168,8 @@ def get_ask(
 
         op = plan.operation
         meta = get_cameras_meta()
-        total = count_cameras()
+        district = plan.district
+        total = count_cameras(district_filter=district)
 
         if op == "COUNT":
             return {
@@ -1189,7 +1190,7 @@ def get_ask(
         else:
             lim = plan.limit or 20
             off = plan.offset or 0
-            rows = query_cameras(limit=lim, offset=off)
+            rows = query_cameras(limit=lim, offset=off, district_filter=district)
             return {
                 "query": q,
                 "topic": topic,
@@ -1198,7 +1199,7 @@ def get_ask(
                 "operation": "FILTER",
                 "count": total,
                 "rows": rows,
-                "columns": ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref"],
+                "columns": ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref", "district"],
                 "coords_enriched": True,
                 "coords_source": "OpenStreetMap (предзагружены)",
                 "cameras_meta": {
@@ -1582,6 +1583,7 @@ def post_update(
 )
 def get_cameras(
     limit: int = Query(60, ge=1, le=200, description="Максимум записей в ответе"),
+    district: str | None = Query(None, description="Фильтр по району (например 'Советский')"),
 ) -> dict:
     """
     Возвращает список стационарных камер фиксации нарушений ПДД в Новосибирске.
@@ -1600,6 +1602,7 @@ def get_cameras(
     | `name` | string | Название камеры (если задано в OSM) |
     | `direction` | string | Направление съёмки в градусах (если задано) |
     | `ref` | string | Номер / ссылка (если задано) |
+    | `district` | string | Район города (вычисляется по координатам) |
 
     **Лицензия:** данные OpenStreetMap, ODbL — [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright)
 
@@ -1613,13 +1616,13 @@ def get_cameras(
         if fetched:
             upsert_cameras(fetched)
 
-    rows = query_cameras(limit=limit)
+    rows = query_cameras(limit=limit, district_filter=district)
     meta = get_cameras_meta()
     return {
         "operation": "FILTER",
-        "count": count_cameras(),
+        "count": count_cameras(district_filter=district),
         "rows": rows,
-        "columns": ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref"],
+        "columns": ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref", "district"],
         "coords_enriched": True,
         "coords_source": "OpenStreetMap (предзагружены)",
         "cameras_meta": {

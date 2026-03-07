@@ -11,11 +11,36 @@ from typing import Any
 
 import duckdb
 
+from .constants import NSK_ECOLOGY_STATIONS
+
 log = logging.getLogger(__name__)
 
 _DB_PATH = Path(__file__).parent.parent / "data" / "cache.db"
 _TABLE = "cameras"
 _TTL_DAYS = 7
+
+# Bounding box of Novosibirsk city (approximate)
+_NSK_LAT_MIN, _NSK_LAT_MAX = 54.70, 55.15
+_NSK_LON_MIN, _NSK_LON_MAX = 82.65, 83.35
+
+
+def _classify_district(lat: float | None, lon: float | None) -> str:
+    """Определяет район города по координатам (ближайший центроид станции мониторинга).
+
+    Если точка за пределами Новосибирска — возвращает 'Прочие'.
+    """
+    if lat is None or lon is None:
+        return "Прочие"
+    if not (_NSK_LAT_MIN <= lat <= _NSK_LAT_MAX and _NSK_LON_MIN <= lon <= _NSK_LON_MAX):
+        return "Прочие"
+    best_dist = float("inf")
+    best_district = "Прочие"
+    for st in NSK_ECOLOGY_STATIONS:
+        d = (lat - st["latitude"]) ** 2 + (lon - st["longitude"]) ** 2
+        if d < best_dist:
+            best_dist = d
+            best_district = st["district"]
+    return best_district
 
 
 def _conn():
@@ -34,9 +59,15 @@ def _ensure_table() -> None:
                 name      TEXT,
                 direction TEXT,
                 ref       TEXT,
+                district  TEXT DEFAULT '',
                 loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Миграция: добавляем district если таблица существовала без него
+        try:
+            conn.execute(f"ALTER TABLE {_TABLE} ADD COLUMN district TEXT DEFAULT ''")
+        except Exception:
+            pass  # Колонка уже существует
         conn.execute("""
             CREATE TABLE IF NOT EXISTS cameras_meta (
                 id           INTEGER PRIMARY KEY DEFAULT 1,
@@ -44,6 +75,20 @@ def _ensure_table() -> None:
                 total_rows   INTEGER
             )
         """)
+        # Бэкфилл: заполняем district для камер у которых он пустой
+        try:
+            rows = conn.execute(
+                f"SELECT osm_id, _lat, _lon FROM {_TABLE} WHERE district IS NULL OR district = ''"
+            ).fetchall()
+            for osm_id, lat, lon in rows:
+                d = _classify_district(lat, lon)
+                conn.execute(
+                    f"UPDATE {_TABLE} SET district = ? WHERE osm_id = ?", [d, osm_id]
+                )
+            if rows:
+                log.info("cameras_cache: backfilled district for %d cameras", len(rows))
+        except Exception as e:
+            log.warning("cameras_cache: district backfill failed: %s", e)
     finally:
         conn.close()
 
@@ -57,10 +102,11 @@ def upsert_cameras(cameras: list[dict[str, Any]]) -> int:
     try:
         conn.execute(f"DELETE FROM {_TABLE}")
         for cam in cameras:
+            district = _classify_district(cam.get("_lat"), cam.get("_lon"))
             conn.execute(
                 f"""
-                INSERT INTO {_TABLE} (osm_id, _lat, _lon, maxspeed, name, direction, ref)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO {_TABLE} (osm_id, _lat, _lon, maxspeed, name, direction, ref, district)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     cam.get("osm_id", ""),
@@ -70,6 +116,7 @@ def upsert_cameras(cameras: list[dict[str, Any]]) -> int:
                     cam.get("name", ""),
                     cam.get("direction", ""),
                     cam.get("ref", ""),
+                    district,
                 ],
             )
         now = datetime.now(timezone.utc).isoformat()
@@ -87,30 +134,39 @@ def query_cameras(
     limit: int = 50,
     offset: int = 0,
     maxspeed_filter: str | None = None,
+    district_filter: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Возвращает список камер из кеша."""
+    """Возвращает список камер из кеша с опциональным фильтром по району."""
     _ensure_table()
     conn = _conn()
     try:
-        where = ""
+        wheres = []
         if maxspeed_filter:
-            where = f"WHERE maxspeed = '{maxspeed_filter}'"
+            wheres.append(f"maxspeed = '{maxspeed_filter}'")
+        if district_filter:
+            d = district_filter.split()[0]
+            wheres.append(f"district ILIKE '%{d}%'")
+        where = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         rows = conn.execute(
-            f"SELECT osm_id, _lat, _lon, maxspeed, name, direction, ref "
-            f"FROM {_TABLE} {where} ORDER BY osm_id LIMIT {limit} OFFSET {offset}"
+            f"SELECT osm_id, _lat, _lon, maxspeed, name, direction, ref, district "
+            f"FROM {_TABLE} {where} ORDER BY district, osm_id LIMIT {limit} OFFSET {offset}"
         ).fetchall()
-        cols = ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref"]
+        cols = ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref", "district"]
         return [dict(zip(cols, row)) for row in rows]
     finally:
         conn.close()
 
 
-def count_cameras() -> int:
-    """Возвращает общее количество камер в кеше."""
+def count_cameras(district_filter: str | None = None) -> int:
+    """Возвращает количество камер в кеше (с опциональным фильтром по району)."""
     _ensure_table()
     conn = _conn()
     try:
-        row = conn.execute(f"SELECT COUNT(*) FROM {_TABLE}").fetchone()
+        where = ""
+        if district_filter:
+            d = district_filter.split()[0]
+            where = f"WHERE district ILIKE '%{d}%'"
+        row = conn.execute(f"SELECT COUNT(*) FROM {_TABLE} {where}").fetchone()
         return row[0] if row else 0
     finally:
         conn.close()
