@@ -1517,6 +1517,20 @@ async function loadMap() {
   }
 }
 
+function _buildMarkerLabel(row) {
+  // Имя объекта — перебираем известные поля по всем датасетам
+  const name = row.Name || row.BiblName || row.SchoolName || row.OrgName
+             || row.SportOrgName || row.ParkName || row.CultureName || '';
+  // Адрес — улица + дом
+  const street = row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '';
+  const house  = row.AdrDom   || row.Dom    || row.House  || '';
+  const addr   = street ? (house ? `${street}, ${house}` : street) : '';
+  if (name && addr) return `<b style="display:block;margin-bottom:2px">${name}</b>${addr}`;
+  if (name) return `<b>${name}</b>`;
+  if (addr) return addr;
+  return 'Объект';
+}
+
 function _renderMap() {
   const container = document.getElementById('map2gis');
   if (!container || !_currentMapRows || !_mapglKey) return;
@@ -1533,9 +1547,40 @@ function _renderMap() {
       key: _mapglKey,
     });
 
+    // Tooltip — плавающий div внутри контейнера карты
+    container.style.position = 'relative';
+    const tooltip = document.createElement('div');
+    tooltip.style.cssText = [
+      'position:absolute', 'background:#1e293b', 'color:#e2e8f0',
+      'padding:7px 11px', 'border-radius:9px', 'font-size:12px',
+      'line-height:1.45', 'pointer-events:none', 'z-index:200',
+      'display:none', 'max-width:240px', 'white-space:normal',
+      'box-shadow:0 4px 16px rgba(0,0,0,.5)', 'border:1px solid #334155',
+    ].join(';');
+    container.appendChild(tooltip);
+
     _currentMapRows.forEach(row => {
-      new mapgl.Marker(_mapInstance, {
+      const marker = new mapgl.Marker(_mapInstance, {
         coordinates: [row._lon, row._lat],
+      });
+      const el = marker.getElement ? marker.getElement() : null;
+      if (!el) return;
+      el.style.cursor = 'pointer';
+      el.addEventListener('mouseover', () => {
+        tooltip.innerHTML = _buildMarkerLabel(row);
+        tooltip.style.display = 'block';
+      });
+      el.addEventListener('mousemove', (e) => {
+        const rect = container.getBoundingClientRect();
+        let x = e.clientX - rect.left + 14;
+        let y = e.clientY - rect.top  - 14;
+        // Не вылезать за правый край
+        if (x + 250 > container.offsetWidth) x = e.clientX - rect.left - 250;
+        tooltip.style.left = x + 'px';
+        tooltip.style.top  = y + 'px';
+      });
+      el.addEventListener('mouseout', () => {
+        tooltip.style.display = 'none';
       });
     });
   } catch(e) {
