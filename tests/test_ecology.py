@@ -170,9 +170,9 @@ def test_ecology_upsert_stations():
 
 
 def test_ecology_stations_count():
-    """Все 10 районов присутствуют в справочнике."""
+    """Все 11 точек мониторинга присутствуют в справочнике (10 районов + Кольцово)."""
     from src.constants import NSK_ECOLOGY_STATIONS
-    assert len(NSK_ECOLOGY_STATIONS) == 10
+    assert len(NSK_ECOLOGY_STATIONS) == 11
 
 
 def test_ecology_stations_have_required_fields():
@@ -185,10 +185,10 @@ def test_ecology_stations_have_required_fields():
 
 
 def test_ecology_upsert_and_query_current(ecology_db_with_data):
-    """После upsert query_current() возвращает записи для всех 10 районов."""
+    """После upsert query_current() возвращает записи для всех 11 точек мониторинга."""
     from src.ecology_cache import query_current
     rows = query_current()
-    assert len(rows) == 10, f"Ожидалось 10 районов, получено {len(rows)}"
+    assert len(rows) == 11, f"Ожидалось 11 точек мониторинга, получено {len(rows)}"
 
 
 def test_ecology_query_current_district_filter(ecology_db_with_data):
@@ -295,7 +295,7 @@ def test_execute_ecology_status(ecology_db_with_data):
     assert "rows" in result
     assert "columns" in result
     assert result["operation"] == "ECO_STATUS"
-    assert result["count"] == 10
+    assert result["count"] == 11
 
 
 def test_execute_ecology_pdk(ecology_db_with_data):
@@ -419,8 +419,8 @@ def test_api_ecology_update_ok(api_client, monkeypatch):
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
-    assert data["records_loaded"] == 10
-    assert data["districts_covered"] == 10
+    assert data["records_loaded"] == 11
+    assert data["districts_covered"] == 11
 
 
 def test_api_ask_ecology_routing(api_client):
