@@ -94,6 +94,10 @@
           </button>
           <div id="roleDropdown" class="role-dropdown hidden"></div>
         </div>
+        <!-- 2GIS badge (shown when key is available) -->
+        <div id="mapglBadge" class="hidden flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs rounded-xl font-medium" title="2GIS API ключ загружен · карты и геокодирование доступны">
+          🗺 2GIS
+        </div>
         <!-- API Docs -->
         <a href="/docs" target="_blank"
            class="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-xl border border-white/20 transition-all whitespace-nowrap"
@@ -548,13 +552,14 @@ async function ask() {
     const resp = await fetch('/ask?q=' + encodeURIComponent(q));
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    renderResult(data);
+    renderResult(data, q);
   } catch (e) {
     showError('Ошибка соединения с сервером. Проверьте, что бот запущен: <code class="bg-red-100 px-1 rounded">bot serve</code>');
   }
 }
 
 function setLoading(q) {
+  _resetMap();
   document.getElementById('loadingState').className = 'flex items-center gap-3 text-slate-500 text-sm';
   document.getElementById('loadingText').textContent = `Ищу ответ на: «${q}»`;
   document.getElementById('resultArea').className = 'hidden';
@@ -568,7 +573,7 @@ function showError(html) {
 }
 
 // ─── Render result ────────────────────────────────────────────────────────────
-function renderResult(data) {
+function renderResult(data, query) {
   document.getElementById('loadingState').className = 'hidden';
   const el = document.getElementById('resultArea');
 
@@ -605,6 +610,9 @@ function renderResult(data) {
       bar.style.width = bar.dataset.pct + '%';
     });
   });
+
+  // Map button for table results
+  if (query) maybeShowMapBtn(data, query);
 }
 
 // ─── Meta header ─────────────────────────────────────────────────────────────
@@ -1396,10 +1404,139 @@ function renderTopics(topics) {
   document.getElementById('topicsGrid').innerHTML = cards + ecoCard + powerCard;
 }
 
+// ─── 2GIS Map ─────────────────────────────────────────────────────────────────
+let _mapglKey = null;
+let _mapInstance = null;
+let _currentMapRows = null;
+let _lastMapQuery = '';
+
+async function initMapgl() {
+  try {
+    const r = await fetch('/mapgl-key');
+    const d = await r.json();
+    if (d.available) {
+      _mapglKey = d.key;
+      const badge = document.getElementById('mapglBadge');
+      if (badge) badge.classList.remove('hidden');
+    }
+  } catch(e) {}
+}
+
+function _resetMap() {
+  _currentMapRows = null;
+  if (_mapInstance) {
+    try { _mapInstance.destroy(); } catch(e) {}
+    _mapInstance = null;
+  }
+}
+
+function maybeShowMapBtn(data, query) {
+  if (!_mapglKey) return;
+  if (!['FILTER', 'TOP_N'].includes(data.operation)) return;
+  if (!data.rows || !data.rows.length) return;
+  _lastMapQuery = query;
+  const el = document.getElementById('resultArea');
+  const wrap = document.createElement('div');
+  wrap.id = 'mapBtnArea';
+  wrap.className = 'flex flex-col gap-3';
+  wrap.innerHTML = `
+    <div class="flex items-center gap-3">
+      <button id="mapToggleBtn"
+        class="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-sm font-semibold rounded-xl transition-all shadow-sm"
+        onclick="loadMap()">
+        📍 Показать на карте
+      </button>
+      <span id="mapStatusMsg" class="text-xs text-slate-400 hidden"></span>
+    </div>
+    <div id="mapPanelWrap" class="hidden"></div>
+  `;
+  el.appendChild(wrap);
+}
+
+async function loadMap() {
+  const btn = document.getElementById('mapToggleBtn');
+  const panel = document.getElementById('mapPanelWrap');
+  const status = document.getElementById('mapStatusMsg');
+  if (!btn || !panel) return;
+
+  // Toggle if already loaded
+  if (_currentMapRows) {
+    panel.classList.toggle('hidden');
+    btn.textContent = panel.classList.contains('hidden') ? '📍 Показать на карте' : '🗺 Скрыть карту';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Геокодирование адресов...';
+  status.classList.remove('hidden');
+  status.textContent = 'Это может занять до 30 с при первом запросе';
+
+  try {
+    const r = await fetch('/ask?q=' + encodeURIComponent(_lastMapQuery) + '&with_coords=true');
+    const d = await r.json();
+    const rows = (d.rows || []).filter(row => row._lat && row._lon);
+    status.classList.add('hidden');
+
+    if (!rows.length) {
+      btn.disabled = false;
+      btn.textContent = '📍 Координаты не найдены';
+      return;
+    }
+
+    _currentMapRows = rows;
+    btn.disabled = false;
+    btn.textContent = `🗺 Скрыть карту`;
+
+    panel.innerHTML = '<div id="map2gis" style="height:420px;border-radius:1rem;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 1px 8px rgba(0,0,0,.08)"></div>';
+    panel.classList.remove('hidden');
+
+    if (!window.mapgl) {
+      const s = document.createElement('script');
+      s.src = 'https://mapgl.2gis.com/api/js/v1';
+      s.onload = _renderMap;
+      s.onerror = () => { panel.innerHTML = '<div class="p-4 text-sm text-red-500 bg-red-50 border border-red-200 rounded-xl">Не удалось загрузить MapGL JS — проверьте соединение с интернетом</div>'; };
+      document.head.appendChild(s);
+    } else {
+      _renderMap();
+    }
+  } catch(e) {
+    status.classList.add('hidden');
+    btn.disabled = false;
+    btn.textContent = '⚠ Ошибка загрузки координат';
+  }
+}
+
+function _renderMap() {
+  const container = document.getElementById('map2gis');
+  if (!container || !_currentMapRows || !_mapglKey) return;
+
+  const lats = _currentMapRows.map(r => r._lat);
+  const lons = _currentMapRows.map(r => r._lon);
+  const centerLat = lats.reduce((a, b) => a + b, 0) / lats.length;
+  const centerLon = lons.reduce((a, b) => a + b, 0) / lons.length;
+
+  try {
+    _mapInstance = new mapgl.Map('map2gis', {
+      center: [centerLon, centerLat],
+      zoom: 13,
+      key: _mapglKey,
+    });
+
+    _currentMapRows.forEach(row => {
+      new mapgl.Marker(_mapInstance, {
+        coordinates: [row._lon, row._lat],
+      });
+    });
+  } catch(e) {
+    container.innerHTML = '<div class="p-4 text-sm text-red-500">Ошибка инициализации карты: ' + esc(String(e)) + '</div>';
+  }
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 updateRoleBtn();
 buildChips();
 loadTopics();
+initMapgl();
 document.getElementById('queryInput').focus();
 if (currentRole !== 'citizen') {
   document.getElementById('roleDashboard').classList.remove('hidden');

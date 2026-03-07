@@ -1364,6 +1364,13 @@ def validate_twogis_key(
         return {"valid": False, "masked": masked, "error": str(e)}
 
 
+@app.get("/mapgl-key", include_in_schema=False)
+def get_mapgl_key() -> dict:
+    """Возвращает ключ 2GIS для инициализации MapGL JS на фронтенде."""
+    key = _get_twogis_key()
+    return {"key": key or "", "available": bool(key)}
+
+
 @app.post(
     "/update",
     tags=["Управление"],
