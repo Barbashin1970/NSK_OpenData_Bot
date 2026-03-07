@@ -2,6 +2,7 @@
 
 
 CLI-агент и веб-интерфейс для работы с открытыми данными и системами жизнеобеспечения Новосибирска.
+Доступен по ссылке: https://nsk-opendata-bot.up.railway.app/
 
 > **Источники данных:**
 > - Открытые данные мэрии: [opendata.novo-sibirsk.ru](http://opendata.novo-sibirsk.ru) — парковки, школы, аптеки и др.
@@ -211,7 +212,7 @@ python3 --version   # должно быть 3.11 или выше
 
 ```bash
 # Скачайте проект (если ещё не сделали)
-git clone https://github.com/ВАШ_ЛОГИН/nsk-opendata-bot.git
+git clone https://github.com/Barbashin1970/nsk-opendata-bot.git
 cd nsk-opendata-bot
 
 # Установите бот (один раз)
