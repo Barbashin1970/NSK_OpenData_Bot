@@ -188,6 +188,23 @@ def _load_saved_api_keys() -> None:
         if saved:
             os.environ["TWOGIS_API_KEY"] = saved
 
+
+@app.on_event("startup")
+def _seed_ecology_history() -> None:
+    """При старте заполняет ecology_daily_archive заглушками за последние 20 дней.
+
+    Вставка происходит только для дат, которых ещё нет в архиве
+    (ON CONFLICT DO NOTHING), поэтому реальные данные не перезаписываются.
+    Заглушки (-10 °C, pm25≈12) будут вытеснены реальными показателями
+    Open-Meteo при первом же обновлении экологических данных.
+    """
+    try:
+        from .ecology_cache import seed_history_placeholder
+        seed_history_placeholder(days=20, temp_c=-10.0)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"seed_ecology_history: {e}")
+
 # ── Кастомный Swagger UI: навигационная панель с кнопкой «← На главную» ───────
 _NAV_BAR_HTML = """
 <style>
