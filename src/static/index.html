@@ -1459,6 +1459,7 @@ async function fetchPage(offset) {
   const q = _pageQuery;
   if (!q) return;
   _pageOffset = offset;
+  _resetMap();   // сбросить стейт карты — новая страница, новые строки
   document.getElementById('loadingState').className = 'flex items-center gap-3 text-slate-500 text-sm';
   document.getElementById('loadingText').textContent = `Загружаю страницу…`;
   document.getElementById('resultArea').className = 'hidden';
@@ -1480,6 +1481,7 @@ let _mapInstance = null;
 let _currentMapRows = null;
 let _lastMapQuery = '';
 let _lastMapCoordsEnriched = false; // true если ответ уже содержит _lat/_lon (камеры)
+let _lastPageRows = null;           // строки текущей страницы (для coords_enriched — без ре-фетча)
 
 async function initMapgl() {
   try {
@@ -1497,6 +1499,7 @@ async function initMapgl() {
 function _resetMap() {
   _currentMapRows = null;
   _lastMapCoordsEnriched = false;
+  _lastPageRows = null;
   if (_mapInstance) {
     try { _mapInstance.destroy(); } catch(e) {}
     _mapInstance = null;
@@ -1509,6 +1512,7 @@ function maybeShowMapBtn(data, query) {
   if (!data.rows || !data.rows.length) return;
   _lastMapQuery = query;
   _lastMapCoordsEnriched = Boolean(data.coords_enriched);
+  _lastPageRows = data.rows;  // сохраняем строки для coords_enriched-сценария
   const el = document.getElementById('resultArea');
   const wrap = document.createElement('div');
   wrap.id = 'mapBtnArea';
@@ -1547,9 +1551,20 @@ async function loadMap() {
   status.textContent = _coordsPre ? '' : 'Это может занять до 30 с при первом запросе';
 
   try {
-    const r = await fetch('/ask?q=' + encodeURIComponent(_lastMapQuery) + '&with_coords=true');
-    const d = await r.json();
-    const rows = (d.rows || []).filter(row => row._lat && row._lon);
+    let rows;
+    if (_coordsPre && _lastPageRows) {
+      // Координаты уже предзагружены (камеры OSM) — берём строки текущей страницы напрямую
+      rows = _lastPageRows.filter(row => row._lat && row._lon);
+      status.classList.add('hidden');
+    } else {
+      // Обычные темы — геокодируем текущую страницу
+      const url = '/ask?q=' + encodeURIComponent(_lastMapQuery)
+        + '&with_coords=true'
+        + `&offset=${_pageOffset}&page_size=${_pageSize}`;
+      const r = await fetch(url);
+      const d = await r.json();
+      rows = (d.rows || []).filter(row => row._lat && row._lon);
+    }
     status.classList.add('hidden');
 
     if (!rows.length) {
