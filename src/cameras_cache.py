@@ -85,6 +85,7 @@ def upsert_cameras(cameras: list[dict[str, Any]]) -> int:
 
 def query_cameras(
     limit: int = 50,
+    offset: int = 0,
     maxspeed_filter: str | None = None,
 ) -> list[dict[str, Any]]:
     """Возвращает список камер из кеша."""
@@ -96,7 +97,7 @@ def query_cameras(
             where = f"WHERE maxspeed = '{maxspeed_filter}'"
         rows = conn.execute(
             f"SELECT osm_id, _lat, _lon, maxspeed, name, direction, ref "
-            f"FROM {_TABLE} {where} ORDER BY osm_id LIMIT {limit}"
+            f"FROM {_TABLE} {where} ORDER BY osm_id LIMIT {limit} OFFSET {offset}"
         ).fetchall()
         cols = ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref"]
         return [dict(zip(cols, row)) for row in rows]

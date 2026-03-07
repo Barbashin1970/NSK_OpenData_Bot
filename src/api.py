@@ -1068,9 +1068,8 @@ def get_ask(
     topic = route_result.topic
     plan = make_plan(q, topic)
     # Пагинация: применяем параметры запроса для FILTER-операций
-    if offset > 0:
-        plan.offset = offset
-    if page_size != 20:
+    plan.offset = offset
+    if page_size != 20 or plan.limit is None:
         plan.limit = page_size
 
     # ── Экология и метеорология ───────────────────────────────────────────────
@@ -1164,8 +1163,9 @@ def get_ask(
                 },
             }
         else:
-            lim = plan.limit or 60
-            rows = query_cameras(limit=lim)
+            lim = plan.limit or 20
+            off = plan.offset or 0
+            rows = query_cameras(limit=lim, offset=off)
             return {
                 "query": q,
                 "topic": topic,

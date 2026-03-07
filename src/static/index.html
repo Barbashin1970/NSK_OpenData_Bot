@@ -1646,62 +1646,37 @@ function _renderMap() {
     ].join(';');
     container.appendChild(tooltip);
 
-    const markerRows = [];
     _currentMapRows.forEach(row => {
-      new mapgl.Marker(_mapInstance, { coordinates: [row._lon, row._lat] });
-      markerRows.push(row);
-    });
+      const markerEl = document.createElement('div');
+      markerEl.style.cssText =
+        'width:20px;height:20px;background:#3b82f6;border-radius:50%;' +
+        'border:3px solid #fff;cursor:pointer;' +
+        'box-shadow:0 2px 6px rgba(0,0,0,.5);' +
+        'transition:transform .12s;flex-shrink:0';
 
-    // Tooltip via map-native mousemove event (e.lngLat + e.point).
-    // Geographic proximity scaled by zoom — no map.project() needed.
-    _mapInstance.on('mousemove', (e) => {
-      // Normalize lngLat: 2GIS MapGL может вернуть массив [lng,lat] или объект
-      let lng, lat;
-      if (!e.lngLat) return;
-      if (Array.isArray(e.lngLat)) {
-        [lng, lat] = e.lngLat;
-      } else {
-        lng = e.lngLat.lng ?? e.lngLat.lon ?? 0;
-        lat = e.lngLat.lat ?? 0;
-      }
-
-      // Порог в градусах: ~0.003° ≈ 20–30px на zoom 13; уменьшается при зуме
-      const zoom = (typeof _mapInstance.getZoom === 'function') ? _mapInstance.getZoom() : 13;
-      const thr = 0.003 / Math.pow(2, Math.max(0, zoom - 13));
-      const thrSq = thr * thr;
-
-      let hovered = null;
-      let minDist = Infinity;
-      const cosLat = Math.cos(lat * Math.PI / 180);
-      for (const row of markerRows) {
-        const dx = (row._lon - lng) * cosLat;
-        const dy = row._lat - lat;
-        const dSq = dx * dx + dy * dy;
-        if (dSq < thrSq && dSq < minDist) { minDist = dSq; hovered = row; }
-      }
-
-      if (hovered) {
-        tooltip.innerHTML = _buildMarkerLabel(hovered);
+      markerEl.addEventListener('mouseenter', () => {
+        markerEl.style.transform = 'scale(1.35)';
+        tooltip.innerHTML = _buildMarkerLabel(row);
         tooltip.style.display = 'block';
-        // Позиция: e.point {x,y} если есть, иначе из originalEvent
-        let px, py;
-        if (e.point) {
-          px = e.point.x; py = e.point.y;
-        } else if (e.originalEvent) {
-          const rect = container.getBoundingClientRect();
-          px = e.originalEvent.clientX - rect.left;
-          py = e.originalEvent.clientY - rect.top;
-        } else { px = 10; py = 10; }
-        let x = px + 14, y = py - 14;
-        if (x + 250 > container.offsetWidth) x = px - 250;
-        if (y < 0) y = py + 14;
+        const mr = markerEl.getBoundingClientRect();
+        const cr = container.getBoundingClientRect();
+        // Position tooltip to the right and slightly above marker center
+        let x = mr.left - cr.left + mr.width + 8;
+        let y = mr.top  - cr.top  + mr.height / 2 - 20;
+        // If overflows right edge, show to the left
+        if (x + 250 > cr.width) x = mr.left - cr.left - 258;
+        // Don't go above container
+        if (y < 0) y = 4;
         tooltip.style.left = x + 'px';
         tooltip.style.top  = y + 'px';
-      } else {
+      });
+      markerEl.addEventListener('mouseleave', () => {
+        markerEl.style.transform = '';
         tooltip.style.display = 'none';
-      }
+      });
+
+      new mapgl.Marker(_mapInstance, { coordinates: [row._lon, row._lat], element: markerEl });
     });
-    _mapInstance.on('mouseout', () => { tooltip.style.display = 'none'; });
   } catch(e) {
     container.innerHTML = '<div class="p-4 text-sm text-red-500">Ошибка инициализации карты: ' + esc(String(e)) + '</div>';
   }
