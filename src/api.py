@@ -1651,8 +1651,16 @@ def post_cameras_update() -> dict:
     **Источник:** OpenStreetMap, лицензия ODbL (openstreetmap.org/copyright).
     """
     from .cameras_fetcher import fetch_cameras
-    from .cameras_cache import upsert_cameras
+    from .cameras_cache import upsert_cameras, count_cameras
     cameras = fetch_cameras()
+    if not cameras:
+        # Overpass API вернул пустой ответ — оставляем старые данные без изменений
+        existing = count_cameras()
+        return {"updated": {"cameras": {
+            "rows": existing,
+            "success": existing > 0,
+            "warning": "Overpass API недоступен — возвращены кешированные данные",
+        }}}
     rows = upsert_cameras(cameras)
     return {"updated": {"cameras": {"rows": rows, "success": rows > 0}}}
 
