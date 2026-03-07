@@ -144,13 +144,14 @@ def execute_plan(plan: Plan) -> dict[str, Any]:
 
         elif plan.operation == "FILTER":
             lim = plan.limit or 20
+            off = plan.offset or 0
             sel_cols = ", ".join(f'"{c}"' for c in display_cols)
             sql = f'''
                 SELECT {sel_cols}
                 FROM {tbl}
                 {where_sql}
                 ORDER BY "{district_col}", "{name_col}"
-                LIMIT {lim}
+                LIMIT {lim} OFFSET {off}
             '''
             rows = query(sql)
 

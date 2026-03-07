@@ -999,6 +999,14 @@ def get_ask(
             "Требует настроенный 2GIS API ключ; без ключа строки возвращаются без изменений."
         ),
     ),
+    offset: int = Query(
+        0, ge=0,
+        description="Смещение строк для пагинации (0-based). Используется с операцией FILTER.",
+    ),
+    page_size: int = Query(
+        20, ge=1, le=200,
+        description="Размер страницы для операции FILTER (по умолчанию 20, макс. 200).",
+    ),
 ) -> dict:
     """
     Основной endpoint. Принимает запрос на русском языке, автоматически определяет
@@ -1059,6 +1067,11 @@ def get_ask(
 
     topic = route_result.topic
     plan = make_plan(q, topic)
+    # Пагинация: применяем параметры запроса для FILTER-операций
+    if offset > 0:
+        plan.offset = offset
+    if page_size != 20:
+        plan.limit = page_size
 
     # ── Экология и метеорология ───────────────────────────────────────────────
     if topic == "ecology":

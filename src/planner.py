@@ -95,6 +95,7 @@ class Plan:
     year: str | None        # фильтр по году
     min_value: int | None   # минимальное значение
     sub_district: str | None = None  # отображаемый подрайон («Академгородок», «Шлюз», ...)
+    offset: int = 0                  # смещение строк для пагинации
     extra_filters: dict[str, str] = field(default_factory=dict)
 
 
