@@ -67,6 +67,29 @@
     /* ── Role dashboard ─────────────────────────────────────────────────────── */
     .dash-kpi { transition: box-shadow .15s, transform .15s; cursor: default; }
     .dash-kpi:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+
+    /* ── District picker ─────────────────────────────────────────────────────── */
+    .role-dropdown-header {
+      padding: 10px 16px 6px; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: #94a3b8; border-bottom: 1px solid #f1f5f9;
+    }
+    .role-picker-back { background: #f8fafc; }
+    .role-picker-back .role-icon { font-size: 16px; color: #64748b; }
+    .role-picker-back .role-name { font-size: 12px; color: #64748b; font-weight: 600; }
+    .dist-filter-bar {
+      display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
+      padding: 6px 8px; background: #f8fafc; border-radius: 10px;
+      font-size: 11px; overflow-x: auto; scrollbar-width: none;
+    }
+    .dist-filter-bar::-webkit-scrollbar { display: none; }
+    .dist-filter-tag {
+      padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 600;
+      cursor: pointer; border: 1px solid transparent; transition: all .12s;
+    }
+    .dist-filter-tag.active { background: #1d4ed8; color: white; border-color: #1d4ed8; }
+    .dist-filter-tag:not(.active) { background: white; color: #475569; border-color: #e2e8f0; }
+    .dist-filter-tag:not(.active):hover { border-color: #93c5fd; color: #1d4ed8; }
   </style>
 </head>
 <body class="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
@@ -189,6 +212,23 @@ const ROLES = {
 };
 
 let currentRole = localStorage.getItem('nsk_role') || 'citizen';
+let officialDistrict = localStorage.getItem('nsk_official_district') || '';  // '' = весь город
+
+const NSK_DISTRICTS = [
+  { val: '',                      label: '🌆 Весь город',       desc: 'Сводные данные по всем районам' },
+  { val: 'Дзержинский район',     label: 'Дзержинский',         desc: '' },
+  { val: 'Железнодорожный район', label: 'Железнодорожный',     desc: '' },
+  { val: 'Заельцовский район',    label: 'Заельцовский',        desc: '' },
+  { val: 'Калининский район',     label: 'Калининский',         desc: '' },
+  { val: 'Кировский район',       label: 'Кировский',           desc: '' },
+  { val: 'Ленинский район',       label: 'Ленинский',           desc: '' },
+  { val: 'Октябрьский район',     label: 'Октябрьский',         desc: '' },
+  { val: 'Первомайский район',    label: 'Первомайский',        desc: '' },
+  { val: 'Советский район',       label: 'Советский',           desc: '' },
+  { val: 'Центральный район',     label: 'Центральный',         desc: '' },
+  { val: 'Академгородок',         label: 'Академгородок',       desc: 'Советский р-н' },
+  { val: 'Кольцово',              label: 'Кольцово',            desc: 'наукоград' },
+];
 
 // ─── Role-specific chips ───────────────────────────────────────────────────────
 // geo: true — запрос возвращает список объектов с адресами → появится кнопка «На карте»
@@ -265,12 +305,21 @@ function buildChips() {
 function updateRoleBtn() {
   const r = ROLES[currentRole];
   document.getElementById('roleBtnIcon').textContent = r.icon;
-  document.getElementById('roleBtnName').textContent = r.name;
+  if (currentRole === 'official' && officialDistrict) {
+    const short = officialDistrict.replace(' район', '');
+    document.getElementById('roleBtnName').textContent = short;
+  } else {
+    document.getElementById('roleBtnName').textContent = r.name;
+  }
 }
 
-function setRole(role) {
+function setRole(role, district) {
   currentRole = role;
   localStorage.setItem('nsk_role', role);
+  if (role === 'official' && district !== undefined) {
+    officialDistrict = district;
+    localStorage.setItem('nsk_official_district', district);
+  }
   document.getElementById('roleDropdown').classList.add('hidden');
   document.getElementById('roleBtn').classList.remove('open');
   updateRoleBtn();
@@ -292,19 +341,59 @@ function toggleRoleMenu() {
     dd.classList.add('hidden');
     btn.classList.remove('open');
   } else {
-    dd.innerHTML = Object.entries(ROLES).map(([key, r]) => `
-      <div class="role-opt${key === currentRole ? ' active' : ''}" onclick="setRole('${key}')">
-        <span class="role-icon">${r.icon}</span>
-        <div class="role-info">
-          <div class="role-name">${r.name}</div>
-          <div class="role-desc">${r.desc}</div>
-        </div>
-        ${key === currentRole ? '<span class="role-check">✓</span>' : ''}
-      </div>
-    `).join('');
+    _showRoleList(dd);
     dd.classList.remove('hidden');
     btn.classList.add('open');
   }
+}
+
+function _showRoleList(dd) {
+  dd.innerHTML = Object.entries(ROLES).map(([key, r]) => {
+    const isActive = key === currentRole;
+    const distNote = key === 'official' && officialDistrict
+      ? officialDistrict.replace(' район', '') : '';
+    const desc = key === 'official'
+      ? (officialDistrict ? `Район: ${officialDistrict}` : 'Весь город — все районы')
+      : r.desc;
+    const onclick = key === 'official'
+      ? `_showDistrictPicker()`
+      : `setRole('${key}')`;
+    const chevron = key === 'official'
+      ? `<span class="text-slate-400 text-sm ml-1">›</span>`
+      : (isActive ? `<span class="role-check">✓</span>` : '');
+    return `
+      <div class="role-opt${isActive ? ' active' : ''}" onclick="${onclick}">
+        <span class="role-icon">${r.icon}</span>
+        <div class="role-info">
+          <div class="role-name">${r.name}${distNote ? ` <span class="text-blue-500 font-normal text-xs">· ${distNote}</span>` : ''}</div>
+          <div class="role-desc">${desc}</div>
+        </div>
+        ${chevron}
+      </div>`;
+  }).join('');
+}
+
+function _showDistrictPicker() {
+  const dd = document.getElementById('roleDropdown');
+  dd.innerHTML = `
+    <div class="role-opt role-picker-back" onclick="_showRoleList(document.getElementById('roleDropdown'))">
+      <span class="role-icon" style="font-size:14px;color:#64748b">‹</span>
+      <div class="role-info"><div class="role-name" style="color:#64748b;font-size:12px">Назад к ролям</div></div>
+    </div>
+    <div class="role-dropdown-header">Район ответственности</div>
+    ${NSK_DISTRICTS.map(d => {
+      const isActive = officialDistrict === d.val;
+      const safeVal = d.val.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return `
+        <div class="role-opt${isActive ? ' active' : ''}" onclick="setRole('official', '${safeVal}')">
+          <div class="role-info">
+            <div class="role-name">${d.label}</div>
+            ${d.desc ? `<div class="role-desc">${d.desc}</div>` : ''}
+          </div>
+          ${isActive ? '<span class="role-check">✓</span>' : ''}
+        </div>`;
+    }).join('')}
+  `;
 }
 
 document.addEventListener('click', function(e) {
@@ -316,6 +405,13 @@ document.addEventListener('click', function(e) {
 });
 
 // ─── Role Dashboards ──────────────────────────────────────────────────────────
+function setDistrictFilter(dist) {
+  officialDistrict = dist;
+  localStorage.setItem('nsk_official_district', dist);
+  updateRoleBtn();
+  loadRoleDashboard();
+}
+
 async function loadRoleDashboard() {
   const dashEl = document.getElementById('dashContent');
   dashEl.innerHTML = '<div class="text-slate-400 text-sm text-center py-3">Загрузка данных...</div>';
@@ -333,7 +429,7 @@ async function loadRoleDashboard() {
     const transit = (currentRole === 'official' && results[3]?.ok) ? await results[3].json() : null;
     dashEl.innerHTML = currentRole === 'mayor'
       ? renderMayorDashboard(power, eco, risks)
-      : renderOfficialDashboard(power, eco, risks, transit);
+      : renderOfficialDashboard(power, eco, risks, transit, officialDistrict);
     requestAnimationFrame(() => {
       document.querySelectorAll('.bar-fill[data-pct]').forEach(b => { b.style.width = b.dataset.pct + '%'; });
     });
@@ -351,7 +447,7 @@ function _dashAqiClass(aqi) {
   return               { bg:'bg-red-50',      border:'border-red-200',     text:'text-red-700',     label:'Опасное' };
 }
 
-function renderTransitWidget(transit) {
+function renderTransitWidget(transit, district) {
   if (!transit || transit.error || !transit.rows?.length) {
     return `<div class="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-400 flex items-center gap-2">
       🚌 <span>Данные об остановках не загружены —
@@ -359,57 +455,105 @@ function renderTransitWidget(transit) {
       </span>
     </div>`;
   }
-  const rows = transit.rows;
-  const total = transit.total_stops || rows.reduce((s,r)=>s+r.stops_count,0);
+  const d = district || '';
+  const dKey = d.split(' ')[0].toLowerCase();
+  // Если выбран район — показываем только его строку (выделенную) + остальные серые
+  let rows = transit.rows;
+  if (d) {
+    // Поднимаем строку с нужным районом наверх
+    rows = [
+      ...rows.filter(r => (r.district||'').toLowerCase().includes(dKey)),
+      ...rows.filter(r => !(r.district||'').toLowerCase().includes(dKey)),
+    ];
+  }
+  const total  = transit.total_stops || rows.reduce((s,r)=>s+r.stops_count,0);
   const maxVal = Math.max(...rows.map(r => r.stops_count), 1);
   const barsHtml = rows.slice(0, 10).map(r => {
-    const pct = Math.round(r.stops_count / maxVal * 100);
+    const isHighlighted = d && (r.district||'').toLowerCase().includes(dKey);
+    const pct  = Math.round(r.stops_count / maxVal * 100);
     const dist = (r.district || '').replace(' район','').replace('Центральный','Централ.');
-    return `<div class="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded px-1 -mx-1 transition-colors"
+    const barCls = isHighlighted
+      ? 'bg-gradient-to-r from-blue-500 to-indigo-500'
+      : 'bg-gradient-to-r from-violet-400 to-indigo-400';
+    const rowCls = isHighlighted ? 'bg-blue-50 rounded-lg' : '';
+    return `<div class="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded px-1 -mx-1 transition-colors ${rowCls}"
         onclick="askNow('остановки в ${esc(r.district||'')}')">
-      <span class="text-xs text-slate-500 w-20 truncate flex-shrink-0" title="${esc(r.district||'')}">${esc(dist)}</span>
+      <span class="text-xs ${isHighlighted ? 'text-blue-700 font-semibold' : 'text-slate-500'} w-20 truncate flex-shrink-0" title="${esc(r.district||'')}">${esc(dist)}</span>
       <div class="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-        <div class="bar-fill bg-gradient-to-r from-violet-400 to-indigo-400 h-1.5 rounded-full w-0" data-pct="${pct}"></div>
+        <div class="bar-fill ${barCls} h-1.5 rounded-full w-0" data-pct="${pct}"></div>
       </div>
-      <span class="text-xs font-semibold text-slate-600 w-6 text-right flex-shrink-0">${r.stops_count}</span>
+      <span class="text-xs font-semibold ${isHighlighted ? 'text-blue-700' : 'text-slate-600'} w-6 text-right flex-shrink-0">${r.stops_count}</span>
     </div>`;
   }).join('');
+  const titleSuffix = d ? ` · ${d.replace(' район','')}` : ' по районам';
   return `
     <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
-        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🚌 Остановки транспорта по районам</span>
+        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🚌 Остановки транспорта${titleSuffix}</span>
         <span class="text-xs text-slate-400">${total} всего · <button class="text-blue-600 hover:underline" onclick="askNow('остановки по районам')">все районы →</button></span>
       </div>
       <div class="px-4 py-3 space-y-2">${barsHtml}</div>
     </div>`;
 }
 
-function renderOfficialDashboard(power, eco, risks, transit) {
-  const pm = power?.power_meta || {};
-  const activeH  = pm.active_houses  || 0;
-  const plannedH = pm.planned_houses || 0;
-  const ecoRows  = eco?.rows || [];
-  const aqis     = ecoRows.map(r => r.aqi).filter(v => v != null);
-  const avgAqi   = aqis.length ? Math.round(aqis.reduce((a,b)=>a+b,0)/aqis.length) : null;
-  const riskCount = risks?.count || 0;
+function renderOfficialDashboard(power, eco, risks, transit, district) {
+  const d = district || '';  // '' = весь город
+  const dShort = d.replace(' район', '');
+
+  // ─ helper: фильтрация по подстроке района ────────────────────────────────
+  // Для подрайонов (Академгородок) матчим родительский район (Советский)
+  const _subToParent = { 'Академгородок': 'Советский' };
+  const matchDist = (str) => {
+    if (!d) return true;
+    const key = (_subToParent[d] || d.split(' ')[0]).toLowerCase();
+    return (str || '').toLowerCase().includes(key);
+  };
+
+  // ─ Power: считаем из строк (не из power_meta, чтобы фильтр работал) ──────
+  const allPwrRows = (power?.rows || []).filter(r => r.district !== 'all');
+  const distPwrRows = d ? allPwrRows.filter(r => matchDist(r.district)) : allPwrRows;
+  const activeH  = distPwrRows
+    .filter(r => r.group_type === 'active'  && Number(r.houses||0) > 0)
+    .reduce((s, r) => s + Number(r.houses||0), 0);
+  const plannedH = distPwrRows
+    .filter(r => r.group_type === 'planned' && Number(r.houses||0) > 0)
+    .reduce((s, r) => s + Number(r.houses||0), 0);
+
+  // ─ Ecology ───────────────────────────────────────────────────────────────
+  const allEcoRows = eco?.rows || [];
+  const ecoRows = d ? allEcoRows.filter(r => matchDist(r.district)) : allEcoRows;
+  const aqis    = ecoRows.map(r => r.aqi).filter(v => v != null);
+  const avgAqi  = aqis.length ? Math.round(aqis.reduce((a,b)=>a+b,0)/aqis.length) : null;
   const ac = _dashAqiClass(avgAqi);
+
+  // ─ Risks (городские, фильтровать по дистрикту не имеет смысла) ───────────
+  const riskCount = risks?.count || 0;
+
+  // ─ KPI onclicks с учётом района ──────────────────────────────────────────
+  const qEmerg    = d ? `аварийные отключения ЖКХ в ${dShort} районе`   : `аварийные отключения ЖКХ сейчас`;
+  const qPlan     = d ? `плановые отключения в ${dShort} районе`         : `плановые отключения ЖКХ`;
+  const qEco      = d ? `качество воздуха в ${dShort} районе`            : `качество воздуха в городе`;
+  const qRisks    = `риски для жизни в городе`;
 
   const kpis = [
     { icon:'🔴', label:'Аварийных домов',  val: activeH.toLocaleString('ru-RU'),
-      color:'text-red-600',    bg:'bg-red-50',    border:'border-red-200',    note:'по всем видам ЖКХ',
-      onclick:"askNow('аварийные отключения ЖКХ сейчас')" },
+      color:'text-red-600',    bg:'bg-red-50',    border:'border-red-200',
+      note: d ? `в ${dShort}` : 'по всем видам ЖКХ',
+      onclick:`askNow('${qEmerg}')` },
     { icon:'🟡', label:'Плановых домов',   val: plannedH.toLocaleString('ru-RU'),
-      color:'text-amber-600',  bg:'bg-amber-50',  border:'border-amber-200',  note:'запланированные',
-      onclick:"askNow('плановые отключения ЖКХ')" },
+      color:'text-amber-600',  bg:'bg-amber-50',  border:'border-amber-200',
+      note: d ? `плановые в ${dShort}` : 'запланированные',
+      onclick:`askNow('${qPlan}')` },
     { icon:'🍃', label:'AQI (средний)',    val: avgAqi != null ? String(avgAqi) : '—',
-      color: ac.text, bg: ac.bg, border: ac.border, note: ac.label,
-      onclick:"askNow('качество воздуха в городе')" },
+      color: ac.text, bg: ac.bg, border: ac.border,
+      note: ac.label + (d ? ` · ${dShort}` : ''),
+      onclick:`askNow('${qEco}')` },
     { icon:'⚠️', label:'Активных рисков', val: String(riskCount),
       color: riskCount > 0 ? 'text-amber-700' : 'text-emerald-600',
       bg:    riskCount > 0 ? 'bg-amber-50'    : 'bg-emerald-50',
       border:riskCount > 0 ? 'border-amber-200' : 'border-emerald-200',
       note:  riskCount > 0 ? 'требуют внимания' : 'рисков нет',
-      onclick:"askNow('риски для жизни в городе')" },
+      onclick:`askNow('${qRisks}')` },
   ];
 
   const kpiHtml = kpis.map(k => `
@@ -424,16 +568,24 @@ function renderOfficialDashboard(power, eco, risks, transit) {
     </div>
   `).join('');
 
-  // Фильтруем реальные аварийные отключения (по районам, не summary-строки с district='all')
-  const pwrRows = (power?.rows || [])
-    .filter(r => r.group_type === 'active' && r.district !== 'all' && Number(r.houses||0) > 0)
+  // ─ Таблица аварийных отключений ──────────────────────────────────────────
+  const pwrRows = distPwrRows
+    .filter(r => r.group_type === 'active' && Number(r.houses||0) > 0)
     .sort((a,b) => Number(b.houses||0) - Number(a.houses||0))
-    .slice(0, 5);
+    .slice(0, d ? 10 : 5);  // при фокусе на районе — больше строк
+
+  const pwrTitle = d
+    ? `Аварийные отключения · ${dShort}`
+    : `Аварийные отключения · топ по районам`;
+  const pwrMore  = d
+    ? `askNow('отключения ЖКХ в ${dShort} районе')`
+    : `askNow('отключения ЖКХ сейчас')`;
+
   const pwrTable = `
     <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
-        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Аварийные отключения · топ по районам</span>
-        <button class="text-xs text-blue-600 hover:underline" onclick="askNow('отключения ЖКХ сейчас')">Подробнее →</button>
+        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">${pwrTitle}</span>
+        <button class="text-xs text-blue-600 hover:underline" onclick="${pwrMore}">Подробнее →</button>
       </div>
       ${pwrRows.length ? `<table class="w-full"><tbody>${pwrRows.map(r => `
           <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors cursor-pointer"
@@ -443,29 +595,47 @@ function renderOfficialDashboard(power, eco, risks, transit) {
             <td class="px-4 py-2.5 text-sm font-bold text-red-600 text-right">${r.houses} д.</td>
           </tr>`).join('')}</tbody></table>`
       : `<div class="px-4 py-4 text-sm text-emerald-600 font-medium flex items-center gap-2">
-           <span>✅</span><span>Аварийных отключений нет</span>
+           <span>✅</span><span>Аварийных отключений нет${d ? ` в ${dShort}` : ''}</span>
          </div>`}
     </div>`;
 
-  const ecoChips = ecoRows.slice(0, 8).map(r => {
+  // ─ AQI chips ──────────────────────────────────────────────────────────────
+  const ecoChipRows = d ? ecoRows : allEcoRows.slice(0, 8);
+  const ecoChips = ecoChipRows.map(r => {
     const c2 = aqiColor(r.aqi);
     const dist = (r.district||'').replace(' район','');
     return `<span class="${c2.bg} ${c2.text} border border-current/20 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity"
       onclick="askNow('качество воздуха в ${esc(dist)} районе')">${dist}: ${r.aqi??'—'}</span>`;
   }).join('');
 
+  // ─ Фильтр по районам — полоска под заголовком ─────────────────────────────
+  const distFilterBar = `
+    <div class="dist-filter-bar">
+      <span class="text-xs text-slate-400 flex-shrink-0">Район:</span>
+      ${NSK_DISTRICTS.map(di => {
+        const safeVal = di.val.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const isAct   = officialDistrict === di.val;
+        return `<span class="dist-filter-tag${isAct ? ' active' : ''}"
+          onclick="setDistrictFilter('${safeVal}')">${di.label}</span>`;
+      }).join('')}
+    </div>`;
+
   const ts = new Date().toLocaleString('ru-RU', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+  const headTitle = d
+    ? `📊 Панель диспетчера · ${dShort} · ${ts}`
+    : `📊 Панель диспетчера · ${ts}`;
   return `
     <div class="space-y-4">
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-bold text-slate-700">📊 Панель диспетчера · ${ts}</h3>
+        <h3 class="text-sm font-bold text-slate-700">${headTitle}</h3>
         <button onclick="loadRoleDashboard()" class="text-xs text-blue-600 hover:underline">↻ Обновить</button>
       </div>
+      ${distFilterBar}
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${kpiHtml}</div>
       ${pwrTable}
-      ${renderTransitWidget(transit)}
+      ${renderTransitWidget(transit, d)}
       ${ecoChips ? `<div class="flex flex-wrap gap-2 items-center">
-        <span class="text-xs text-slate-400">AQI по районам:</span>${ecoChips}</div>` : ''}
+        <span class="text-xs text-slate-400">AQI${d ? ` · ${dShort}` : ' по районам'}:</span>${ecoChips}</div>` : ''}
     </div>`;
 }
 
