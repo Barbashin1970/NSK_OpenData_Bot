@@ -355,7 +355,7 @@ function renderTransitWidget(transit) {
   if (!transit || transit.error || !transit.rows?.length) {
     return `<div class="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-slate-400 flex items-center gap-2">
       🚌 <span>Данные об остановках не загружены —
-        <button class="text-blue-500 hover:underline" onclick="askNow('остановки по районам')">загрузить</button>
+        <button class="text-blue-500 hover:underline" onclick="updateAndReload('stops')">обновить данные</button>
       </span>
     </div>`;
   }
@@ -365,7 +365,8 @@ function renderTransitWidget(transit) {
   const barsHtml = rows.slice(0, 10).map(r => {
     const pct = Math.round(r.stops_count / maxVal * 100);
     const dist = (r.district || '').replace(' район','').replace('Центральный','Централ.');
-    return `<div class="flex items-center gap-2">
+    return `<div class="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded px-1 -mx-1 transition-colors"
+        onclick="askNow('остановки в ${esc(r.district||'')}')">
       <span class="text-xs text-slate-500 w-20 truncate flex-shrink-0" title="${esc(r.district||'')}">${esc(dist)}</span>
       <div class="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
         <div class="bar-fill bg-gradient-to-r from-violet-400 to-indigo-400 h-1.5 rounded-full w-0" data-pct="${pct}"></div>
@@ -377,7 +378,7 @@ function renderTransitWidget(transit) {
     <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
         <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🚌 Остановки транспорта по районам</span>
-        <span class="text-xs text-slate-400">${total} всего · <button class="text-blue-600 hover:underline" onclick="askNow('остановки по районам')">детали →</button></span>
+        <span class="text-xs text-slate-400">${total} всего · <button class="text-blue-600 hover:underline" onclick="askNow('остановки по районам')">все районы →</button></span>
       </div>
       <div class="px-4 py-3 space-y-2">${barsHtml}</div>
     </div>`;
@@ -395,20 +396,25 @@ function renderOfficialDashboard(power, eco, risks, transit) {
 
   const kpis = [
     { icon:'🔴', label:'Аварийных домов',  val: activeH.toLocaleString('ru-RU'),
-      color:'text-red-600',    bg:'bg-red-50',    border:'border-red-200',    note:'по всем видам ЖКХ' },
+      color:'text-red-600',    bg:'bg-red-50',    border:'border-red-200',    note:'по всем видам ЖКХ',
+      onclick:"askNow('аварийные отключения ЖКХ сейчас')" },
     { icon:'🟡', label:'Плановых домов',   val: plannedH.toLocaleString('ru-RU'),
-      color:'text-amber-600',  bg:'bg-amber-50',  border:'border-amber-200',  note:'запланированные' },
+      color:'text-amber-600',  bg:'bg-amber-50',  border:'border-amber-200',  note:'запланированные',
+      onclick:"askNow('плановые отключения ЖКХ')" },
     { icon:'🍃', label:'AQI (средний)',    val: avgAqi != null ? String(avgAqi) : '—',
-      color: ac.text, bg: ac.bg, border: ac.border, note: ac.label },
+      color: ac.text, bg: ac.bg, border: ac.border, note: ac.label,
+      onclick:"askNow('качество воздуха в городе')" },
     { icon:'⚠️', label:'Активных рисков', val: String(riskCount),
       color: riskCount > 0 ? 'text-amber-700' : 'text-emerald-600',
       bg:    riskCount > 0 ? 'bg-amber-50'    : 'bg-emerald-50',
       border:riskCount > 0 ? 'border-amber-200' : 'border-emerald-200',
-      note:  riskCount > 0 ? 'требуют внимания' : 'рисков нет' },
+      note:  riskCount > 0 ? 'требуют внимания' : 'рисков нет',
+      onclick:"askNow('риски для жизни в городе')" },
   ];
 
   const kpiHtml = kpis.map(k => `
-    <div class="dash-kpi border rounded-2xl p-4 ${k.bg} ${k.border}">
+    <div class="dash-kpi border rounded-2xl p-4 ${k.bg} ${k.border} cursor-pointer hover:shadow-md active:scale-95 transition-all"
+         onclick="${k.onclick}" title="Нажмите для подробностей">
       <div class="flex items-center gap-1.5 mb-2">
         <span class="text-base">${k.icon}</span>
         <span class="text-xs text-slate-500 font-medium leading-tight">${k.label}</span>
@@ -418,23 +424,28 @@ function renderOfficialDashboard(power, eco, risks, transit) {
     </div>
   `).join('');
 
-  const pwrRows = (power?.rows || []).filter(r => r.group_type === 'active').slice(0, 5);
-  const pwrTable = pwrRows.length ? `
+  // Фильтруем реальные аварийные отключения (по районам, не summary-строки с district='all')
+  const pwrRows = (power?.rows || [])
+    .filter(r => r.group_type === 'active' && r.district !== 'all' && Number(r.houses||0) > 0)
+    .sort((a,b) => Number(b.houses||0) - Number(a.houses||0))
+    .slice(0, 5);
+  const pwrTable = `
     <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
         <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Аварийные отключения · топ по районам</span>
-        <button class="text-xs text-blue-600 hover:underline" onclick="askNow('аварийные отключения ЖКХ сейчас')">Подробнее →</button>
+        <button class="text-xs text-blue-600 hover:underline" onclick="askNow('отключения ЖКХ сейчас')">Подробнее →</button>
       </div>
-      <table class="w-full">
-        <tbody>${pwrRows.map(r => `
-          <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+      ${pwrRows.length ? `<table class="w-full"><tbody>${pwrRows.map(r => `
+          <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors cursor-pointer"
+              onclick="askNow('отключения ${esc((r.utility||'').split(' ')[0].toLowerCase())} в ${esc(r.district||'')}')">
             <td class="px-4 py-2.5 text-xs text-slate-500 w-28">${esc((r.utility||'').split(' ')[0])}</td>
             <td class="px-4 py-2.5 text-sm text-slate-700 font-medium">${esc(r.district||'—')}</td>
-            <td class="px-4 py-2.5 text-sm font-bold text-red-600 text-right">${r.houses||'—'} д.</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>` : '';
+            <td class="px-4 py-2.5 text-sm font-bold text-red-600 text-right">${r.houses} д.</td>
+          </tr>`).join('')}</tbody></table>`
+      : `<div class="px-4 py-4 text-sm text-emerald-600 font-medium flex items-center gap-2">
+           <span>✅</span><span>Аварийных отключений нет</span>
+         </div>`}
+    </div>`;
 
   const ecoChips = ecoRows.slice(0, 8).map(r => {
     const c2 = aqiColor(r.aqi);
@@ -554,6 +565,13 @@ function setQuery(q) {
 function askNow(q) {
   document.getElementById('queryInput').value = q;
   ask();
+}
+
+async function updateAndReload(topic) {
+  try {
+    const r = await fetch('/update?topic=' + encodeURIComponent(topic), {method:'POST'});
+    if (r.ok) loadRoleDashboard();
+  } catch(e) { /* ignore */ }
 }
 
 // ─── Ask ─────────────────────────────────────────────────────────────────────
