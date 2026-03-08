@@ -50,17 +50,6 @@ def _get_twogis_key() -> str | None:
 _API_DESCRIPTION = """
 Естественно-языковой интерфейс к открытым данным мэрии Новосибирска.
 
-## Быстрый старт
-
-Задайте любой вопрос на русском языке через `/ask`:
-
-```
-GET /ask?q=сколько+парковок+по+районам
-GET /ask?q=школы+в+советском+районе
-GET /ask?q=отключения+электричества+сейчас
-GET /ask?q=топ-5+аптек+в+центральном+районе
-```
-
 ## Источники данных
 
 | Источник | TTL | Что содержит |
@@ -117,15 +106,19 @@ GET /ask?q=топ-5+аптек+в+центральном+районе
 Запросы к открытым данным города (школы, парковки и т.д.) для Кольцово не применимы —
 наукоград находится вне 10 административных районов Новосибирска.
 
----
-
-[← Вернуться в веб-интерфейс](/)
 """
 
 _TAGS_METADATA = [
     {
         "name": "Запросы",
-        "description": "Основной интерфейс: задать вопрос на русском языке и получить данные.",
+        "description": (
+            "Основной интерфейс: задать вопрос на русском языке и получить данные.\n\n"
+            "Примеры запросов:\n\n"
+            "`GET /ask?q=сколько+парковок+по+районам`\n\n"
+            "`GET /ask?q=школы+в+советском+районе`\n\n"
+            "`GET /ask?q=отключения+электричества+сейчас`\n\n"
+            "`GET /ask?q=топ-5+аптек+в+центральном+районе`"
+        ),
     },
     {
         "name": "Экология",
@@ -167,7 +160,6 @@ app = FastAPI(
     version="1.0.2",
     openapi_tags=_TAGS_METADATA,
     contact={"name": "ЦИИ НГУ"},
-    license_info={"name": "MIT"},
     docs_url=None,   # кастомный /docs ниже
     redoc_url=None,
 )
@@ -180,9 +172,34 @@ app.add_middleware(
 )
 
 
+_ENV_FILE = Path(__file__).parent.parent / ".env"
+
+
+def _load_dotenv() -> None:
+    """Загружает KEY=VALUE из .env в os.environ (только если переменная ещё не задана)."""
+    if not _ENV_FILE.exists():
+        return
+    try:
+        for line in _ENV_FILE.read_text("utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and not os.environ.get(key, "").strip():
+                os.environ[key] = val
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Не удалось загрузить .env: %s", e)
+
+
 @app.on_event("startup")
 def _load_saved_api_keys() -> None:
-    """При старте: если ENV не задан, берёт ключ из data/api_keys.json."""
+    """При старте: загружает ключи из .env, затем из data/api_keys.json (если ENV не задан)."""
+    # 1. .env файл (создайте его вручную, он в .gitignore и не перезаписывается при обновлениях)
+    _load_dotenv()
+    # 2. data/api_keys.json (сохраняется через POST /twogis/key)
     if not os.environ.get("TWOGIS_API_KEY", "").strip():
         saved = _load_api_keys().get("twogis_key", "").strip()
         if saved:
