@@ -442,11 +442,63 @@ def _route_cameras(q: str) -> "RouteResult | None":
     )
 
 
+# ── Маршруты общественного транспорта ────────────────────────────────────────
+_TRANSIT_PRIMARY = ["проехат", "маршрут", "добраться", "доехат", "попасть"]
+
+
+def extract_transit_districts(query: str) -> tuple[str | None, str | None]:
+    """Извлекает районы «откуда» и «куда» из транзитного запроса.
+
+    Returns: (from_district, to_district) — канонические названия или None.
+    """
+    q = _normalize(query)
+
+    def match_district(text: str) -> str | None:
+        for pattern, parent_district, _ in _SUB_DISTRICTS:
+            if pattern.search(text):
+                return parent_district
+        for district_name, patterns in DISTRICTS.items():
+            for pat in patterns:
+                if pat in text:
+                    return district_name
+        return None
+
+    m_from = re.search(r"из\s+([\w\s\-]+?)(?=\s+(?:в|до)\s|\s*$)", q)
+    m_to   = re.search(r"(?:^|\s)в\s+([\w\s\-]+?)(?=\s+из\s|\s*$)", q)
+    m_do   = re.search(r"\bдо\s+([\w\s\-]+?)(?=\s+из\s|\s*$)", q)
+
+    from_d = match_district(m_from.group(1).strip()) if m_from else None
+    to_text = (m_to.group(1).strip() if m_to else None) or (m_do.group(1).strip() if m_do else None)
+    to_d = match_district(to_text) if to_text else None
+
+    return from_d, to_d
+
+
+def _route_transit(q: str) -> "RouteResult | None":
+    """Проверяет, является ли запрос маршрутным (транспорт между районами)."""
+    if not any(m in q for m in _TRANSIT_PRIMARY):
+        return None
+    from_d, to_d = extract_transit_districts(q)
+    if not from_d and not to_d:
+        return None
+    return RouteResult(
+        topic="transit",
+        confidence=0.85,
+        name="Маршрут общественного транспорта",
+        matched_keywords=["маршрут", "проехать"],
+    )
+
+
 def route(query: str) -> list[RouteResult]:
     """Возвращает список RouteResult, отсортированный по убыванию уверенности."""
     q = _normalize(query)
     registry = load_registry()
     results: list[RouteResult] = []
+
+    # Тема маршрутов (не в YAML-реестре, проверяем первой — высокий приоритет)
+    transit_result = _route_transit(q)
+    if transit_result:
+        results.append(transit_result)
 
     # Тема отключений ЖКХ (не в YAML-реестре, обрабатывается отдельно)
     power_result = _route_power(q)

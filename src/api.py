@@ -1170,6 +1170,88 @@ def get_ask(
             **result,
         }
 
+    # ── Маршруты общественного транспорта (из кэша остановок) ────────────────
+    if topic == "transit":
+        import re as _re
+        from .cache import _get_conn, table_exists as _table_exists
+        from .transport_api import DISTRICT_COORDS
+
+        from_district = plan.extra_filters.get("from_district") or ""
+        to_district   = plan.extra_filters.get("to_district") or ""
+
+        if not _table_exists("stops"):
+            return {
+                "query": q, "topic": "transit", "topic_name": route_result.name,
+                "confidence": round(route_result.confidence, 3),
+                "operation": "TRANSIT_ROUTE",
+                "error": "Данные об остановках не загружены",
+                "hint": "POST /update?topic=stops",
+                "connections": [],
+            }
+
+        def _split_routes(marshryt: str) -> list[str]:
+            if not marshryt:
+                return []
+            parts = _re.split(r"[,;\s]+", marshryt.strip())
+            return [p.strip() for p in parts if p.strip() and len(p.strip()) <= 10]
+
+        conn = _get_conn()
+        try:
+            def _get_route_stops(kw: str) -> dict[str, list[str]]:
+                if not kw:
+                    return {}
+                rows = conn.execute(
+                    "SELECT OstName, Marshryt FROM topic_stops "
+                    "WHERE AdrDistr ILIKE ? AND Marshryt IS NOT NULL AND Marshryt != ''",
+                    [f"%{kw.split()[0]}%"],
+                ).fetchall()
+                result: dict[str, list[str]] = {}
+                for stop_name, marshryt in rows:
+                    for route in _split_routes(marshryt or ""):
+                        if route not in result:
+                            result[route] = []
+                        if stop_name and stop_name not in result[route]:
+                            result[route].append(stop_name)
+                return result
+
+            from_routes = _get_route_stops(from_district)
+            to_routes   = _get_route_stops(to_district)
+            common = sorted(set(from_routes) & set(to_routes))
+            connections = [
+                {"route": r, "from_stops": from_routes[r][:3], "to_stops": to_routes[r][:3]}
+                for r in common[:20]
+            ]
+
+            from_coords = DISTRICT_COORDS.get(from_district)
+            to_coords   = DISTRICT_COORDS.get(to_district)
+            hint = None
+            if from_coords and to_coords:
+                hint = (
+                    f"https://2gis.ru/novosibirsk/routeSearch/rsType/publictransport/"
+                    f"from/{from_coords[0]},{from_coords[1]}/to/{to_coords[0]},{to_coords[1]}"
+                )
+
+            return {
+                "query": q, "topic": "transit", "topic_name": route_result.name,
+                "confidence": round(route_result.confidence, 3),
+                "operation": "TRANSIT_ROUTE",
+                "from": from_district, "to": to_district,
+                "common_routes_count": len(common),
+                "connections": connections,
+                "hint": hint,
+                "notice": (
+                    "⚠️ Данные о маршрутах взяты из открытых данных мэрии Новосибирска "
+                    "(opendata.novo-sibirsk.ru) и могут быть неполными или устаревшими. "
+                    "Для построения точного маршрута воспользуйтесь приложением 2ГИС или Яндекс.Транспорт."
+                ),
+                "source": "opendata.novo-sibirsk.ru · остановки наземного транспорта (TTL 24ч)",
+            }
+        except Exception as e:
+            log.error(f"Ошибка /ask transit: {e}")
+            return {"query": q, "topic": "transit", "error": str(e), "connections": []}
+        finally:
+            conn.close()
+
     # ── Камеры фиксации нарушений ПДД (OSM Overpass) ─────────────────────────
     if topic == "cameras":
         from .cameras_cache import (

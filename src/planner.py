@@ -14,6 +14,7 @@ from typing import Any
 
 from .router import (
     extract_district, extract_limit, extract_street, extract_sub_district,
+    extract_transit_districts,
     _detect_utility, UTILITY_FILTER_MAP,
 )
 
@@ -108,6 +109,25 @@ class Plan:
 def make_plan(query: str, topic: str | None) -> Plan:
     """Разбирает запрос и возвращает Plan."""
     q = query.lower()
+
+    # Для темы транспортных маршрутов — специальная операция
+    if topic == "transit":
+        from_d, to_d = extract_transit_districts(query)
+        extra_filters_transit: dict[str, str] = {
+            "from_district": from_d or "",
+            "to_district":   to_d or "",
+        }
+        return Plan(
+            operation="TRANSIT_ROUTE",
+            topic="transit",
+            district=to_d,
+            street=None,
+            limit=20,
+            year=None,
+            min_value=None,
+            sub_district=None,
+            extra_filters=extra_filters_transit,
+        )
 
     # Для темы экологии — специальные операции
     if topic == "ecology":
