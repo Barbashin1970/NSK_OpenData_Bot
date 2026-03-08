@@ -221,7 +221,7 @@ let currentRole = localStorage.getItem('nsk_role') || 'citizen';
 let officialDistrict = localStorage.getItem('nsk_official_district') || '';  // '' = весь город
 
 const NSK_DISTRICTS = [
-  { val: '',                      label: '🌆 Весь город',       desc: 'Сводные данные по всем районам' },
+  { val: '',                      label: 'Весь город',          desc: 'Сводные данные по всем районам' },
   { val: 'Дзержинский район',     label: 'Дзержинский',         desc: '' },
   { val: 'Железнодорожный район', label: 'Железнодорожный',     desc: '' },
   { val: 'Заельцовский район',    label: 'Заельцовский',        desc: '' },
@@ -646,7 +646,6 @@ function renderOfficialDashboard(power, eco, risks, transit, district) {
       ${distFilterBar}
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${kpiHtml}</div>
       ${pwrTable}
-      ${renderTransitWidget(transit, d)}
       ${ecoChips ? `<div class="flex flex-wrap gap-2 items-center">
         <span class="text-xs text-slate-400">AQI${d ? ` · ${dShort}` : ' по районам'}:</span>${ecoChips}</div>` : ''}
     </div>`;
