@@ -205,6 +205,7 @@ const ROLE_CHIPS = {
     {q: "погода в Академгородке"},
     {q: "погода в Кольцово"},
     {q: "как проехать из Академгородка в Дзержинский район"},
+    {q: "пробки сейчас"},
     {q: "риски для жизни в городе"},
     {q: "детские спортивные организации", geo: true},
     {q: "школы в Советском районе", geo: true},
@@ -619,6 +620,8 @@ function renderResult(data, query) {
   else if (op === 'INFO')                      html += renderInfo(data);
   else if (op === 'DISTRICTS')                 html += renderDistricts(data);
   else if (op === 'UNKNOWN')                   html += renderUnknown(data);
+  else if (op === 'TRANSIT_ROUTE')             html += renderTransitRoute(data);
+  else if (op === 'TRAFFIC_INDEX')             html += renderTrafficIndex(data);
   else                                         html += renderTable(data);
 
   el.innerHTML = html;
@@ -1355,6 +1358,131 @@ const _WORKING_QUESTIONS = [
   "детские спортивные организации",
   "превышение ПДК по PM2.5",
 ];
+
+// ─── TRANSIT ROUTE ───────────────────────────────────────────────────────────
+function renderTransitRoute(data) {
+  const from = data.from || '—';
+  const to   = data.to   || '—';
+  const conns = data.connections || [];
+
+  if (!conns.length) {
+    return `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <p class="text-slate-500 text-sm mb-3">Общих маршрутов между <b>${esc(from)}</b> и <b>${esc(to)}</b> не найдено в базе данных.</p>
+        ${data.hint ? `<a href="${esc(data.hint)}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all">🗺 Открыть маршрут в 2ГИС</a>` : ''}
+      </div>`;
+  }
+
+  const routeCards = conns.map(c => {
+    const fromStops = (c.from_stops || []).map(s => `<li class="text-slate-600 text-xs">${esc(s)}</li>`).join('');
+    const toStops   = (c.to_stops   || []).map(s => `<li class="text-slate-600 text-xs">${esc(s)}</li>`).join('');
+    return `
+      <div class="bg-slate-50 rounded-xl border border-slate-200 p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="bg-blue-600 text-white text-sm font-bold px-3 py-1 rounded-lg min-w-[44px] text-center">${esc(c.route)}</span>
+          <span class="text-slate-400 text-xs">маршрут</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Из ${esc(from.split(' ')[0])}</p>
+            <ul class="space-y-0.5">${fromStops}</ul>
+          </div>
+          <div>
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">В ${esc(to.split(' ')[0])}</p>
+            <ul class="space-y-0.5">${toStops}</ul>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="text-2xl">🚌</span>
+          <div>
+            <p class="font-semibold text-slate-800">${esc(from)} → ${esc(to)}</p>
+            <p class="text-slate-500 text-sm">Найдено ${conns.length} общих маршрутов</p>
+          </div>
+        </div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">${routeCards}</div>
+      ${data.hint ? `
+        <a href="${esc(data.hint)}" target="_blank"
+           class="flex items-center justify-center gap-2 w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm">
+          🗺 Построить точный маршрут в 2ГИС
+        </a>` : ''}
+      ${data.notice ? `
+        <p class="text-slate-400 text-xs text-center leading-relaxed">${esc(data.notice)}</p>` : ''}
+    </div>`;
+}
+
+// ─── TRAFFIC INDEX ────────────────────────────────────────────────────────────
+function renderTrafficIndex(data) {
+  const idx     = data.index ?? '—';
+  const level   = data.level || '';
+  const emoji   = data.emoji || '🚗';
+  const nsk_time = data.timestamp || '';
+  const citizen = data.citizen_tip || '';
+  const official = data.official_tip || '';
+  const factors  = data.factors || [];
+  const nextPeak = data.next_peak || '';
+
+  const colorMap = {
+    'Свободно':     'bg-emerald-100 text-emerald-700 border-emerald-200',
+    'Умеренно':     'bg-yellow-100  text-yellow-700  border-yellow-200',
+    'Затруднено':   'bg-orange-100  text-orange-700  border-orange-200',
+    'Сложно':       'bg-red-100     text-red-700     border-red-200',
+    'Очень сложно': 'bg-red-200     text-red-800     border-red-300',
+    'Коллапс':      'bg-red-300     text-red-900     border-red-400',
+  };
+  const badge = colorMap[level] || 'bg-slate-100 text-slate-700 border-slate-200';
+
+  const pct = Math.min(100, Math.round((parseFloat(idx) || 0) / 10 * 100));
+  const barColor = pct < 35 ? 'bg-emerald-500' : pct < 65 ? 'bg-orange-400' : 'bg-red-500';
+
+  const factorRows = factors.map(f =>
+    `<div class="flex items-center gap-2 text-sm">
+       <span>${f.emoji || '📌'}</span>
+       <span class="text-slate-600 flex-1">${esc(f.name || f.label || '')}</span>
+       <span class="font-semibold ${f.delta >= 0 ? 'text-red-500' : 'text-emerald-600'}">${f.delta >= 0 ? '+' : ''}${(f.delta||0).toFixed(1)}</span>
+     </div>`
+  ).join('');
+
+  return `
+    <div class="space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Индекс дорожной нагрузки · ${esc(nsk_time)}</p>
+            <div class="flex items-center gap-3">
+              <span class="text-5xl font-bold text-slate-800">${idx}</span>
+              <span class="text-slate-400 text-sm">/10</span>
+              <span class="px-3 py-1 rounded-full border text-sm font-semibold ${badge}">${emoji} ${esc(level)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="bg-slate-100 rounded-full h-3 overflow-hidden mb-5">
+          <div class="${barColor} h-3 rounded-full transition-all" style="width:${pct}%"></div>
+        </div>
+        ${citizen ? `<div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-3">
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-blue-400 mb-1">Для горожанина</p>
+          <p class="text-blue-800 text-sm leading-relaxed">${esc(citizen)}</p>
+        </div>` : ''}
+        ${official ? `<div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Для администрации</p>
+          <p class="text-slate-700 text-sm leading-relaxed">${esc(official)}</p>
+        </div>` : ''}
+      </div>
+      ${factors.length ? `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Факторы нагрузки</p>
+          <div class="space-y-2">${factorRows}</div>
+        </div>` : ''}
+      ${nextPeak ? `<p class="text-slate-400 text-xs text-center">⏱ ${esc(nextPeak)}</p>` : ''}
+      <p class="text-slate-400 text-xs text-center">⚠ Аналитический индекс на основе времени, дня недели, праздников и погоды. Не использует данные реального трафика.</p>
+    </div>`;
+}
 
 function renderUnknown(data) {
   const msg = _UNKNOWN_MESSAGES[Math.floor(Math.random() * _UNKNOWN_MESSAGES.length)];

@@ -1170,6 +1170,19 @@ def get_ask(
             **result,
         }
 
+    # ── Индекс дорожной нагрузки ──────────────────────────────────────────────
+    if topic == "traffic_index":
+        from .traffic_index import get_traffic_index_with_weather
+        ti = get_traffic_index_with_weather()
+        return {
+            "query":      q,
+            "topic":      "traffic_index",
+            "topic_name": route_result.name,
+            "confidence": round(route_result.confidence, 3),
+            "operation":  "TRAFFIC_INDEX",
+            **ti,
+        }
+
     # ── Маршруты общественного транспорта (из кэша остановок) ────────────────
     if topic == "transit":
         import re as _re
@@ -1190,10 +1203,10 @@ def get_ask(
             }
 
         def _split_routes(marshryt: str) -> list[str]:
+            """Извлекает номера маршрутов из строки вида 'Автобус: 23, 36.Маршрутное такси: 4.'"""
             if not marshryt:
                 return []
-            parts = _re.split(r"[,;\s]+", marshryt.strip())
-            return [p.strip() for p in parts if p.strip() and len(p.strip()) <= 10]
+            return _re.findall(r"\b\d+[а-яёa-z]?\b", marshryt)
 
         conn = _get_conn()
         try:
@@ -1347,6 +1360,32 @@ def get_ask(
 
 
 @app.get(
+    "/traffic-index",
+    tags=["Запросы"],
+    summary="Индекс дорожной нагрузки (аналитика)",
+    response_description="Синтетический индекс пробок 0–10 с факторами и рекомендациями.",
+)
+def get_traffic_index() -> dict:
+    """
+    Синтетический **индекс дорожной нагрузки** для Новосибирска (0 = пусто, 10 = коллапс).
+
+    Алгоритм учитывает:
+    - **Время суток** — утренний (07:30–09:30) и вечерний (16:30–19:00) час пик
+    - **День недели** — понедельничный эффект (+0.8), пятничный исход (+0.7)
+    - **Официальные праздники 2025–2027** — нерабочие дни, предпраздничные укороченные дни
+    - **Погоду** — снег (+1.5/+2.5), первый осенний снег (+3.0), дождь (+0.8), гололедица (+2.5)
+    - **Городские события** — 1 сентября (+2.0), предновогодняя суета (+2.0)
+    - **Экстремальный мороз** (< −20°C) — снижает трафик (машины не заводятся)
+
+    Погодные данные берутся из кэша Open-Meteo (обновляется каждые 15 мин).
+
+    > ⚠️ Реальные данные о пробках отсутствуют — только аналитическая модель.
+    """
+    from .traffic_index import get_traffic_index_with_weather
+    return get_traffic_index_with_weather()
+
+
+@app.get(
     "/transit",
     tags=["Запросы"],
     summary="Маршруты между районами (открытые данные мэрии)",
@@ -1388,10 +1427,10 @@ def get_transit(
         }
 
     def split_routes(marshryt: str) -> list[str]:
+        """Извлекает номера маршрутов из строки вида 'Автобус: 23, 36.Маршрутное такси: 4.'"""
         if not marshryt:
             return []
-        parts = re.split(r"[,;\s]+", marshryt.strip())
-        return [p.strip() for p in parts if p.strip() and len(p.strip()) <= 10]
+        return re.findall(r"\b\d+[а-яёa-z]?\b", marshryt)
 
     conn = _get_conn()
     try:

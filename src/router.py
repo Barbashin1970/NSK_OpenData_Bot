@@ -442,6 +442,22 @@ def _route_cameras(q: str) -> "RouteResult | None":
     )
 
 
+# ── Индекс пробок / дорожная нагрузка ────────────────────────────────────────
+_TRAFFIC_PRIMARY = ["пробк", "трафик", "загруженност", "час пик", "дорог сейчас", "индекс пробок"]
+
+
+def _route_traffic(q: str) -> "RouteResult | None":
+    """Проверяет, является ли запрос запросом об индексе дорожной нагрузки."""
+    if not any(m in q for m in _TRAFFIC_PRIMARY):
+        return None
+    return RouteResult(
+        topic="traffic_index",
+        confidence=0.90,
+        name="Индекс дорожной нагрузки",
+        matched_keywords=["пробки"],
+    )
+
+
 # ── Маршруты общественного транспорта ────────────────────────────────────────
 _TRANSIT_PRIMARY = ["проехат", "маршрут", "добраться", "доехат", "попасть"]
 
@@ -494,6 +510,11 @@ def route(query: str) -> list[RouteResult]:
     q = _normalize(query)
     registry = load_registry()
     results: list[RouteResult] = []
+
+    # Тема индекса пробок (высокий приоритет)
+    traffic_result = _route_traffic(q)
+    if traffic_result:
+        results.append(traffic_result)
 
     # Тема маршрутов (не в YAML-реестре, проверяем первой — высокий приоритет)
     transit_result = _route_transit(q)
