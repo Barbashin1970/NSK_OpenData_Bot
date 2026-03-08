@@ -1267,59 +1267,110 @@ def get_ask(
 @app.get(
     "/transit",
     tags=["Запросы"],
-    summary="Маршрут на общественном транспорте (2GIS, real-time)",
-    response_description="Маршруты с сегментами. Данные не сохраняются (pass-through).",
+    summary="Маршруты между районами (открытые данные мэрии)",
+    response_description="Общие маршруты наземного транспорта между двумя районами.",
 )
 def get_transit(
     from_district: str = Query(
         ...,
-        description="Район отправления. Например: `Советский район`, `Кольцово`",
+        description="Район отправления. Например: `Советский район`",
         example="Советский район",
     ),
     to_district: str = Query(
         ...,
-        description="Район назначения. Например: `Центральный район`",
-        example="Центральный район",
+        description="Район назначения. Например: `Дзержинский район`",
+        example="Дзержинский район",
     ),
 ) -> dict:
     """
-    Строит маршрут на общественном транспорте между двумя районами Новосибирска.
+    Находит общие маршруты наземного транспорта между двумя районами Новосибирска.
 
-    **Стратегия (две ступени):**
-    1. Пробует 2GIS Public Transport Routing API (`routing.api.2gis.com`).
-       Если ключ не поддерживает routing — переходит к шагу 2.
-    2. Fallback: находит ближайшие остановки у точки отправления и назначения
-       через бесплатный 2GIS Catalog API + оценка времени в пути по прямой.
-       Ссылка на маршрут в 2ГИС включается всегда.
+    Использует данные об остановках из [opendata.novo-sibirsk.ru](http://opendata.novo-sibirsk.ru)
+    (тема `stops`, TTL 24ч). **Ключ API не требуется.**
 
-    **Важно:** данные не сохраняются на сервере согласно лицензии 2ГИС (law.2gis.ru/api-rules).
+    Для каждого общего маршрута возвращает примеры остановок в районе отправления и назначения.
+    Также включает ссылку для построения точного маршрута в 2ГИС.
 
-    Требует `TWOGIS_API_KEY` (получить: platform.2gis.ru).
+    > ⚠️ Данные о маршрутах из открытых данных мэрии могут быть неполными.
+    > Для точного маршрута используйте 2ГИС или Яндекс.Транспорт.
     """
-    from .transport_api import transit_route, DISTRICT_COORDS
+    import re
+    from .cache import _get_conn, table_exists
+    from .transport_api import DISTRICT_COORDS
 
-    from_coords = DISTRICT_COORDS.get(from_district)
-    to_coords = DISTRICT_COORDS.get(to_district)
-
-    if not from_coords:
+    if not table_exists("stops"):
         return {
-            "error": f"Район отправления не найден: {from_district!r}",
-            "available": list(DISTRICT_COORDS.keys()),
-        }
-    if not to_coords:
-        return {
-            "error": f"Район назначения не найден: {to_district!r}",
-            "available": list(DISTRICT_COORDS.keys()),
+            "error": "Данные об остановках не загружены",
+            "hint": "POST /update?topic=stops",
+            "connections": [],
         }
 
-    result = transit_route(from_coords, to_coords, from_name=from_district, to_name=to_district)
-    return {
-        "from":       from_district,
-        "to":         to_district,
-        "from_coords": {"lng": from_coords[0], "lat": from_coords[1]},
-        "to_coords":   {"lng": to_coords[0],   "lat": to_coords[1]},
-        **result,
-    }
+    def split_routes(marshryt: str) -> list[str]:
+        if not marshryt:
+            return []
+        parts = re.split(r"[,;\s]+", marshryt.strip())
+        return [p.strip() for p in parts if p.strip() and len(p.strip()) <= 10]
+
+    conn = _get_conn()
+    try:
+        from_kw = from_district.split()[0]
+        to_kw = to_district.split()[0]
+
+        def get_route_stops(kw: str) -> dict[str, list[str]]:
+            rows = conn.execute(
+                "SELECT OstName, Marshryt FROM topic_stops "
+                "WHERE AdrDistr ILIKE ? AND Marshryt IS NOT NULL AND Marshryt != ''",
+                [f"%{kw}%"],
+            ).fetchall()
+            result: dict[str, list[str]] = {}
+            for stop_name, marshryt in rows:
+                for route in split_routes(marshryt or ""):
+                    if route not in result:
+                        result[route] = []
+                    if stop_name and stop_name not in result[route]:
+                        result[route].append(stop_name)
+            return result
+
+        from_routes = get_route_stops(from_kw)
+        to_routes = get_route_stops(to_kw)
+        common = sorted(set(from_routes) & set(to_routes))
+
+        connections = [
+            {
+                "route": r,
+                "from_stops": from_routes[r][:3],
+                "to_stops": to_routes[r][:3],
+            }
+            for r in common[:20]
+        ]
+
+        from_coords = DISTRICT_COORDS.get(from_district)
+        to_coords = DISTRICT_COORDS.get(to_district)
+        hint = None
+        if from_coords and to_coords:
+            hint = (
+                f"https://2gis.ru/novosibirsk/routeSearch/rsType/publictransport/"
+                f"from/{from_coords[0]},{from_coords[1]}/to/{to_coords[0]},{to_coords[1]}"
+            )
+
+        return {
+            "from": from_district,
+            "to": to_district,
+            "common_routes_count": len(common),
+            "connections": connections,
+            "hint": hint,
+            "notice": (
+                "⚠️ Данные о маршрутах взяты из открытых данных мэрии Новосибирска "
+                "(opendata.novo-sibirsk.ru) и могут быть неполными или устаревшими. "
+                "Для построения точного маршрута воспользуйтесь приложением 2ГИС или Яндекс.Транспорт."
+            ),
+            "source": "opendata.novo-sibirsk.ru · остановки наземного транспорта (TTL 24ч)",
+        }
+    except Exception as e:
+        log.error(f"Ошибка /transit: {e}")
+        return {"error": str(e), "connections": []}
+    finally:
+        conn.close()
 
 
 @app.get(
