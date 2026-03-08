@@ -1283,13 +1283,18 @@ def get_transit(
     ),
 ) -> dict:
     """
-    Строит маршрут на общественном транспорте между двумя районами Новосибирска
-    через 2GIS Public Transport API.
+    Строит маршрут на общественном транспорте между двумя районами Новосибирска.
+
+    **Стратегия (две ступени):**
+    1. Пробует 2GIS Public Transport Routing API (`routing.api.2gis.com`).
+       Если ключ не поддерживает routing — переходит к шагу 2.
+    2. Fallback: находит ближайшие остановки у точки отправления и назначения
+       через бесплатный 2GIS Catalog API + оценка времени в пути по прямой.
+       Ссылка на маршрут в 2ГИС включается всегда.
 
     **Важно:** данные не сохраняются на сервере согласно лицензии 2ГИС (law.2gis.ru/api-rules).
-    Каждый запрос — это real-time вызов к API 2ГИС.
 
-    Требует переменную окружения `TWOGIS_API_KEY` (получить: dev.2gis.com).
+    Требует `TWOGIS_API_KEY` (получить: platform.2gis.ru).
     """
     from .transport_api import transit_route, DISTRICT_COORDS
 
@@ -1307,12 +1312,12 @@ def get_transit(
             "available": list(DISTRICT_COORDS.keys()),
         }
 
-    result = transit_route(from_coords, to_coords)
+    result = transit_route(from_coords, to_coords, from_name=from_district, to_name=to_district)
     return {
-        "from": from_district,
-        "to": to_district,
+        "from":       from_district,
+        "to":         to_district,
         "from_coords": {"lng": from_coords[0], "lat": from_coords[1]},
-        "to_coords": {"lng": to_coords[0], "lat": to_coords[1]},
+        "to_coords":   {"lng": to_coords[0],   "lat": to_coords[1]},
         **result,
     }
 
