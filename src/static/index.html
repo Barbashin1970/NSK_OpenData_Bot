@@ -436,15 +436,19 @@ async function loadRoleDashboard() {
       fetch('/ecology/status'),
       fetch('/ecology/risks'),
     ];
-    if (currentRole === 'official') fetches.push(fetch('/transit/districts'));
+    if (currentRole === 'official') {
+      fetches.push(fetch('/transit/districts'));
+      fetches.push(fetch('/traffic-index'));
+    }
     const results = await Promise.all(fetches);
-    const power   = results[0].ok ? await results[0].json() : null;
-    const eco     = results[1].ok ? await results[1].json() : null;
-    const risks   = results[2].ok ? await results[2].json() : null;
-    const transit = (currentRole === 'official' && results[3]?.ok) ? await results[3].json() : null;
+    const power       = results[0].ok ? await results[0].json() : null;
+    const eco         = results[1].ok ? await results[1].json() : null;
+    const risks       = results[2].ok ? await results[2].json() : null;
+    const transit     = (currentRole === 'official' && results[3]?.ok) ? await results[3].json() : null;
+    const trafficData = (currentRole === 'official' && results[4]?.ok) ? await results[4].json() : null;
     dashEl.innerHTML = currentRole === 'mayor'
       ? renderMayorDashboard(power, eco, risks)
-      : renderOfficialDashboard(power, eco, risks, transit, officialDistrict);
+      : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData);
     requestAnimationFrame(() => {
       document.querySelectorAll('.bar-fill[data-pct]').forEach(b => { b.style.width = b.dataset.pct + '%'; });
     });
@@ -511,7 +515,49 @@ function renderTransitWidget(transit, district) {
     </div>`;
 }
 
-function renderOfficialDashboard(power, eco, risks, transit, district) {
+function renderTrafficCompact(data) {
+  if (!data || data.error) return '';
+  const idx    = data.index ?? '—';
+  const level  = data.level || '';
+  const emoji  = data.emoji || '🚗';
+  const tip    = data.official_tip || data.citizen_tip || '';
+  const nextPk = data.next_peak || '';
+  const pct    = Math.min(100, Math.round((parseFloat(idx) || 0) / 10 * 100));
+  const colorMap = {
+    'Свободно':     'bg-emerald-100 text-emerald-700 border-emerald-200',
+    'Умеренно':     'bg-yellow-100  text-yellow-700  border-yellow-200',
+    'Затруднено':   'bg-orange-100  text-orange-700  border-orange-200',
+    'Сложно':       'bg-red-100     text-red-700     border-red-200',
+    'Очень сложно': 'bg-red-200     text-red-800     border-red-300',
+    'Коллапс':      'bg-red-300     text-red-900     border-red-400',
+  };
+  const badge    = colorMap[level] || 'bg-slate-100 text-slate-700 border-slate-200';
+  const barColor = pct < 35 ? 'bg-emerald-500' : pct < 65 ? 'bg-orange-400' : 'bg-red-500';
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+         onclick="askNow('пробки сейчас')">
+      <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🚦 Дорожная нагрузка</span>
+        <span class="text-xs text-blue-600 hover:underline">Подробнее →</span>
+      </div>
+      <div class="px-4 py-3 flex items-center gap-4">
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <span class="text-2xl font-bold text-slate-800">${idx}</span>
+          <span class="text-slate-400 text-xs">/10</span>
+          <span class="px-2 py-0.5 rounded-full border text-xs font-semibold ${badge}">${emoji} ${esc(level)}</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="bg-slate-100 rounded-full h-2 overflow-hidden mb-1.5">
+            <div class="${barColor} h-2 rounded-full" style="width:${pct}%"></div>
+          </div>
+          ${tip ? `<p class="text-xs text-slate-600 leading-snug truncate" title="${esc(tip)}">${esc(tip)}</p>` : ''}
+        </div>
+      </div>
+      ${nextPk ? `<div class="px-4 pb-3 text-xs text-slate-400">⏱ ${esc(nextPk)}</div>` : ''}
+    </div>`;
+}
+
+function renderOfficialDashboard(power, eco, risks, transit, district, trafficData) {
   const d = district || '';  // '' = весь город
   const dShort = d.replace(' район', '');
 
@@ -551,13 +597,17 @@ function renderOfficialDashboard(power, eco, risks, transit, district) {
   const qRisks    = `риски для жизни в городе`;
 
   const kpis = [
-    { icon:'🔴', label:'Аварийных домов',  val: activeH.toLocaleString('ru-RU'),
-      color:'text-red-600',    bg:'bg-red-50',    border:'border-red-200',
-      note: d ? `в ${dShort}` : 'по всем видам ЖКХ',
+    { icon: activeH  === 0 ? '✅' : '🔴', label:'Аварийных домов',  val: activeH.toLocaleString('ru-RU'),
+      color:  activeH === 0 ? 'text-emerald-600' : activeH <= 100 ? 'text-amber-600' : 'text-red-600',
+      bg:     activeH === 0 ? 'bg-emerald-50'    : activeH <= 100 ? 'bg-amber-50'    : 'bg-red-50',
+      border: activeH === 0 ? 'border-emerald-200': activeH <= 100 ? 'border-amber-200': 'border-red-200',
+      note: activeH === 0 ? (d ? `в ${dShort}: аварий нет` : 'аварий нет') : (d ? `в ${dShort}` : 'по всем видам ЖКХ'),
       onclick:`askNow('${qEmerg}')` },
-    { icon:'🟡', label:'Плановых домов',   val: plannedH.toLocaleString('ru-RU'),
-      color:'text-amber-600',  bg:'bg-amber-50',  border:'border-amber-200',
-      note: d ? `плановые в ${dShort}` : 'запланированные',
+    { icon: plannedH === 0 ? '✅' : '🟡', label:'Плановых домов',   val: plannedH.toLocaleString('ru-RU'),
+      color:  plannedH === 0 ? 'text-emerald-600' : 'text-amber-600',
+      bg:     plannedH === 0 ? 'bg-emerald-50'    : 'bg-amber-50',
+      border: plannedH === 0 ? 'border-emerald-200': 'border-amber-200',
+      note: plannedH === 0 ? (d ? `в ${dShort}: плановых нет` : 'плановых нет') : (d ? `плановые в ${dShort}` : 'запланированные'),
       onclick:`askNow('${qPlan}')` },
     { icon:'🍃', label:'AQI (средний)',    val: avgAqi != null ? String(avgAqi) : '—',
       color: ac.text, bg: ac.bg, border: ac.border,
@@ -651,6 +701,7 @@ function renderOfficialDashboard(power, eco, risks, transit, district) {
       </div>
       ${distFilterBar}
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${kpiHtml}</div>
+      ${renderTrafficCompact(trafficData)}
       ${pwrTable}
       ${ecoChips ? `<div class="flex flex-wrap gap-2 items-center">
         <span class="text-xs text-slate-400">AQI${d ? ` · ${dShort}` : ' по районам'}:</span>${ecoChips}</div>` : ''}
@@ -670,20 +721,21 @@ function renderMayorDashboard(power, eco, risks) {
   const avgPm25 = pm25s.length ? (pm25s.reduce((a,b)=>a+b,0)/pm25s.length).toFixed(1) : '—';
   const ac = _dashAqiClass(avgAqi);
 
-  const isEmergency = activeH > 500 || riskCount > 2;
-  const statusBg   = isEmergency ? 'bg-red-100 border-red-300 text-red-700'
-                   : riskCount > 0 ? 'bg-amber-100 border-amber-300 text-amber-700'
-                   : 'bg-emerald-100 border-emerald-300 text-emerald-700';
-  const statusText = isEmergency ? '🔴 Нештатная ситуация'
-                   : riskCount > 0 ? '🟡 Требует внимания' : '🟢 Штатный режим';
-
   const bigStats = [
-    { label:'Домов без ЖКХ (аварийно)', val: activeH.toLocaleString('ru-RU'),    icon:'🔴',
-      color:'text-red-700',   bg:'bg-red-50',   border:'border-red-200',
-      sub:'электро · тепло · вода · газ', link:"askNow('аварийные отключения ЖКХ сейчас')" },
-    { label:'Плановых отключений (домов)', val: plannedH.toLocaleString('ru-RU'), icon:'📋',
-      color:'text-amber-700', bg:'bg-amber-50', border:'border-amber-200',
-      sub:'запланировано', link:"askNow('плановые отключения на неделю')" },
+    { label:'Домов без ЖКХ (аварийно)', val: activeH.toLocaleString('ru-RU'),
+      icon:   activeH === 0 ? '✅' : '🔴',
+      color:  activeH === 0 ? 'text-emerald-700' : activeH <= 200 ? 'text-amber-700' : 'text-red-700',
+      bg:     activeH === 0 ? 'bg-emerald-50'    : activeH <= 200 ? 'bg-amber-50'    : 'bg-red-50',
+      border: activeH === 0 ? 'border-emerald-200': activeH <= 200 ? 'border-amber-200': 'border-red-200',
+      sub: activeH === 0 ? 'аварийных отключений нет' : 'электро · тепло · вода · газ',
+      link:"askNow('аварийные отключения ЖКХ сейчас')" },
+    { label:'Плановых отключений (домов)', val: plannedH.toLocaleString('ru-RU'),
+      icon:   plannedH === 0 ? '✅' : '📋',
+      color:  plannedH === 0 ? 'text-emerald-700' : 'text-amber-700',
+      bg:     plannedH === 0 ? 'bg-emerald-50'    : 'bg-amber-50',
+      border: plannedH === 0 ? 'border-emerald-200': 'border-amber-200',
+      sub: plannedH === 0 ? 'плановых отключений нет' : 'запланировано',
+      link:"askNow('плановые отключения на неделю')" },
     { label:'Качество воздуха (AQI ср.)', val: avgAqi != null ? String(avgAqi) : '—', icon:'🍃',
       color: ac.text, bg: ac.bg, border: ac.border,
       sub: ac.label + ' · PM2.5 ср. ' + avgPm25 + ' мкг/м³', link:"askNow('качество воздуха в городе')" },
@@ -696,7 +748,7 @@ function renderMayorDashboard(power, eco, risks) {
   ];
 
   const statsHtml = bigStats.map(s => `
-    <div class="dash-kpi bg-white border ${s.border} rounded-2xl p-5 flex flex-col gap-2 shadow-sm cursor-pointer"
+    <div class="dash-kpi ${s.bg} border ${s.border} rounded-2xl p-5 flex flex-col gap-2 shadow-sm cursor-pointer"
          onclick="${s.link}">
       <div class="flex items-center gap-2">
         <span class="text-2xl">${s.icon}</span>
@@ -728,10 +780,7 @@ function renderMayorDashboard(power, eco, risks) {
   return `
     <div class="space-y-4">
       <div class="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h3 class="text-sm font-bold text-slate-700">🏛️ Сводка по городу · ${ts}</h3>
-          <span class="inline-block mt-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${statusBg}">${statusText}</span>
-        </div>
+        <h3 class="text-sm font-bold text-slate-700">🏛️ Сводка по городу · ${ts}</h3>
         <button onclick="loadRoleDashboard()" class="text-xs text-blue-600 hover:underline">↻ Обновить</button>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${statsHtml}</div>
