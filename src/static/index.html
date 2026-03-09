@@ -1083,7 +1083,7 @@ function groupBadge(type) {
 
 function renderPower(data) {
   const op = data.operation;
-  const rows = data.rows || [];
+  let rows = data.rows || [];
   const meta = data.power_meta || {};
   const metaBar = powerMetaBar(meta);
 
@@ -1118,23 +1118,33 @@ function renderPower(data) {
       </tr>
     `).join('');
   } else {
+    // Показываем только строки с реальными данными (дома > 0); "all" = агрегат без района
+    const meaningful = rows.filter(r => Number(r.houses || 0) > 0);
     thead = `<tr>
       <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Тип</th>
       <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Район</th>
       <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Домов</th>
       <th class="text-left text-xs text-slate-400 px-4 py-3 border-b border-slate-100">Обновлено</th>
     </tr>`;
-    tableBody = rows.map(r => {
-      const ts = String(r.scraped_at || '').substring(0,16).replace('T',' ');
-      return `
-        <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-          <td class="px-4 py-3">${groupBadge(r.group_type)}</td>
-          <td class="px-4 py-3 text-sm text-slate-700">${esc(r.district || 'Весь город')}</td>
-          <td class="px-4 py-3 text-sm font-semibold text-slate-700">${r.houses || '—'}</td>
-          <td class="px-4 py-3 text-xs text-slate-400">${ts}</td>
-        </tr>
-      `;
-    }).join('');
+    if (meaningful.length === 0) {
+      tableBody = `<tr><td colspan="4" class="px-4 py-8 text-center text-sm text-emerald-600">
+        <span class="text-2xl block mb-1">✅</span>Отключений не зафиксировано</td></tr>`;
+    } else {
+      tableBody = meaningful.map(r => {
+        const distLabel = (!r.district || r.district === 'all') ? 'Весь город' : r.district;
+        const ts = String(r.scraped_at || '').substring(0,16).replace('T',' ');
+        return `
+          <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+            <td class="px-4 py-3">${groupBadge(r.group_type)}</td>
+            <td class="px-4 py-3 text-sm text-slate-700">${esc(distLabel)}</td>
+            <td class="px-4 py-3 text-sm font-semibold text-slate-700">${r.houses}</td>
+            <td class="px-4 py-3 text-xs text-slate-400">${ts}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+    // Обновляем счётчик по отфильтрованным строкам
+    rows = meaningful;
   }
 
   const titles = {
