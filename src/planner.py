@@ -10,7 +10,7 @@
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from .router import (
     extract_district, extract_limit, extract_street, extract_sub_district,
@@ -90,11 +90,17 @@ YEAR_PATTERN = re.compile(r"\bза\s+(20\d{2})\b|\b(20\d{2})\s*год[а-я]*\b"
 MIN_VALUE_PATTERN = re.compile(r"больше\s+(\d+)|от\s+(\d+)|минимум\s+(\d+)")
 
 
+Operation = Literal[
+    "COUNT", "TOP_N", "GROUP", "FILTER", "INFO",
+    "POWER_STATUS", "POWER_TODAY", "POWER_HISTORY", "POWER_PLANNED",
+    "ECO_STATUS", "ECO_PDK", "ECO_HISTORY", "ECO_RISKS", "ECO_FORECAST",
+    "TRANSIT_ROUTE", "TRAFFIC_INDEX", "CAMERAS",
+]
+
+
 @dataclass
 class Plan:
-    operation: str          # COUNT | TOP_N | GROUP | FILTER | INFO
-                            # | POWER_STATUS | POWER_TODAY | POWER_HISTORY | POWER_PLANNED
-                            # | ECO_STATUS | ECO_PDK | ECO_HISTORY | ECO_RISKS | ECO_FORECAST
+    operation: Operation    # см. тип Operation выше
     topic: str | None       # выбранная тема
     district: str | None    # фильтр по району (канонический, для SQL)
     street: str | None      # фильтр по улице

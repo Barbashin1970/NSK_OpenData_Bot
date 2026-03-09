@@ -602,13 +602,16 @@ function renderOfficialDashboard(power, eco, risks, transit, district) {
         <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">${pwrTitle}</span>
         <button class="text-xs text-blue-600 hover:underline" onclick="${pwrMore}">Подробнее →</button>
       </div>
-      ${pwrRows.length ? `<table class="w-full"><tbody>${pwrRows.map(r => `
+      ${pwrRows.length ? `<table class="w-full"><tbody>${pwrRows.map(r => {
+          const _q = `отключения ${(r.utility||'').split(' ')[0].toLowerCase()} в ${r.district||''}`;
+          return `
           <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors cursor-pointer"
-              onclick="askNow('отключения ${esc((r.utility||'').split(' ')[0].toLowerCase())} в ${esc(r.district||'')}')">
+              onclick="askNow(decodeURIComponent('${encodeURIComponent(_q)}'))">
             <td class="px-4 py-2.5 text-xs text-slate-500 w-28">${esc((r.utility||'').split(' ')[0])}</td>
             <td class="px-4 py-2.5 text-sm text-slate-700 font-medium">${esc(r.district||'—')}</td>
             <td class="px-4 py-2.5 text-sm font-bold text-red-600 text-right">${r.houses} д.</td>
-          </tr>`).join('')}</tbody></table>`
+          </tr>`;
+        }).join('')}</tbody></table>`
       : `<div class="px-4 py-4 text-sm text-emerald-600 font-medium flex items-center gap-2">
            <span>✅</span><span>Аварийных отключений нет${d ? ` в ${dShort}` : ''}</span>
          </div>`}
@@ -619,8 +622,9 @@ function renderOfficialDashboard(power, eco, risks, transit, district) {
   const ecoChips = ecoChipRows.map(r => {
     const c2 = aqiColor(r.aqi);
     const dist = (r.district||'').replace(' район','');
+    const _q = `качество воздуха в ${dist} районе`;
     return `<span class="${c2.bg} ${c2.text} border border-current/20 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity"
-      onclick="askNow('качество воздуха в ${esc(dist)} районе')">${dist}: ${r.aqi??'—'}</span>`;
+      onclick="askNow(decodeURIComponent('${encodeURIComponent(_q)}')">${dist}: ${r.aqi??'—'}</span>`;
   }).join('');
 
   // ─ Фильтр по районам — полоска под заголовком ─────────────────────────────
@@ -2007,18 +2011,18 @@ async function loadMap() {
 function _buildMarkerLabel(row) {
   // Камера фиксации (OSM): osm_id, maxspeed, name, ref
   if (row.osm_id !== undefined) {
-    const title = row.name || 'Камера фиксации';
-    const speed = row.maxspeed ? `<span style="color:#fbbf24">⚡ ${row.maxspeed} км/ч</span>` : '';
-    const ref   = row.ref ? `<span style="color:#94a3b8">${row.ref}</span>` : '';
+    const title = esc(row.name || 'Камера фиксации');
+    const speed = row.maxspeed ? `<span style="color:#fbbf24">⚡ ${esc(row.maxspeed)} км/ч</span>` : '';
+    const ref   = row.ref ? `<span style="color:#94a3b8">${esc(row.ref)}</span>` : '';
     const parts = [speed, ref].filter(Boolean).join(' · ');
     return `<b style="display:block;margin-bottom:2px">${title}</b>${parts}`;
   }
   // Имя объекта — перебираем известные поля по всем датасетам
-  const name = row.Name || row.BiblName || row.SchoolName || row.OrgName
-             || row.SportOrgName || row.CultureName || '';
+  const name = esc(row.Name || row.BiblName || row.SchoolName || row.OrgName
+             || row.SportOrgName || row.CultureName || '');
   // Адрес — улица + дом
-  const street = row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '';
-  const house  = row.AdrDom   || row.Dom    || row.House  || '';
+  const street = esc(row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '');
+  const house  = esc(row.AdrDom   || row.Dom    || row.House  || '');
   const addr   = street ? (house ? `${street}, ${house}` : street) : '';
   if (name && addr) return `<b style="display:block;margin-bottom:2px">${name}</b>${addr}`;
   if (name) return `<b>${name}</b>`;
