@@ -844,6 +844,15 @@ def run_tests():
                 yield _sse({"type": "progress", "done": done, "total": total,
                             "pct": pct, "status": status, "short": short, "line": line})
             else:
+                # Финальная сводка pytest: "N passed, M failed, K warnings in X.XXs"
+                m_fin = _re.search(r"\b(\d+)\s+passed.*\bin\s+[\d.]+s", line)
+                if m_fin:
+                    passed = int(m_fin.group(1))
+                    mf = _re.search(r"\b(\d+)\s+failed", line)
+                    if mf:
+                        failed = int(mf.group(1))
+                    if not total:
+                        total = passed + (int(mf.group(1)) if mf else 0)
                 yield _sse({"type": "log", "line": line})
 
         proc.wait()
