@@ -159,7 +159,7 @@ _DISTRICT_FIELDS = ("AdrDistr", "Rayon", "District")
 
 # Признаки улицы в строке AdrOr (строительный датасет — "Район, ул. Название")
 _STREET_IN_ADDR = re.compile(
-    r"\bул\.\b|\bпр[\.-]\b|\bпер\.\b|\bпроезд\b|\bшоссе\b|\bнаб\.\b"
+    r"\bул\.|\bпр[\.-]|\bпер\.|\bпроезд\b|\bшоссе\b|\bнаб\."
     r"|\bб-р\b|\bбульвар\b|\bпросп\b|\bтракт\b|\bлиния\b",
     re.IGNORECASE,
 )

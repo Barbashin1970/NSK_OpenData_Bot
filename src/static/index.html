@@ -2099,8 +2099,10 @@ async function loadMap() {
 
   try {
     let rows;
+    let totalInPage = 0;
     if (_coordsPre && _lastPageRows) {
       // Координаты уже предзагружены (камеры OSM) — берём строки текущей страницы напрямую
+      totalInPage = _lastPageRows.length;
       rows = _lastPageRows.filter(row => row._lat && row._lon);
       status.classList.add('hidden');
     } else {
@@ -2110,14 +2112,25 @@ async function loadMap() {
         + `&offset=${_pageOffset}&page_size=${_pageSize}`;
       const r = await fetch(url);
       const d = await r.json();
-      rows = (d.rows || []).filter(row => row._lat && row._lon);
+      const allRows = d.rows || [];
+      totalInPage = allRows.length;
+      rows = allRows.filter(row => row._lat && row._lon);
     }
     status.classList.add('hidden');
 
     if (!rows.length) {
       btn.disabled = false;
-      btn.textContent = '📍 Координаты не найдены';
+      btn.textContent = '📍 Адреса не найдены';
+      status.classList.remove('hidden');
+      status.textContent = 'Адресные данные недоступны для объектов на этой странице';
       return;
+    }
+
+    if (rows.length < totalInPage) {
+      status.classList.remove('hidden');
+      status.textContent = `Отображено ${rows.length} из ${totalInPage} объектов`;
+    } else {
+      status.classList.add('hidden');
     }
 
     _currentMapRows = rows;
