@@ -1366,7 +1366,7 @@ def get_ask(
     result = execute_plan(plan)
 
     # ── Геокодирование (опционально) ──────────────────────────────────────────
-    if with_coords and plan.operation in ("FILTER", "TOP_N") and result.get("rows"):
+    if with_coords and plan.operation in ("FILTER", "TOP_N", "CONSTRUCTION_ACTIVE", "CONSTRUCTION_COMMISSIONED") and result.get("rows"):
         from .geocoder import geocode_rows
         result["rows"] = geocode_rows(result["rows"])
         result["coords_enriched"] = True

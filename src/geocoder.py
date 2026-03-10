@@ -11,6 +11,7 @@
 import hashlib
 import logging
 import os
+import re
 from pathlib import Path
 
 import duckdb
@@ -156,16 +157,27 @@ _STREET_FIELDS = ("AdrStreet", "AdrStr", "Ulica", "Street")
 _HOUSE_FIELDS = ("AdrDom", "Dom", "House")
 _DISTRICT_FIELDS = ("AdrDistr", "Rayon", "District")
 
+# Признаки улицы в строке AdrOr (строительный датасет — "Район, ул. Название")
+_STREET_IN_ADDR = re.compile(
+    r"\bул\.\b|\bпр[\.-]\b|\bпер\.\b|\bпроезд\b|\bшоссе\b|\bнаб\.\b"
+    r"|\bб-р\b|\bбульвар\b|\bпросп\b|\bтракт\b|\bлиния\b",
+    re.IGNORECASE,
+)
+
 
 def extract_address(row: dict) -> str | None:
     """Извлекает адресную строку из строки датасета.
 
     Ищет поля улицы и номера дома по известным именам колонок.
+    Fallback: поле AdrOr (датасет стройки) — если содержит улицу.
     Возвращает строку вида "ул. Красный проспект, 25" или None.
     """
     street = next((row[f] for f in _STREET_FIELDS if row.get(f)), None)
     house = next((row[f] for f in _HOUSE_FIELDS if row.get(f)), None)
     if not street:
+        addr_or = (row.get("AdrOr") or "").strip()
+        if addr_or and _STREET_IN_ADDR.search(addr_or):
+            return addr_or  # geocoder добавит "Новосибирск, " prefix
         return None
     return f"{street}, {house}" if house else street
 

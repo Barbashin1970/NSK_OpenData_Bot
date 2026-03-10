@@ -2152,12 +2152,17 @@ function _buildMarkerLabel(row) {
     return `<b style="display:block;margin-bottom:2px">${title}</b>${parts}`;
   }
   // Имя объекта — перебираем известные поля по всем датасетам
-  const name = esc(row.Name || row.BiblName || row.SchoolName || row.OrgName
+  const name = esc(row.NameOb || row.Name || row.BiblName || row.SchoolName || row.OrgName
              || row.SportOrgName || row.CultureName || '');
-  // Адрес — улица + дом
-  const street = esc(row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '');
-  const house  = esc(row.AdrDom   || row.Dom    || row.House  || '');
-  const addr   = street ? (house ? `${street}, ${house}` : street) : '';
+  // Адрес: стройка — AdrOr напрямую, остальные — улица + дом
+  let addr = '';
+  if (row.AdrOr) {
+    addr = esc(row.AdrOr);
+  } else {
+    const street = esc(row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '');
+    const house  = esc(row.AdrDom   || row.Dom    || row.House  || '');
+    addr = street ? (house ? `${street}, ${house}` : street) : '';
+  }
   if (name && addr) return `<b style="display:block;margin-bottom:2px">${name}</b>${addr}`;
   if (name) return `<b>${name}</b>`;
   if (addr) return addr;
