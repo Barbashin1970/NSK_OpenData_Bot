@@ -2170,9 +2170,19 @@ function _buildMarkerLabel(row) {
     const parts = [speed, ref].filter(Boolean).join(' · ');
     return `<b style="display:block;margin-bottom:2px">${title}</b>${parts}`;
   }
-  // Имя объекта — перебираем известные поля по всем датасетам
-  const name = esc(row.NameOb || row.Name || row.BiblName || row.SchoolName || row.OrgName
-             || row.SportOrgName || row.CultureName || '');
+  // Имя объекта — перебираем поля по всем датасетам в порядке приоритета
+  const name = esc(
+    row.NameOb      // стройка (разрешения / ввод в эксплуатацию)
+    || row.OuName   // школы, детсады
+    || row.NazvUch  // спортивные организации
+    || row.OstName  // остановки транспорта
+    || row.ShortName // культура (сокращённое название из display_cols)
+    || row.BiblName  // библиотеки
+    || row.Name     // аптеки
+    || row.Type     // спортплощадки («Стадион», «Корт», …)
+    || row.SchoolName || row.OrgName || row.SportOrgName || row.CultureName // legacy
+    || ''
+  );
   // Застройщик (только у строительных объектов)
   const dev = row.Zastr ? `<span style="display:block;color:#94a3b8;font-size:11px;margin-top:1px">${esc(row.Zastr)}</span>` : '';
   // Адрес: стройка — AdrOr напрямую, остальные — улица + дом
