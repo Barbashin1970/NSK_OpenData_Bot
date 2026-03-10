@@ -505,6 +505,60 @@ def _route_transit(q: str) -> "RouteResult | None":
     )
 
 
+# ── Строительство ─────────────────────────────────────────────────────────────
+_CONSTRUCTION_KEYWORDS = [
+    "стройк",
+    "строек",
+    "строительств",
+    "застройщик",
+    "разрешени на строительств",
+    "активн стройк",
+    "строящ",
+    "жилой дом строит",
+    "новостройк",
+    "незавершен строительств",
+    "ввод в эксплуатацию",
+    "введен в эксплуатацию",
+    "сдан в эксплуатацию",
+    "разрешени на ввод",
+    "стройплощадк",
+    "возводит",
+    "возводимый",
+]
+_CONSTRUCTION_PRIMARY = ["стройк", "строек", "строительств", "застройщик", "новостройк", "стройплощадк", "ввод в эксплуатацию"]
+
+
+def _route_construction(q: str) -> "RouteResult | None":
+    """Проверяет, относится ли запрос к теме строительства."""
+    if not any(m in q for m in _CONSTRUCTION_PRIMARY):
+        return None
+
+    score = 0.0
+    matched: list[str] = []
+    for kw in _CONSTRUCTION_KEYWORDS:
+        kw_norm = _normalize(kw)
+        kw_parts = kw_norm.split()
+        all_match = all(
+            re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in kw_parts
+        )
+        if all_match:
+            matched.append(kw)
+            score += len(kw_parts) ** 1.5
+
+    if score == 0:
+        score = 1.0
+        matched = ["строительство"]
+
+    confidence = min(1.0, score / max(len(_CONSTRUCTION_KEYWORDS), 1) * 6)
+    confidence = max(confidence, 0.55)
+    return RouteResult(
+        topic="construction",
+        confidence=confidence,
+        name="Строительство",
+        matched_keywords=matched,
+    )
+
+
 def route(query: str) -> list[RouteResult]:
     """Возвращает список RouteResult, отсортированный по убыванию уверенности."""
     q = _normalize(query)
@@ -535,6 +589,11 @@ def route(query: str) -> list[RouteResult]:
     cameras_result = _route_cameras(q)
     if cameras_result:
         results.append(cameras_result)
+
+    # Тема строительства (не в YAML-реестре, обрабатывается отдельно)
+    construction_result = _route_construction(q)
+    if construction_result:
+        results.append(construction_result)
 
     for topic_id, ds in registry.items():
         keywords: list[str] = ds.get("keywords", [])

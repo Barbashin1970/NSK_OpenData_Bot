@@ -95,7 +95,18 @@ Operation = Literal[
     "POWER_STATUS", "POWER_TODAY", "POWER_HISTORY", "POWER_PLANNED",
     "ECO_STATUS", "ECO_PDK", "ECO_HISTORY", "ECO_RISKS", "ECO_FORECAST",
     "TRANSIT_ROUTE", "TRAFFIC_INDEX", "CAMERAS",
+    "CONSTRUCTION_ACTIVE", "CONSTRUCTION_PERMITS", "CONSTRUCTION_COMMISSIONED",
+    "CONSTRUCTION_COUNT", "CONSTRUCTION_GROUP",
 ]
+
+# --- Паттерны для запросов о строительстве ---
+CONSTRUCTION_ACTIVE_PATTERNS = re.compile(
+    r"\bактивн\w*\b|\bстроит\w*\b|\bстроящ\w*\b|\bнезавершен\w*\b|\bвозводим\w*\b"
+)
+CONSTRUCTION_COMMISSIONED_PATTERNS = re.compile(
+    r"\bввод\w*\s+в\s+эксплуатацию\b|\bвведен\w*\b|\bсдан\w*\s+в\s+эксплуатацию\b"
+    r"|\bразрешени\w*\s+на\s+ввод\b"
+)
 
 
 @dataclass
@@ -115,6 +126,47 @@ class Plan:
 def make_plan(query: str, topic: str | None) -> Plan:
     """Разбирает запрос и возвращает Plan."""
     q = query.lower()
+
+    # Для темы строительства — специальные операции
+    if topic == "construction":
+        if CONSTRUCTION_COMMISSIONED_PATTERNS.search(q):
+            if COUNT_PATTERNS.search(q):
+                operation = "CONSTRUCTION_COUNT"
+                extra_filters: dict[str, str] = {"permit_type": "commissioned"}
+            elif GROUP_PATTERNS.search(q):
+                operation = "CONSTRUCTION_GROUP"
+                extra_filters = {"permit_type": "commissioned"}
+            else:
+                operation = "CONSTRUCTION_COMMISSIONED"
+                extra_filters = {}
+        elif GROUP_PATTERNS.search(q):
+            operation = "CONSTRUCTION_GROUP"
+            extra_filters = {"permit_type": "active"}
+        elif COUNT_PATTERNS.search(q):
+            operation = "CONSTRUCTION_COUNT"
+            extra_filters = {"permit_type": "active"}
+        elif CONSTRUCTION_ACTIVE_PATTERNS.search(q):
+            operation = "CONSTRUCTION_ACTIVE"
+            extra_filters = {}
+        else:
+            operation = "CONSTRUCTION_ACTIVE"
+            extra_filters = {}
+
+        district = extract_district(query)
+        sub = extract_sub_district(query)
+        sub_district = sub[1] if sub else None
+        limit = extract_limit(query) or 20
+        return Plan(
+            operation=operation,
+            topic="construction",
+            district=district,
+            street=None,
+            limit=limit,
+            year=None,
+            min_value=None,
+            sub_district=sub_district,
+            extra_filters=extra_filters,
+        )
 
     # Для темы транспортных маршрутов — специальная операция
     if topic == "transit":

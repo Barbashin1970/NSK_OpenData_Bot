@@ -368,3 +368,111 @@ def execute_power(plan: Plan) -> dict[str, Any]:
     except Exception as e:
         log.error(f"Ошибка execute_power: {e}")
         return {"error": str(e)}
+
+
+def execute_construction(plan: Plan) -> dict[str, Any]:
+    """Выполняет запросы к таблицам строительства.
+
+    Операции:
+      CONSTRUCTION_ACTIVE      — активные стройки (разрешения − введённые в эксплуатацию)
+      CONSTRUCTION_PERMITS     — список разрешений на строительство
+      CONSTRUCTION_COMMISSIONED — список введённых в эксплуатацию объектов
+      CONSTRUCTION_COUNT       — подсчёт
+      CONSTRUCTION_GROUP       — группировка по районам
+    """
+    from .construction_opendata import (
+        query_active, query_permits_list, count_construction,
+        group_by_district, get_construction_meta,
+        permits_available, commissioned_available,
+    )
+
+    op = plan.operation
+    district = plan.district
+    limit = plan.limit or 20
+    offset = plan.offset or 0
+    permit_type = plan.extra_filters.get("permit_type", "active")
+
+    _COLS = ["NomRazr", "DatRazr", "Zastr", "NameOb", "AdrOr", "district", "KadNom"]
+    _COL_LABELS = {
+        "NomRazr": "Номер разрешения",
+        "DatRazr": "Дата выдачи",
+        "Zastr": "Застройщик",
+        "NameOb": "Объект",
+        "AdrOr": "Адрес",
+        "district": "Район",
+        "KadNom": "Кадастровый номер",
+    }
+
+    try:
+        if op in ("CONSTRUCTION_ACTIVE", "CONSTRUCTION_PERMITS", "CONSTRUCTION_COMMISSIONED"):
+            if op == "CONSTRUCTION_ACTIVE":
+                rows, total = query_active(
+                    district_filter=district,
+                    limit=limit,
+                    offset=offset,
+                )
+                source_note = (
+                    "Активные стройки = разрешения на строительство, "
+                    "объекты которых ещё не введены в эксплуатацию"
+                )
+                if not commissioned_available():
+                    source_note += " (датасет 125 не загружен — показаны все разрешения)"
+            elif op == "CONSTRUCTION_COMMISSIONED":
+                rows, total = query_permits_list(
+                    permit_type="commissioned",
+                    district_filter=district,
+                    limit=limit,
+                    offset=offset,
+                )
+                source_note = "Ввод в эксплуатацию (датасет 125)"
+            else:  # CONSTRUCTION_PERMITS
+                rows, total = query_permits_list(
+                    permit_type="permits",
+                    district_filter=district,
+                    limit=limit,
+                    offset=offset,
+                )
+                source_note = "Разрешения на строительство (датасет 124)"
+
+            return {
+                "operation": op,
+                "rows": rows,
+                "columns": _COLS,
+                "col_labels": _COL_LABELS,
+                "count": total,
+                "shown": len(rows),
+                "limit": limit,
+                "note": source_note,
+            }
+
+        elif op == "CONSTRUCTION_COUNT":
+            n = count_construction(permit_type=permit_type, district_filter=district)
+            label = {
+                "active": "активных строек",
+                "permits": "разрешений на строительство",
+                "commissioned": "введённых в эксплуатацию объектов",
+            }.get(permit_type, "объектов")
+            return {
+                "operation": op,
+                "count": n,
+                "label": label,
+                "district": district,
+            }
+
+        elif op == "CONSTRUCTION_GROUP":
+            rows = group_by_district(permit_type=permit_type)
+            total = sum(r.get("количество", 0) for r in rows)
+            return {
+                "operation": op,
+                "rows": rows,
+                "columns": ["район", "количество"],
+                "count": total,
+                "permit_type": permit_type,
+            }
+
+        else:
+            return {"error": f"Неизвестная construction-операция: {op}"}
+
+    except Exception as e:
+        log.error(f"Ошибка execute_construction: {e}")
+        return {"error": str(e)}

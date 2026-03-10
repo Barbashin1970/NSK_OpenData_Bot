@@ -77,6 +77,7 @@ _API_DESCRIPTION = """
 | `cameras` | Камеры фиксации нарушений ПДД | ~60 (OSM) |
 | `power_outages` | Отключения ЖКХ (электро/тепло/вода/газ) | реальное время |
 | `ecology` | Качество воздуха + погода | реальное время |
+| `construction` | Разрешения на строительство + ввод в эксплуатацию | ~5 942 + ~1 935 |
 
 ## Типы операций
 
@@ -96,6 +97,8 @@ _API_DESCRIPTION = """
 | «ПДК», «превышен», «опасн» | `ECO_PDK` | Превышения PM2.5 > 35 мкг/м³ |
 | «динамика», «тренд», «неделю» | `ECO_HISTORY` | История AQI/PM по дням |
 | «камер», «видеофиксац», «радар» | `FILTER` | Список камер с координатами |
+| «стройк», «застройщик», «новостройк» | `CONSTRUCTION_ACTIVE` | Активные стройки (разрешения − ввод в эксплуатацию) |
+| «ввод в эксплуатацию», «введено» | `CONSTRUCTION_COMMISSIONED` | Объекты, введённые в эксплуатацию |
 
 ## Районы Новосибирска и прилегающие территории
 
@@ -1105,6 +1108,37 @@ def get_ask(
     plan.offset = offset
     if page_size != 20 or plan.limit is None:
         plan.limit = page_size
+
+    # ── Строительство ─────────────────────────────────────────────────────────
+    if topic == "construction":
+        from .executor import execute_construction
+        from .construction_opendata import get_construction_meta, permits_available
+
+        if not permits_available():
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "Данные о строительстве не загружены",
+                    "hint": "POST /update?topic=construction_permits и POST /update?topic=construction_commissioned",
+                },
+            )
+
+        result = execute_construction(plan)
+        meta = get_construction_meta()
+        return {
+            "query": q,
+            "topic": "construction",
+            "operation": plan.operation,
+            "district": plan.district,
+            "meta": {
+                "permits_total": meta.get("permits_total", 0),
+                "commissioned_total": meta.get("commissioned_total", 0),
+                "active_total": meta.get("active_total", 0),
+                "permits_updated": meta.get("permits_updated", ""),
+                "commissioned_updated": meta.get("commissioned_updated", ""),
+            },
+            **result,
+        }
 
     # ── Экология и метеорология ───────────────────────────────────────────────
     if topic == "ecology":

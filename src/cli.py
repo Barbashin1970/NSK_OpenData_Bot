@@ -75,6 +75,40 @@ def ask(query_text: str, auto_update: bool, limit: int | None) -> None:
 
     topic = route_result.topic
 
+    # ── Тема строительства — отдельная ветка ──
+    if topic == "construction":
+        from .construction_opendata import permits_available, get_construction_meta
+        from .executor import execute_construction
+        from .renderer import render_construction_result
+        from .fetcher import is_stale
+
+        needs_update = not permits_available() or is_stale("construction_permits", 24)
+        if needs_update:
+            if auto_update:
+                console.print("[yellow]Обновляю данные о строительстве...[/yellow]")
+                _do_update("construction_permits")
+                _do_update("construction_commissioned")
+            elif not permits_available():
+                console.print(
+                    "[yellow]⚠ Данные о строительстве не загружены.[/yellow]\n"
+                    "  Запустите: [bold]bot construction update[/bold]\n"
+                    f"  или:       [bold]bot ask --auto-update \"{query_text}\"[/bold]"
+                )
+                sys.exit(1)
+            else:
+                console.print(
+                    "[dim]⚠ Кэш данных о строительстве устарел (> 24ч). "
+                    "Обновить: bot construction update[/dim]"
+                )
+
+        plan = make_plan(query_text, topic)
+        if limit:
+            plan.limit = limit
+        result = execute_construction(plan)
+        meta = get_construction_meta()
+        render_construction_result(query_text, plan, result, meta)
+        return
+
     # ── Тема отключений электроснабжения — отдельная ветка ──
     if topic == "power_outages":
         from .power_scraper import fetch_all_outages
@@ -568,6 +602,101 @@ def serve(host: str, port: int) -> None:
     console.print(f"[bold green]NSK OpenData Bot API запущен: http://{host}:{port}[/bold green]")
     console.print("[dim]Ctrl+C для остановки[/dim]")
     uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
+@cli.group()
+def construction() -> None:
+    """Данные о строительстве в Новосибирске (opendata.novo-sibirsk.ru).
+
+    Примеры:
+      bot construction update          — загрузить/обновить данные (датасеты 124 и 125)
+      bot construction status          — сводка: сколько разрешений, ввод, активных строек
+      bot construction active          — список активных строек
+      bot construction active --district "Калининский район"
+    """
+    pass
+
+
+@construction.command(name="update")
+@click.option("--force", is_flag=True, help="Обновить даже если данные актуальны")
+def construction_update(force: bool) -> None:
+    """Загрузить/обновить данные о строительстве с opendata.novo-sibirsk.ru."""
+    from .fetcher import is_stale
+
+    for topic_key in ("construction_permits", "construction_commissioned"):
+        if not force and not is_stale(topic_key, 24):
+            from .fetcher import load_meta
+            m = load_meta().get(topic_key, {})
+            rows_n = m.get("rows", "?")
+            console.print(f"[dim]— {topic_key}: кэш актуален ({rows_n} строк), пропускаем[/dim]")
+            continue
+        _do_update(topic_key)
+
+    from .construction_opendata import get_construction_meta
+    meta = get_construction_meta()
+    console.print(
+        f"\n[bold]Итог:[/bold]"
+        f" разрешений={meta['permits_total']}"
+        f" | введено={meta['commissioned_total']}"
+        f" | активных строек~{meta['active_total']}"
+    )
+
+
+@construction.command(name="status")
+def construction_status() -> None:
+    """Показать сводку по строительству."""
+    from .construction_opendata import get_construction_meta, permits_available
+
+    if not permits_available():
+        console.print("[yellow]Данные не загружены. Запустите: bot construction update[/yellow]")
+        return
+
+    meta = get_construction_meta()
+    console.print("\n[bold]Строительство в Новосибирске[/bold]")
+    console.print(f"  Разрешения на строительство:  [cyan]{meta['permits_total']}[/cyan]  (обновлено {meta.get('permits_updated', '')[:10] or '—'})")
+    console.print(f"  Введено в эксплуатацию:       [green]{meta['commissioned_total']}[/green]  (обновлено {meta.get('commissioned_updated', '')[:10] or '—'})")
+    console.print(f"  Активных строек (разность):   [yellow]{meta['active_total']}[/yellow]")
+    console.print("\n[dim]Источник: opendata.novo-sibirsk.ru (датасеты 124 и 125)[/dim]")
+
+
+@construction.command(name="active")
+@click.option("--district", "-d", default=None, help="Фильтр по району")
+@click.option("--limit", "-n", default=20, type=int, help="Максимум строк")
+def construction_active(district: str | None, limit: int) -> None:
+    """Показать список активных строек (разрешение выдано, ввод в эксплуатацию не оформлен)."""
+    from .construction_opendata import query_active, get_construction_meta, permits_available
+
+    if not permits_available():
+        console.print("[yellow]Данные не загружены. Запустите: bot construction update[/yellow]")
+        return
+
+    rows, total = query_active(district_filter=district, limit=limit)
+    meta = get_construction_meta()
+
+    from .planner import Plan
+    from .renderer import render_construction_result
+    plan = Plan(
+        operation="CONSTRUCTION_ACTIVE",
+        topic="construction",
+        district=district,
+        street=None,
+        limit=limit,
+        year=None,
+        min_value=None,
+    )
+    result = {
+        "operation": "CONSTRUCTION_ACTIVE",
+        "rows": rows,
+        "columns": ["NomRazr", "DatRazr", "Zastr", "NameOb", "AdrOr", "district", "KadNom"],
+        "count": total,
+        "shown": len(rows),
+        "limit": limit,
+        "note": "Активные стройки = разрешения без ввода в эксплуатацию",
+    }
+    render_construction_result(
+        f"Активные стройки{f' в {district}' if district else ''}",
+        plan, result, meta,
+    )
 
 
 if __name__ == "__main__":

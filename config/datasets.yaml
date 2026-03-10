@@ -259,3 +259,44 @@ datasets:
         - Dom
         - TelUch
         - VidSporta
+
+  construction_permits:
+    name: "Разрешения на строительство"
+    description: "Разрешения на строительство, выданные в Новосибирске (датасет 124)"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=124"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data79/data-20250701T0958-structure-20250701T0958.csv"
+    format: csv
+    encoding: utf-8-sig
+    keywords: []
+    fields:
+      district_col: ""
+      street_col: AdrOr
+      name_col: NameOb
+      display_cols:
+        - NomRazr
+        - DatRazr
+        - Zastr
+        - NameOb
+        - AdrOr
+        - KadNom
+
+  construction_commissioned:
+    name: "Ввод в эксплуатацию"
+    description: "Разрешения на ввод объектов в эксплуатацию в Новосибирске (датасет 125)"
+    passport_url: "http://opendata.novo-sibirsk.ru/pass.aspx?ID=125"
+    data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data80/data-20250701T1021-structure-20250701T1021.csv"
+    format: csv
+    encoding: utf-8-sig
+    keywords: []
+    fields:
+      district_col: Raion
+      street_col: AdrOb
+      name_col: NameOb
+      display_cols:
+        - NomRazr
+        - DatRazr
+        - Zastr
+        - NameOb
+        - Raion
+        - AdrOb
+        - KadNom

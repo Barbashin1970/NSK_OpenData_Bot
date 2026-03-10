@@ -27,6 +27,11 @@ OP_NAMES = {
     "POWER_TODAY": "Отключения сегодня",
     "POWER_PLANNED": "Плановые отключения",
     "POWER_HISTORY": "История отключений",
+    "CONSTRUCTION_ACTIVE": "Активные стройки",
+    "CONSTRUCTION_PERMITS": "Разрешения на строительство",
+    "CONSTRUCTION_COMMISSIONED": "Ввод в эксплуатацию",
+    "CONSTRUCTION_COUNT": "Подсчёт (строительство)",
+    "CONSTRUCTION_GROUP": "Группировка по районам (строительство)",
 }
 
 _GROUP_LABELS = {
@@ -83,6 +88,13 @@ COL_LABELS: dict[str, str] = {
     "район": "Район",
     "количество": "Кол-во",
     "cnt": "Итого",
+    "NomRazr": "Номер разрешения",
+    "DatRazr": "Дата выдачи",
+    "Zastr": "Застройщик",
+    "NameOb": "Объект",
+    "AdrOr": "Адрес",
+    "KadNom": "Кадастровый номер",
+    "district": "Район",
     "NazvUch": "Организация",
     "TelUch": "Телефон",
     "FIORuk": "Руководитель",
@@ -328,6 +340,11 @@ _TOPIC_EXAMPLES: dict[str, list[str]] = {
         "детские спортивные организации",
         "спортивные организации для взрослых",
         "спортшколы по районам",
+    ],
+    "construction_permits": [
+        "активные стройки в Калининском районе",
+        "сколько строек по районам",
+        "разрешения на строительство",
     ],
 }
 
@@ -585,3 +602,100 @@ def _render_power_history(rows: list[dict]) -> None:
         table.add_row(day, group_label, houses, snaps)
 
     console.print(table)
+
+
+def render_construction_result(
+    query_text: str,
+    plan: "Plan",
+    exec_result: dict,
+    meta: dict,
+) -> None:
+    """Отображает результат запроса о строительстве."""
+    console.rule("[bold yellow]Строительство в Новосибирске[/bold yellow]")
+
+    permits_upd = meta.get("permits_updated", "")
+    comm_upd = meta.get("commissioned_updated", "")
+    if permits_upd:
+        try:
+            permits_upd = datetime.fromisoformat(permits_upd).strftime("%d.%m.%Y")
+        except Exception:
+            permits_upd = permits_upd[:10]
+    if comm_upd:
+        try:
+            comm_upd = datetime.fromisoformat(comm_upd).strftime("%d.%m.%Y")
+        except Exception:
+            comm_upd = comm_upd[:10]
+
+    op_name = OP_NAMES.get(plan.operation, plan.operation)
+    console.print(f"[bold]Запрос:[/bold]   {query_text}")
+    console.print(f"[bold]Операция:[/bold] {op_name}")
+    if plan.district:
+        console.print(f"[bold]Район:[/bold]    {plan.district}")
+    console.print(
+        f"[bold]Данные:[/bold]   разрешения {permits_upd or '—'} ({meta.get('permits_total', 0)} записей)"
+        f" | ввод {comm_upd or '—'} ({meta.get('commissioned_total', 0)} записей)"
+        f" | активных строек ~{meta.get('active_total', 0)}"
+    )
+    console.print()
+
+    if "error" in exec_result:
+        console.print(f"[red]Ошибка: {exec_result['error']}[/red]")
+        console.rule()
+        return
+
+    op = exec_result.get("operation", "")
+    rows = exec_result.get("rows", [])
+    count = exec_result.get("count", 0)
+
+    if op == "CONSTRUCTION_COUNT":
+        label = exec_result.get("label", "объектов")
+        district_str = f" в {plan.district}" if plan.district else ""
+        console.print(Panel(
+            f"[bold green]{count} {label}{district_str}[/bold green]",
+            title="Результат",
+            border_style="green",
+        ))
+
+    elif op == "CONSTRUCTION_GROUP":
+        permit_type = exec_result.get("permit_type", "active")
+        type_label = {
+            "active": "активных строек",
+            "permits": "разрешений",
+            "commissioned": "введённых объектов",
+        }.get(permit_type, "объектов")
+        console.print(f"[bold green]Всего {type_label}: {count}[/bold green]")
+        _render_table(rows, ["район", "количество"])
+
+    else:
+        shown = exec_result.get("shown", len(rows))
+        if count > plan.limit:
+            console.print(f"[bold green]Найдено: {count}[/bold green] (показано: {shown})")
+        else:
+            console.print(f"[bold green]Найдено: {count}[/bold green]")
+
+        if not rows:
+            console.print("[yellow]Объекты не найдены[/yellow]")
+        else:
+            # Компактная таблица с ключевыми полями
+            tbl = Table(box=box.SIMPLE_HEAD, show_lines=False)
+            tbl.add_column("Дата", no_wrap=True, style="dim")
+            tbl.add_column("Объект", max_width=35, overflow="fold")
+            tbl.add_column("Адрес", max_width=35, overflow="fold")
+            tbl.add_column("Застройщик", max_width=28, overflow="fold")
+            tbl.add_column("Кадастровый №", no_wrap=True, style="dim")
+
+            for row in rows:
+                tbl.add_row(
+                    str(row.get("DatRazr", "") or ""),
+                    _truncate(row.get("NameOb", "") or "", 35),
+                    _truncate(row.get("AdrOr", "") or "", 35),
+                    _truncate(row.get("Zastr", "") or "", 28),
+                    str(row.get("KadNom", "") or ""),
+                )
+            console.print(tbl)
+
+    note = exec_result.get("note")
+    if note:
+        console.print(f"\n[dim]ℹ {note}[/dim]")
+
+    console.rule()
