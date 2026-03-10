@@ -158,6 +158,12 @@
       >
         Спросить →
       </button>
+      <button
+        id="micBtn"
+        onclick="toggleVoice()"
+        title="Голосовой ввод — скажите «Сигма!» и ваш вопрос"
+        class="px-4 py-3.5 bg-white/15 hover:bg-white/25 text-white text-xl rounded-2xl border border-white/20 transition-all active:scale-95"
+      >🎙</button>
     </div>
 
     <!-- Example chips -->
@@ -2307,6 +2313,47 @@ function _renderMap() {
   } catch(e) {
     container.innerHTML = '<div class="p-4 text-sm text-red-500">Ошибка инициализации карты: ' + esc(String(e)) + '</div>';
   }
+}
+
+// ─── Voice Input (Web Speech API) ────────────────────────────────────────────
+let _recognition = null;
+
+function toggleVoice() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    alert('Голосовой ввод работает только в Chrome и Edge.');
+    return;
+  }
+  if (_recognition) { _recognition.stop(); return; }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  _recognition = new SR();
+  _recognition.lang = 'ru-RU';
+  _recognition.continuous = false;
+  _recognition.interimResults = false;
+
+  const btn = document.getElementById('micBtn');
+  btn.textContent = '⏹';
+  btn.classList.add('bg-red-400/40', 'border-red-300/60');
+
+  _recognition.onresult = (e) => {
+    let text = e.results[0][0].transcript;
+    // Срезаем wake-word «Сигма» (с любым знаком или без)
+    text = text.replace(/^(сигма[!,.!]?\s*)/i, '').trim();
+    document.getElementById('queryInput').value = text;
+    resetMic();
+    if (text) ask();
+  };
+  _recognition.onerror = resetMic;
+  _recognition.onend   = resetMic;
+  _recognition.start();
+}
+
+function resetMic() {
+  _recognition = null;
+  const btn = document.getElementById('micBtn');
+  if (!btn) return;
+  btn.textContent = '🎙';
+  btn.classList.remove('bg-red-400/40', 'border-red-300/60');
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
