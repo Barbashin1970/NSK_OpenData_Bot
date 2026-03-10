@@ -1126,6 +1126,13 @@ def get_ask(
             )
 
         result = execute_construction(plan)
+
+        if with_coords and plan.operation in ("CONSTRUCTION_ACTIVE", "CONSTRUCTION_COMMISSIONED") and result.get("rows"):
+            from .geocoder import geocode_rows
+            result["rows"] = geocode_rows(result["rows"])
+            result["coords_enriched"] = True
+            result["coords_source"] = "2GIS Geocoder (кеш + API)"
+
         meta = get_construction_meta()
         return {
             "query": q,
