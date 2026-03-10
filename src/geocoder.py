@@ -157,10 +157,23 @@ _STREET_FIELDS = ("AdrStreet", "AdrStr", "Ulica", "Street")
 _HOUSE_FIELDS = ("AdrDom", "Dom", "House")
 _DISTRICT_FIELDS = ("AdrDistr", "Rayon", "District")
 
-# Признаки улицы в строке AdrOr (строительный датасет — "Район, ул. Название")
+# Признаки улицы/места в строке AdrOr (строительный датасет — "Район, ул. Название")
 _STREET_IN_ADDR = re.compile(
-    r"\bул\.|\bпр[\.-]|\bпер\.|\bпроезд\b|\bшоссе\b|\bнаб\."
-    r"|\bб-р\b|\bбульвар\b|\bпросп\b|\bтракт\b|\bлиния\b",
+    r"\bул\.|\bулиц[аы]\b"                         # ул. / улица / улицы
+    r"|\bпр[\.-]|\bпросп\b|\bпроспект\b"           # пр. / просп / проспект
+    r"|\bпер\.|\bпереулок\b"                        # пер. / переулок
+    r"|\bпроезд\b|\bшоссе\b|\bнаб\.|\bнабережн\w*" # проезд / шоссе / наб.
+    r"|\bб-р\b|\bбульвар\b|\bтракт\b|\bлиния\b"    # бульвар / тракт / линия
+    r"|\bспуск\b|\bтупик\b|\bплощадь\b|\bпл\."     # спуск / тупик / площадь
+    r"|\bпос\.|\bпосел\w+\b"                        # пос. / поселок
+    r"|\bмкр\.?\b|\bмикрорайон\b",                 # мкр / микрорайон
+    re.IGNORECASE,
+)
+
+# Срезает "Район, " из строки AdrOr (для fallback-геокодирования хвоста)
+_DISTRICT_STRIP = re.compile(
+    r"^(?:Дзержинский|Железнодорожный|Заельцовский|Калининский|Кировский|"
+    r"Ленинский|Октябрьский|Первомайский|Советский|Центральный)\s+район\s*,\s*",
     re.IGNORECASE,
 )
 
@@ -176,8 +189,15 @@ def extract_address(row: dict) -> str | None:
     house = next((row[f] for f in _HOUSE_FIELDS if row.get(f)), None)
     if not street:
         addr_or = (row.get("AdrOr") or "").strip()
-        if addr_or and _STREET_IN_ADDR.search(addr_or):
+        if not addr_or:
+            return None
+        if _STREET_IN_ADDR.search(addr_or):
             return addr_or  # geocoder добавит "Новосибирск, " prefix
+        # Fallback: срезаем "Район, " и пробуем геокодировать хвост
+        # (поселки, жилые массивы, улицы без стандартного сокращения)
+        tail = _DISTRICT_STRIP.sub("", addr_or).strip()
+        if tail and tail != addr_or and not re.search(r"\bрайон\w*", tail, re.IGNORECASE):
+            return tail
         return None
     return f"{street}, {house}" if house else street
 
