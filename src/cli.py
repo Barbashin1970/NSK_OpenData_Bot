@@ -581,17 +581,64 @@ def ecology_history(days: int, district: str | None) -> None:
     console.print(tbl)
 
 
+def _is_port_in_use(host: str, port: int) -> bool:
+    """Возвращает True если порт уже занят."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        return s.connect_ex((host, port)) == 0
+
+
+def _kill_on_port(port: int) -> bool:
+    """Убивает процесс, слушающий порт. Возвращает True при успехе."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True, text=True,
+        )
+        pids = [p.strip() for p in result.stdout.strip().splitlines() if p.strip()]
+        if not pids:
+            return False
+        subprocess.run(["kill"] + pids, check=True)
+        return True
+    except Exception:
+        return False
+
+
 @cli.command()
 @click.option("--host", default="127.0.0.1", help="Хост (по умолчанию 127.0.0.1)")
 @click.option("--port", default=8000, type=int, help="Порт (по умолчанию 8000)")
-def serve(host: str, port: int) -> None:
+@click.option("--restart", is_flag=True, help="Остановить уже запущенный сервер и стартовать заново")
+def serve(host: str, port: int, restart: bool) -> None:
     """Запустить HTTP API (FastAPI) на http://<host>:<port>.
 
     Эндпоинты:
       GET  /topics          — список тем
       GET  /ask?q=<текст>   — запрос
       POST /update?topic=<name>  — обновить тему
+
+    Если сервер уже запущен:
+      bot serve --restart        — перезапустить
+      bot stop                   — только остановить
     """
+    if _is_port_in_use(host, port):
+        if restart:
+            console.print(f"[yellow]⏹  Останавливаю сервер на порту {port}...[/yellow]")
+            if _kill_on_port(port):
+                import time; time.sleep(0.8)   # ждём освобождения порта
+                console.print("[green]✓ Сервер остановлен.[/green]\n")
+            else:
+                console.print(f"[red]✗ Не удалось остановить процесс. Попробуйте вручную:[/red]")
+                console.print(f"  [bold]kill $(lsof -ti:{port})[/bold]")
+                sys.exit(1)
+        else:
+            console.print(f"[red]✗ Порт {port} занят — сервер уже запущен.[/red]")
+            console.print(f"  Открыть браузер:  [bold cyan]open http://{host}:{port}[/bold cyan]")
+            console.print(f"  Остановить:       [bold]bot stop[/bold]")
+            console.print(f"  Перезапустить:    [bold]bot serve --restart[/bold]")
+            sys.exit(1)
+
     try:
         import uvicorn
         from .api import app
@@ -600,8 +647,28 @@ def serve(host: str, port: int) -> None:
         sys.exit(1)
 
     console.print(f"[bold green]NSK OpenData Bot API запущен: http://{host}:{port}[/bold green]")
-    console.print("[dim]Ctrl+C для остановки[/dim]")
+    console.print("[dim]Ctrl+C — остановить  ·  bot serve --restart — перезапустить[/dim]")
     uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
+@cli.command()
+@click.option("--port", default=8000, type=int, help="Порт сервера (по умолчанию 8000)")
+def stop(port: int) -> None:
+    """Остановить запущенный сервер.
+
+    Примеры:
+      bot stop
+      bot stop --port 8080
+    """
+    if not _is_port_in_use("127.0.0.1", port):
+        console.print(f"[dim]Сервер на порту {port} не запущен.[/dim]")
+        return
+
+    if _kill_on_port(port):
+        console.print(f"[green]✓ Сервер на порту {port} остановлен.[/green]")
+    else:
+        console.print(f"[red]✗ Не удалось остановить автоматически. Выполните вручную:[/red]")
+        console.print(f"  [bold]kill $(lsof -ti:{port})[/bold]")
 
 
 @cli.group()

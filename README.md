@@ -430,6 +430,11 @@ bot ecology update
 bot serve
 # Открыть в браузере: http://127.0.0.1:8000
 ```
+```bash
+bot stop                   # остановить сервер
+bot serve --restart        # перезапустить сервер  
+bot stop && bot serve      # то же самое явно
+```
 
 **Через командную строку:**
 ```bash
