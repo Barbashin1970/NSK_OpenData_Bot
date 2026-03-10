@@ -2030,7 +2030,8 @@ let _lastMapQuery = '';
 let _lastMapCoordsEnriched = false; // true если ответ уже содержит _lat/_lon (камеры)
 let _lastPageRows = null;           // строки текущей страницы (для coords_enriched — без ре-фетча)
 let _mapTooltip = null;             // плавающий тултип маркера (в document.body)
-let _mapMouseMoveHandler = null;    // глобальный mousemove для определения hover на маркерах
+let _mapMouseMoveHandler = null;    // capture-mode mousemove — только отслеживает позицию курсора
+let _mapLastMouse = { x: 0, y: 0 }; // последняя viewport-позиция курсора (обновляется capture)
 
 async function initMapgl() {
   try {
@@ -2058,7 +2059,7 @@ function _resetMap() {
     _mapTooltip = null;
   }
   if (_mapMouseMoveHandler) {
-    document.removeEventListener('mousemove', _mapMouseMoveHandler);
+    document.removeEventListener('mousemove', _mapMouseMoveHandler, true);
     _mapMouseMoveHandler = null;
   }
 }
@@ -2234,7 +2235,29 @@ function _renderMap() {
     document.body.appendChild(tooltip);
     _mapTooltip = tooltip;
 
-    const markerEls = [];
+    // Capture-mode listener: перехватывает mousemove ДО того, как SDK может вызвать
+    // stopPropagation() для обработки панорамирования карты. Только сохраняет позицию.
+    if (_mapMouseMoveHandler) {
+      document.removeEventListener('mousemove', _mapMouseMoveHandler, true);
+    }
+    _mapMouseMoveHandler = (e) => {
+      _mapLastMouse.x = e.clientX;
+      _mapLastMouse.y = e.clientY;
+    };
+    document.addEventListener('mousemove', _mapMouseMoveHandler, { capture: true, passive: true });
+
+    function _showTooltip(row, markerEl) {
+      tooltip.innerHTML = _buildMarkerLabel(row);
+      tooltip.style.display = 'block';
+      let x = _mapLastMouse.x + 15;
+      let y = _mapLastMouse.y - 20;
+      if (x + 270 > window.innerWidth) x = _mapLastMouse.x - 278;
+      if (y + 100 > window.innerHeight) y = window.innerHeight - 104;
+      if (y < 4) y = 4;
+      tooltip.style.left = x + 'px';
+      tooltip.style.top  = y + 'px';
+    }
+
     _currentMapRows.forEach(row => {
       const markerEl = document.createElement('div');
       markerEl.style.cssText =
@@ -2243,43 +2266,44 @@ function _renderMap() {
         'box-shadow:0 2px 6px rgba(0,0,0,.5);' +
         'transition:transform .12s;flex-shrink:0';
 
-      new mapgl.Marker(_mapInstance, { coordinates: [row._lon, row._lat], element: markerEl });
-      markerEls.push({ el: markerEl, row });
-    });
+      const sdkMarker = new mapgl.Marker(_mapInstance, {
+        coordinates: [row._lon, row._lat],
+        element: markerEl,
+      });
 
-    // Глобальный mousemove — работает независимо от того, как SDK оборачивает элемент
-    // (pointer-events на обёртке SDK не мешают: мы сами проверяем позицию курсора)
-    if (_mapMouseMoveHandler) {
-      document.removeEventListener('mousemove', _mapMouseMoveHandler);
-    }
-    _mapMouseMoveHandler = (e) => {
-      let found = null;
-      for (const item of markerEls) {
-        const rect = item.el.getBoundingClientRect();
-        if (rect.width > 0 &&
-            e.clientX >= rect.left && e.clientX <= rect.right &&
-            e.clientY >= rect.top  && e.clientY <= rect.bottom) {
-          found = item;
-          item.el.style.transform = 'scale(1.35)';
-        } else {
-          item.el.style.transform = '';
+      // Первый механизм: события SDK (работают для canvas- и DOM-маркеров)
+      try {
+        sdkMarker.on('mouseenter', () => {
+          markerEl.style.transform = 'scale(1.35)';
+          _showTooltip(row, markerEl);
+        });
+        sdkMarker.on('mouseleave', () => {
+          markerEl.style.transform = '';
+          tooltip.style.display = 'none';
+        });
+      } catch(_) {}
+
+      // Второй механизм: DOM-события на самом элементе и его SDK-обёртке
+      // (добавляем через rAF — SDK помещает element в DOM синхронно, но обёртка готова сразу)
+      const attachDom = (target) => {
+        target.addEventListener('mouseenter', () => {
+          markerEl.style.transform = 'scale(1.35)';
+          _showTooltip(row, markerEl);
+        });
+        target.addEventListener('mouseleave', () => {
+          markerEl.style.transform = '';
+          tooltip.style.display = 'none';
+        });
+      };
+      attachDom(markerEl);
+      requestAnimationFrame(() => {
+        const wrapper = markerEl.parentElement;
+        if (wrapper && wrapper !== document.body && wrapper !== container) {
+          wrapper.style.pointerEvents = 'auto';
+          attachDom(wrapper);
         }
-      }
-      if (found) {
-        tooltip.innerHTML = _buildMarkerLabel(found.row);
-        tooltip.style.display = 'block';
-        let x = e.clientX + 15;
-        let y = e.clientY - 20;
-        if (x + 270 > window.innerWidth) x = e.clientX - 278;
-        if (y + 100 > window.innerHeight) y = window.innerHeight - 104;
-        if (y < 4) y = 4;
-        tooltip.style.left = x + 'px';
-        tooltip.style.top  = y + 'px';
-      } else {
-        tooltip.style.display = 'none';
-      }
-    };
-    document.addEventListener('mousemove', _mapMouseMoveHandler);
+      });
+    });
   } catch(e) {
     container.innerHTML = '<div class="p-4 text-sm text-red-500">Ошибка инициализации карты: ' + esc(String(e)) + '</div>';
   }
