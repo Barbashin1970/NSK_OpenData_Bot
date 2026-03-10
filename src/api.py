@@ -801,7 +801,7 @@ def run_tests():
 
         project_root = Path(__file__).parent.parent
         proc = subprocess.Popen(
-            [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "--no-header", "-q"],
+            [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "--no-header"],
             cwd=str(project_root),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

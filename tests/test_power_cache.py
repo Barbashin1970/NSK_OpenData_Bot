@@ -16,7 +16,7 @@ from src.power_cache import (
 )
 
 
-_SCRAPED_AT = "2026-03-06T06:42:00+00:00"
+_SCRAPED_AT = "2099-12-31T23:59:59+00:00"  # всегда новее реальных данных → MAX(scraped_at) = тестовые
 
 _SAMPLE_RECORDS = [
     # Электроснабжение — активные
