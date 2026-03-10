@@ -2029,6 +2029,7 @@ let _currentMapRows = null;
 let _lastMapQuery = '';
 let _lastMapCoordsEnriched = false; // true если ответ уже содержит _lat/_lon (камеры)
 let _lastPageRows = null;           // строки текущей страницы (для coords_enriched — без ре-фетча)
+let _mapTooltip = null;             // плавающий тултип маркера (в document.body)
 
 async function initMapgl() {
   try {
@@ -2050,6 +2051,10 @@ function _resetMap() {
   if (_mapInstance) {
     try { _mapInstance.destroy(); } catch(e) {}
     _mapInstance = null;
+  }
+  if (_mapTooltip) {
+    _mapTooltip.remove();
+    _mapTooltip = null;
   }
 }
 
@@ -2168,6 +2173,8 @@ function _buildMarkerLabel(row) {
   // Имя объекта — перебираем известные поля по всем датасетам
   const name = esc(row.NameOb || row.Name || row.BiblName || row.SchoolName || row.OrgName
              || row.SportOrgName || row.CultureName || '');
+  // Застройщик (только у строительных объектов)
+  const dev = row.Zastr ? `<span style="display:block;color:#94a3b8;font-size:11px;margin-top:1px">${esc(row.Zastr)}</span>` : '';
   // Адрес: стройка — AdrOr напрямую, остальные — улица + дом
   let addr = '';
   if (row.AdrOr) {
@@ -2177,10 +2184,10 @@ function _buildMarkerLabel(row) {
     const house  = esc(row.AdrDom   || row.Dom    || row.House  || '');
     addr = street ? (house ? `${street}, ${house}` : street) : '';
   }
-  if (name && addr) return `<b style="display:block;margin-bottom:2px">${name}</b>${addr}`;
-  if (name) return `<b>${name}</b>`;
-  if (addr) return addr;
-  return 'Объект';
+  const addrHtml = addr ? `<span style="display:block;margin-top:2px">${addr}</span>` : '';
+  if (name) return `<b style="display:block">${name}</b>${dev}${addrHtml}`;
+  if (addr) return `${dev}${addrHtml}`;
+  return dev || 'Объект';
 }
 
 function _renderMap() {
@@ -2199,17 +2206,18 @@ function _renderMap() {
       key: _mapglKey,
     });
 
-    // Tooltip — плавающий div внутри контейнера карты
-    container.style.position = 'relative';
+    // Tooltip — фиксированный div в document.body (избегаем overflow:hidden и z-index карты)
+    if (_mapTooltip) { _mapTooltip.remove(); _mapTooltip = null; }
     const tooltip = document.createElement('div');
     tooltip.style.cssText = [
-      'position:absolute', 'background:#1e293b', 'color:#e2e8f0',
+      'position:fixed', 'background:#1e293b', 'color:#e2e8f0',
       'padding:7px 11px', 'border-radius:9px', 'font-size:12px',
-      'line-height:1.45', 'pointer-events:none', 'z-index:200',
-      'display:none', 'max-width:240px', 'white-space:normal',
+      'line-height:1.45', 'pointer-events:none', 'z-index:9999',
+      'display:none', 'max-width:260px', 'white-space:normal',
       'box-shadow:0 4px 16px rgba(0,0,0,.5)', 'border:1px solid #334155',
     ].join(';');
-    container.appendChild(tooltip);
+    document.body.appendChild(tooltip);
+    _mapTooltip = tooltip;
 
     _currentMapRows.forEach(row => {
       const markerEl = document.createElement('div');
@@ -2224,14 +2232,14 @@ function _renderMap() {
         tooltip.innerHTML = _buildMarkerLabel(row);
         tooltip.style.display = 'block';
         const mr = markerEl.getBoundingClientRect();
-        const cr = container.getBoundingClientRect();
-        // Position tooltip to the right and slightly above marker center
-        let x = mr.left - cr.left + mr.width + 8;
-        let y = mr.top  - cr.top  + mr.height / 2 - 20;
-        // If overflows right edge, show to the left
-        if (x + 250 > cr.width) x = mr.left - cr.left - 258;
-        // Don't go above container
-        if (y < 0) y = 4;
+        // position:fixed → viewport-координаты напрямую
+        let x = mr.right + 8;
+        let y = mr.top + mr.height / 2 - 20;
+        // не выходим за правый край экрана
+        if (x + 270 > window.innerWidth) x = mr.left - 278;
+        // не выходим за нижний край
+        if (y + 100 > window.innerHeight) y = window.innerHeight - 104;
+        if (y < 4) y = 4;
         tooltip.style.left = x + 'px';
         tooltip.style.top  = y + 'px';
       });
