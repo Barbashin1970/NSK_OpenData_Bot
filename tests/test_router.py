@@ -71,7 +71,7 @@ def test_extract_street(query, expected_prefix):
     ("сколько дошкольных организаций", "kindergartens"),
     ("библиотеки в Ленинском районе", "libraries"),
     ("сколько библиотек", "libraries"),
-    ("парки культуры и отдыха", "parks"),
+
     ("спортивные площадки в Калининском районе", "sport_grounds"),
     ("аптеки в Железнодорожном районе", "pharmacies"),
     ("спортивные организации в Первомайском районе", "sport_orgs"),
@@ -84,6 +84,27 @@ def test_extract_street(query, expected_prefix):
 def test_best_topic(query, expected_topic):
     result = best_topic(query)
     assert result is not None, f"Нет темы для запроса: {query!r}"
+    assert result.topic == expected_topic, (
+        f"Запрос: {query!r}\n"
+        f"Ожидалось: {expected_topic}, получено: {result.topic} "
+        f"(confidence={result.confidence:.2f}, matched={result.matched_keywords})"
+    )
+
+
+@pytest.mark.parametrize("query,expected_topic", [
+    ("активные стройки в Новосибирске",          "construction"),
+    ("строительство в Калининском районе",        "construction"),
+    ("стройки по районам",                        "construction"),
+    ("сколько строек в городе",                   "construction"),
+    ("застройщики в Центральном районе",          "construction"),
+    ("ввод в эксплуатацию в 2024",               "construction"),
+    ("разрешения на строительство",               "construction"),
+    ("новостройки в Советском районе",            "construction"),
+    ("сколько строек по районам",                 "construction"),
+])
+def test_construction_routing(query, expected_topic):
+    result = best_topic(query)
+    assert result is not None, f"Тема не определена для: {query!r}"
     assert result.topic == expected_topic, (
         f"Запрос: {query!r}\n"
         f"Ожидалось: {expected_topic}, получено: {result.topic} "

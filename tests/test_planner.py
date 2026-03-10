@@ -163,6 +163,54 @@ def test_plan_sub_district_power_outages():
     assert plan.sub_district == "Академгородок"
 
 
+# ── Construction операции ────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("query,expected_op,expected_permit_type", [
+    ("активные стройки",                            "CONSTRUCTION_ACTIVE",       None),
+    ("строящиеся объекты в Кировском районе",       "CONSTRUCTION_ACTIVE",       None),
+    ("незавершённое строительство",                 "CONSTRUCTION_ACTIVE",       None),
+    ("разрешения на строительство",                 "CONSTRUCTION_ACTIVE",       None),
+    ("сколько активных строек",                     "CONSTRUCTION_COUNT",        "active"),
+    ("количество строек в Калининском",             "CONSTRUCTION_COUNT",        "active"),
+    ("стройки по районам",                          "CONSTRUCTION_GROUP",        "active"),
+    ("где больше всего строек",                     "CONSTRUCTION_GROUP",        "active"),
+    ("ввод в эксплуатацию",                         "CONSTRUCTION_COMMISSIONED", None),
+    ("введены в эксплуатацию объекты",              "CONSTRUCTION_COMMISSIONED", None),
+    ("сколько введено в эксплуатацию",              "CONSTRUCTION_COUNT",        "commissioned"),
+    ("ввод в эксплуатацию по районам",              "CONSTRUCTION_GROUP",        "commissioned"),
+])
+def test_construction_operations(query, expected_op, expected_permit_type):
+    plan = make_plan(query, "construction")
+    assert plan.operation == expected_op, (
+        f"Запрос: {query!r}\n"
+        f"Ожидалось: {expected_op}, получено: {plan.operation}"
+    )
+    if expected_permit_type is not None:
+        assert plan.extra_filters.get("permit_type") == expected_permit_type, (
+            f"Запрос: {query!r}\n"
+            f"permit_type={plan.extra_filters.get('permit_type')!r}, ожидалось {expected_permit_type!r}"
+        )
+
+
+def test_construction_district_filter():
+    """Фильтр по району корректно извлекается для темы construction."""
+    plan = make_plan("активные стройки в Калининском районе", "construction")
+    assert plan.topic == "construction"
+    assert plan.district == "Калининский район"
+
+
+def test_construction_default_limit():
+    """По умолчанию лимит 20 для construction."""
+    plan = make_plan("активные стройки", "construction")
+    assert plan.limit == 20
+
+
+def test_construction_group_before_count():
+    """GROUP имеет приоритет над COUNT при совпадении обоих паттернов."""
+    plan = make_plan("сколько строек по районам", "construction")
+    assert plan.operation == "CONSTRUCTION_GROUP"
+
+
 def test_plan_sub_district_does_not_override_street():
     """Подрайон и улица могут присутствовать одновременно."""
     plan = make_plan("аптеки на ул. Ленина в Академгородке", "pharmacies")
