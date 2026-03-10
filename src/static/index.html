@@ -264,6 +264,7 @@ const ROLE_CHIPS = {
     {q: "детские спортивные организации", geo: true},
     {q: "школы в Советском районе", geo: true},
     {q: "камеры видеофиксации", geo: true},
+    {q: "активные стройки", geo: true},
     {q: "что ты умеешь"},
   ],
   official: [
@@ -281,6 +282,8 @@ const ROLE_CHIPS = {
     {q: "библиотеки города", geo: true},
     {q: "культурные организации", geo: true},
     {q: "камеры фиксации нарушений", geo: true},
+    {q: "активные стройки", geo: true},
+    {q: "стройки по районам"},
   ],
   mayor: [
     {q: "отключения ЖКХ сейчас"},
@@ -294,6 +297,8 @@ const ROLE_CHIPS = {
     {q: "культурные организации", geo: true},
     {q: "аптеки в Центральном районе", geo: true},
     {q: "камеры видеофиксации на дорогах", geo: true},
+    {q: "активные стройки", geo: true},
+    {q: "стройки по районам"},
   ],
 };
 
@@ -883,6 +888,9 @@ function renderResult(data, query) {
   else if (op === 'UNKNOWN')                   html += renderUnknown(data);
   else if (op === 'TRANSIT_ROUTE')             html += renderTransitRoute(data);
   else if (op === 'TRAFFIC_INDEX')             html += renderTrafficIndex(data);
+  else if (op === 'CONSTRUCTION_COUNT')        html += renderConstructionCount(data);
+  else if (op === 'CONSTRUCTION_GROUP')        html += renderGroup(data);
+  else if (op && op.startsWith('CONSTRUCTION_')) html += renderConstruction(data);
   else                                         html += renderTable(data);
 
   el.innerHTML = html;
@@ -985,6 +993,8 @@ const COL_LABELS = {
   Name:'Название', AdrStr:'Улица',
   NazvUch:'Организация', VidSporta:'Вид спорта',
   район:'Район', количество:'Кол-во',
+  NomRazr:'№ разрешения', DatRazr:'Дата', Zastr:'Застройщик',
+  NameOb:'Объект', AdrOr:'Адрес', district:'Район', KadNom:'Кадастр. №',
 };
 
 function colLabel(c) { return COL_LABELS[c] || c; }
@@ -1064,6 +1074,64 @@ function renderTable(data) {
     </div>
     ${noteHtml}
   `;
+}
+
+// ─── CONSTRUCTION ─────────────────────────────────────────────────────────────
+function renderConstruction(data) {
+  const op = data.operation;
+  const currentDistrict = data.district || '';
+  const baseQuery = op === 'CONSTRUCTION_COMMISSIONED' ? 'ввод в эксплуатацию'
+    : op === 'CONSTRUCTION_PERMITS' ? 'разрешения на строительство'
+    : 'активные стройки';
+
+  const noteHtml = data.note ? `
+    <div class="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-800">
+      <span class="flex-shrink-0 mt-0.5">ℹ️</span>
+      <span>${esc(data.note)}</span>
+    </div>` : '';
+
+  const distOpts = [
+    {label: 'Весь город',      val: '',                        q: baseQuery},
+    {label: 'Дзержинский',     val: 'Дзержинский район',       q: `${baseQuery} в Дзержинском районе`},
+    {label: 'Железнодор.',     val: 'Железнодорожный район',   q: `${baseQuery} в Железнодорожном районе`},
+    {label: 'Заельцовский',    val: 'Заельцовский район',      q: `${baseQuery} в Заельцовском районе`},
+    {label: 'Калининский',     val: 'Калининский район',       q: `${baseQuery} в Калининском районе`},
+    {label: 'Кировский',       val: 'Кировский район',         q: `${baseQuery} в Кировском районе`},
+    {label: 'Ленинский',       val: 'Ленинский район',         q: `${baseQuery} в Ленинском районе`},
+    {label: 'Октябрьский',     val: 'Октябрьский район',       q: `${baseQuery} в Октябрьском районе`},
+    {label: 'Первомайский',    val: 'Первомайский район',      q: `${baseQuery} в Первомайском районе`},
+    {label: 'Советский',       val: 'Советский район',         q: `${baseQuery} в Советском районе`},
+    {label: 'Центральный',     val: 'Центральный район',       q: `${baseQuery} в Центральном районе`},
+  ];
+
+  const filterHtml = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-3.5">
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-2">
+        <span class="text-xs text-slate-400 font-medium mr-1">⛏️ Район:</span>
+        ${distOpts.map(d => {
+          const isAct = currentDistrict === d.val || (!currentDistrict && d.val === '');
+          const safeQ = d.q.replace(/'/g, "\\'");
+          return `<button onclick="setQuery('${safeQ}')"
+            class="text-xs px-2.5 py-1 rounded-full border transition-colors ${isAct
+              ? 'bg-blue-600 text-white border-blue-600 font-semibold'
+              : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'}">${d.label}</button>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  const tableHtml = renderTable({...data, note: null});
+  return noteHtml + filterHtml + tableHtml;
+}
+
+function renderConstructionCount(data) {
+  const label = data.label || 'объектов';
+  const dist = data.district ? `<div class="text-slate-400 text-sm mt-1">${esc(data.district)}</div>` : '';
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 text-center">
+      <div class="text-7xl font-bold text-blue-600 mb-2 tracking-tight">${Number(data.count).toLocaleString('ru-RU')}</div>
+      <div class="text-slate-500 text-base">${esc(label)}</div>
+      ${dist}
+    </div>`;
 }
 
 // ─── POWER ────────────────────────────────────────────────────────────────────
@@ -1986,7 +2054,7 @@ function _resetMap() {
 
 function maybeShowMapBtn(data, query) {
   if (!_mapglKey) return;
-  if (!['FILTER', 'TOP_N'].includes(data.operation)) return;
+  if (!['FILTER', 'TOP_N', 'CONSTRUCTION_ACTIVE', 'CONSTRUCTION_COMMISSIONED'].includes(data.operation)) return;
   if (!data.rows || !data.rows.length) return;
   _lastMapQuery = query;
   _lastMapCoordsEnriched = Boolean(data.coords_enriched);
