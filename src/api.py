@@ -12,6 +12,7 @@ try:
     from fastapi import FastAPI, Query
     from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.staticfiles import StaticFiles
 except ImportError:
     raise ImportError("Установите fastapi: pip install fastapi uvicorn")
 
@@ -884,12 +885,13 @@ def custom_swagger_ui() -> HTMLResponse:
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def get_ui() -> str:
+def get_ui() -> HTMLResponse:
     """Веб-интерфейс бота."""
     html_file = _STATIC / "index.html"
     if not html_file.exists():
-        return "<h1>Web UI not found</h1><p>Place index.html in src/static/</p>"
-    return html_file.read_text(encoding="utf-8")
+        return HTMLResponse("<h1>Web UI not found</h1><p>Place index.html in src/static/</p>")
+    content = html_file.read_text(encoding="utf-8")
+    return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
 
 @app.get(
@@ -2342,3 +2344,8 @@ def get_ecology_risks(
         "risks": risks,
         "ecology_meta": meta,
     }
+
+
+# ── Статические файлы (tailwind.css, иконки и т.д.) ─────────────────────────
+if _STATIC.exists():
+    app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")

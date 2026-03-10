@@ -35,7 +35,7 @@ echo ""
 
 # ── Переустанавливаем пакет (editable) чтобы всегда использовать свежий код ──
 echo "↓ Обновляю установку (editable mode)..."
-pip install -e . -q
+pip install --force-reinstall -e . -q
 echo "  Готово."
 echo ""
 
