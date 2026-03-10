@@ -828,8 +828,8 @@ def run_tests():
                 yield _sse({"type": "start", "total": total})
                 continue
 
-            # Строки вида "tests/test_router.py::test_foo PASSED"
-            if _re.search(r"\s(PASSED|FAILED|ERROR)\s*$", line):
+            # Строки вида "tests/test_router.py::test_foo PASSED  [  3%]"
+            if _re.search(r"\s(PASSED|FAILED|ERROR)(\s|$)", line):
                 done += 1
                 if "PASSED" in line:
                     passed += 1
@@ -839,8 +839,8 @@ def run_tests():
                     status = "failed"
                     failed_lines.append(line)
                 pct = int(done / total * 100) if total > 0 else 0
-                # Короткое имя теста
-                short = _re.sub(r"^.*::", "", line).replace(" PASSED", "").replace(" FAILED", "").replace(" ERROR", "")
+                # Короткое имя теста (убираем статус и процент)
+                short = _re.sub(r"\s+(PASSED|FAILED|ERROR).*$", "", _re.sub(r"^.*::", "", line))
                 yield _sse({"type": "progress", "done": done, "total": total,
                             "pct": pct, "status": status, "short": short, "line": line})
             else:
