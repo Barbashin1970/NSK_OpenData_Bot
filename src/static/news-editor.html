@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Редактор новостей — ЦИИ НГУ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; }
+    .post-item.active { background: #ede9fe; border-color: #7c3aed; }
+    textarea { resize: vertical; }
+    #photoPreview img { max-height: 180px; border-radius: 12px; object-fit: cover; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<!-- ─── Экран входа ──────────────────────────────────────────────────────────── -->
+<div id="loginScreen" class="fixed inset-0 bg-white/95 backdrop-blur-sm z-50 flex items-center justify-center">
+  <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 p-8 w-full max-w-sm">
+    <div class="text-center mb-6">
+      <div class="text-5xl mb-3">🧠</div>
+      <h1 class="text-xl font-bold text-slate-800">Редактор новостей</h1>
+      <p class="text-sm text-slate-400 mt-1">Центр ИИ НГУ</p>
+    </div>
+    <form onsubmit="doLogin(event)" class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Пароль</label>
+        <input
+          id="loginPassword"
+          type="password"
+          placeholder="Введите пароль..."
+          autocomplete="current-password"
+          class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm"
+        >
+      </div>
+      <div id="loginError" class="hidden text-red-500 text-xs text-center"></div>
+      <button type="submit" id="loginBtn"
+        class="w-full py-3 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition-colors text-sm">
+        Войти →
+      </button>
+    </form>
+    <p class="text-center text-xs text-slate-300 mt-5">
+      <a href="/" class="hover:text-slate-500">← Вернуться на главную</a>
+    </p>
+  </div>
+</div>
+
+<!-- ─── Панель администратора ──────────────────────────────────────────────── -->
+<div id="adminPanel" class="hidden flex flex-col min-h-screen">
+
+  <!-- Top bar -->
+  <header class="bg-gradient-to-r from-violet-900 to-purple-700 text-white px-6 py-3 flex items-center gap-4 shadow-lg sticky top-0 z-10">
+    <a href="/" class="flex items-center gap-1.5 text-violet-300 hover:text-white text-sm transition-colors border border-violet-600 rounded-lg px-3 py-1.5">
+      ← На главную
+    </a>
+    <span class="text-violet-500">|</span>
+    <span class="text-lg">🧠</span>
+    <span class="font-bold text-white">Редактор новостей ЦИИ НГУ</span>
+    <button onclick="newPost()" class="ml-auto flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors">
+      + Новый пост
+    </button>
+    <button onclick="logout()" class="text-violet-300 hover:text-white text-sm transition-colors ml-2">
+      Выйти
+    </button>
+  </header>
+
+  <!-- Content -->
+  <div class="flex flex-1 gap-0 max-w-6xl mx-auto w-full px-4 py-6">
+
+    <!-- Left: posts list -->
+    <aside class="w-72 shrink-0 mr-5">
+      <div class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">Все посты</div>
+      <div id="postsListContent" class="space-y-2">
+        <div class="text-slate-400 text-sm text-center py-6">Загрузка...</div>
+      </div>
+    </aside>
+
+    <!-- Right: edit form -->
+    <main class="flex-1">
+      <div id="emptyState" class="text-center text-slate-400 py-16">
+        <div class="text-5xl mb-4">📰</div>
+        <p class="text-sm">Выберите пост для редактирования<br>или создайте новый</p>
+      </div>
+
+      <div id="editFormWrap" class="hidden">
+        <div class="flex items-center justify-between mb-4">
+          <h2 id="formTitle" class="font-bold text-slate-800 text-lg">Новый пост</h2>
+          <button onclick="cancelEdit()" class="text-slate-400 hover:text-slate-600 text-sm">✕ Отмена</button>
+        </div>
+
+        <form id="editForm" onsubmit="savePost(event)" class="space-y-4">
+          <input type="hidden" id="postId">
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Заголовок *</label>
+            <input id="postTitle" type="text" placeholder="Заголовок новости..."
+              class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Дата публикации</label>
+            <input id="postDate" type="date"
+              class="px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Фото (необязательно)</label>
+            <div id="photoPreview" class="mb-2 hidden"></div>
+            <div class="flex items-center gap-3">
+              <label class="cursor-pointer flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-violet-50 border border-slate-200 hover:border-violet-300 rounded-xl text-sm text-slate-600 transition-colors">
+                📷 Выбрать фото
+                <input id="photoInput" type="file" accept="image/*" class="hidden" onchange="previewPhoto(event)">
+              </label>
+              <button type="button" id="clearPhotoBtn" onclick="clearPhoto()" class="hidden text-xs text-red-400 hover:text-red-600">✕ Убрать фото</button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Текст *</label>
+            <textarea id="postBody" rows="10" placeholder="Текст новости..."
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm leading-relaxed"></textarea>
+          </div>
+
+          <div class="flex gap-3 pt-2">
+            <button type="submit" id="saveBtn"
+              class="flex-1 py-3 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl transition-colors text-sm">
+              Сохранить
+            </button>
+            <button type="button" onclick="cancelEdit()"
+              class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl transition-colors text-sm">
+              Отмена
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+// ─── Auth ───────────────────────────────────────────────────────────────────
+const TOKEN_KEY = 'cii_admin_token';
+
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+
+async function doLogin(e) {
+  e.preventDefault();
+  const pwd = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('loginError');
+  btn.disabled = true;
+  btn.textContent = 'Проверяю...';
+  err.classList.add('hidden');
+  try {
+    const fd = new FormData();
+    fd.append('password', pwd);
+    const r = await fetch('/ciinsu/login', { method: 'POST', body: fd });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      err.textContent = d.detail || 'Неверный пароль';
+      err.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Войти →';
+      return;
+    }
+    const d = await r.json();
+    setToken(d.token);
+    showAdmin();
+  } catch(ex) {
+    err.textContent = 'Ошибка соединения';
+    err.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Войти →';
+  }
+}
+
+function logout() {
+  clearToken();
+  document.getElementById('adminPanel').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('loginPassword').value = '';
+}
+
+function showAdmin() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('adminPanel').classList.remove('hidden');
+  document.getElementById('adminPanel').classList.remove('hidden');
+  document.getElementById('adminPanel').style.display = 'flex';
+  loadPostsList();
+}
+
+// ─── Init ──────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('postDate').value = today;
+  if (getToken()) {
+    showAdmin();
+  }
+});
+
+// ─── Posts list ────────────────────────────────────────────────────────────
+let _posts = [];
+let _editingId = null;
+
+async function loadPostsList() {
+  try {
+    const r = await fetch('/ciinsu/news');
+    _posts = await r.json();
+    renderPostsList();
+  } catch(e) {
+    document.getElementById('postsListContent').innerHTML =
+      '<div class="text-red-400 text-xs">Ошибка загрузки постов</div>';
+  }
+}
+
+function renderPostsList() {
+  const el = document.getElementById('postsListContent');
+  if (!_posts.length) {
+    el.innerHTML = '<div class="text-slate-400 text-sm text-center py-6">Постов нет — создайте первый</div>';
+    return;
+  }
+  el.innerHTML = _posts.map(p => `
+    <div class="post-item p-3 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-violet-300 transition-colors ${_editingId === p.id ? 'active' : ''}"
+         onclick="editPost('${p.id}')">
+      <div class="font-semibold text-sm text-slate-800 leading-snug line-clamp-2">${esc(p.title)}</div>
+      <div class="text-xs text-violet-500 mt-1">${p.date}</div>
+      ${p.photo ? '<div class="text-xs text-slate-400 mt-0.5">📷 есть фото</div>' : ''}
+      <div class="flex gap-2 mt-2">
+        <button onclick="event.stopPropagation();editPost('${p.id}')"
+          class="flex-1 text-xs py-1 bg-violet-50 text-violet-600 hover:bg-violet-100 rounded-lg transition-colors">
+          ✏️ Изменить
+        </button>
+        <button onclick="event.stopPropagation();confirmDelete('${p.id}', '${esc(p.title).replace(/'/g,'\\\'')}')"
+          class="flex-1 text-xs py-1 bg-red-50 text-red-500 hover:bg-red-100 rounded-lg transition-colors">
+          🗑 Удалить
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── New / Edit post ────────────────────────────────────────────────────────
+function newPost() {
+  _editingId = null;
+  document.getElementById('postId').value = '';
+  document.getElementById('postTitle').value = '';
+  document.getElementById('postDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('postBody').value = '';
+  document.getElementById('photoInput').value = '';
+  document.getElementById('photoPreview').innerHTML = '';
+  document.getElementById('photoPreview').classList.add('hidden');
+  document.getElementById('clearPhotoBtn').classList.add('hidden');
+  document.getElementById('formTitle').textContent = 'Новый пост';
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('editFormWrap').classList.remove('hidden');
+  document.getElementById('postTitle').focus();
+  renderPostsList();
+}
+
+function editPost(id) {
+  const p = _posts.find(x => x.id === id);
+  if (!p) return;
+  _editingId = id;
+  document.getElementById('postId').value = p.id;
+  document.getElementById('postTitle').value = p.title;
+  document.getElementById('postDate').value = p.date;
+  document.getElementById('postBody').value = p.body;
+  document.getElementById('photoInput').value = '';
+
+  const preview = document.getElementById('photoPreview');
+  const clearBtn = document.getElementById('clearPhotoBtn');
+  if (p.photo) {
+    preview.innerHTML = `<img src="/ciinsu/photo/${esc(p.photo)}" alt="">`;
+    preview.classList.remove('hidden');
+    clearBtn.classList.remove('hidden');
+    clearBtn.dataset.old = p.photo;
+  } else {
+    preview.innerHTML = '';
+    preview.classList.add('hidden');
+    clearBtn.classList.add('hidden');
+    clearBtn.dataset.old = '';
+  }
+
+  document.getElementById('formTitle').textContent = 'Редактировать пост';
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('editFormWrap').classList.remove('hidden');
+  renderPostsList();
+}
+
+function cancelEdit() {
+  _editingId = null;
+  document.getElementById('editFormWrap').classList.add('hidden');
+  document.getElementById('emptyState').classList.remove('hidden');
+  renderPostsList();
+}
+
+function previewPhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const preview = document.getElementById('photoPreview');
+  preview.innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`;
+  preview.classList.remove('hidden');
+  document.getElementById('clearPhotoBtn').classList.remove('hidden');
+}
+
+function clearPhoto() {
+  document.getElementById('photoInput').value = '';
+  document.getElementById('photoPreview').innerHTML = '';
+  document.getElementById('photoPreview').classList.add('hidden');
+  document.getElementById('clearPhotoBtn').classList.add('hidden');
+  document.getElementById('clearPhotoBtn').dataset.old = '';
+}
+
+// ─── Save post ──────────────────────────────────────────────────────────────
+async function savePost(e) {
+  e.preventDefault();
+  const title = document.getElementById('postTitle').value.trim();
+  const body  = document.getElementById('postBody').value.trim();
+  if (!title || !body) {
+    alert('Заголовок и текст обязательны.');
+    return;
+  }
+  const date  = document.getElementById('postDate').value;
+  const id    = document.getElementById('postId').value;
+  const photo = document.getElementById('photoInput').files[0];
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Сохраняю...';
+
+  try {
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('body', body);
+    fd.append('date', date);
+    if (photo) fd.append('photo', photo);
+
+    const url = id ? `/ciinsu/news/${id}` : '/ciinsu/news';
+    const method = id ? 'PUT' : 'POST';
+    const r = await fetch(url, {
+      method,
+      headers: { 'x-admin-token': getToken() },
+      body: fd,
+    });
+
+    if (r.status === 401) { logout(); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert('Ошибка: ' + (d.detail || r.statusText));
+      btn.disabled = false;
+      btn.textContent = 'Сохранить';
+      return;
+    }
+    await loadPostsList();
+    cancelEdit();
+  } catch(ex) {
+    alert('Ошибка соединения: ' + ex.message);
+  }
+  btn.disabled = false;
+  btn.textContent = 'Сохранить';
+}
+
+// ─── Delete post ────────────────────────────────────────────────────────────
+async function confirmDelete(id, title) {
+  if (!confirm(`Удалить пост «${title}»?`)) return;
+  try {
+    const r = await fetch(`/ciinsu/news/${id}`, {
+      method: 'DELETE',
+      headers: { 'x-admin-token': getToken() },
+    });
+    if (r.status === 401) { logout(); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert('Ошибка: ' + (d.detail || r.statusText));
+      return;
+    }
+    if (_editingId === id) cancelEdit();
+    await loadPostsList();
+  } catch(ex) {
+    alert('Ошибка: ' + ex.message);
+  }
+}
+</script>
+
+</body>
+</html>

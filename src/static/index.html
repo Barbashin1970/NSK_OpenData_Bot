@@ -2012,7 +2012,20 @@ function renderTopics(topics) {
     </div>
   `;
 
-  document.getElementById('topicsGrid').innerHTML = cards + ecoCard + powerCard + camerasCard + ciiCard;
+  const newsCard = `
+    <div class="topic-card bg-gradient-to-br from-fuchsia-50 to-pink-50 border border-fuchsia-200 rounded-2xl p-4 cursor-pointer hover:border-fuchsia-400 hover:shadow-md"
+         onclick="loadNewsPublic()">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">📰</span>
+        <span class="bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200 px-1.5 py-0.5 rounded-full text-xs">новости</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">Новости ЦИИ НГУ</div>
+      <div class="text-xs text-slate-500 mt-1">Публикации и события</div>
+    </div>
+  `;
+
+  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Камеры → остальные датасеты
+  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + camerasCard + cards;
 }
 
 // ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────
@@ -2172,21 +2185,8 @@ function _renderCiiSection(key, d) {
   }
 
   if (key === 'news') {
-    const rows = d.data;
-    return wrap(`
-      ${heading('📰', 'Новости')}
-      <div class="space-y-3">
-        ${rows.map(n => `
-          <div class="border border-slate-100 rounded-xl p-3">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="text-xs text-violet-500 font-medium">${n.date}</span>
-            </div>
-            <div class="font-semibold text-sm text-slate-800">${esc(n.title)}</div>
-            <div class="text-xs text-slate-500 mt-1">${esc(n.summary)}</div>
-          </div>
-        `).join('')}
-      </div>
-    `);
+    const rows = Array.isArray(d.data) ? d.data : [];
+    return _buildNewsFeedHtml(rows);
   }
 
   if (key === 'contacts') {
@@ -2210,6 +2210,50 @@ function _renderCiiSection(key, d) {
   }
 
   return wrap(`<div class="text-slate-500 text-sm">Секция не найдена: ${esc(key)}</div>`);
+}
+
+// ─── Публичная лента новостей ЦИИ ────────────────────────────────────────────
+function _buildNewsFeedHtml(posts) {
+  const wrap = (c) => `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 fade-in space-y-4">${c}</div>`;
+  const header = `
+    <div class="flex items-center gap-2">
+      <span class="text-xl">📰</span>
+      <h3 class="font-bold text-slate-800 text-base">Новости ЦИИ НГУ</h3>
+      <a href="/news-editor" target="_blank" class="ml-auto text-xs text-slate-300 hover:text-violet-500 transition-colors" title="Редактор новостей">🔐 редактор</a>
+    </div>`;
+  if (!posts.length) {
+    return wrap(`${header}<div class="text-center text-slate-400 text-sm py-4">Новостей пока нет</div>`);
+  }
+  const items = posts.map(p => `
+    <div class="border-b border-slate-100 pb-4 last:border-0 last:pb-0">
+      ${p.photo ? `<img src="/ciinsu/photo/${esc(p.photo)}" alt="" class="w-full max-h-48 object-cover rounded-xl mb-3">` : ''}
+      <div class="text-xs text-fuchsia-500 font-semibold mb-1">${esc(p.date)}</div>
+      <div class="font-semibold text-sm text-slate-800 mb-1">${esc(p.title)}</div>
+      <div class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">${esc(p.body)}</div>
+    </div>`).join('');
+  return wrap(`${header}${items}`);
+}
+
+async function loadNewsPublic() {
+  const resultArea = document.getElementById('resultArea');
+  const loading = document.getElementById('loadingState');
+  resultArea.classList.add('hidden');
+  loading.classList.remove('hidden');
+  loading.classList.add('flex');
+  document.getElementById('loadingText').textContent = 'Загружаю новости ЦИИ НГУ...';
+  try {
+    const r = await fetch('/ciinsu/news');
+    const posts = await r.json();
+    loading.classList.add('hidden');
+    loading.classList.remove('flex');
+    resultArea.classList.remove('hidden');
+    resultArea.innerHTML = _buildNewsFeedHtml(Array.isArray(posts) ? posts : []);
+    resultArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch(e) {
+    loading.classList.add('hidden');
+    loading.classList.remove('flex');
+    showError('Ошибка загрузки новостей ЦИИ НГУ.');
+  }
 }
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
