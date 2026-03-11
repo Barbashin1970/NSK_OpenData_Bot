@@ -831,10 +831,13 @@ async function updateAndReload(topic) {
 
 // ─── Special query shortcuts (roles + ЦИИ) ───────────────────────────────────
 function _extractDistrict(text) {
+  // Search by stem (label without last 2 chars) so all declensions match:
+  // "советский"→"советск", "центральный"→"центральн", "кольцово"→"кольцо"
   const t = text.toLowerCase();
   for (const d of NSK_DISTRICTS) {
     if (!d.val) continue;
-    if (t.includes(d.val.replace(' район', '').toLowerCase())) return d.val;
+    const stem = d.label.toLowerCase().slice(0, -2);
+    if (stem.length >= 4 && t.includes(stem)) return d.val;
   }
   return '';
 }
@@ -854,18 +857,45 @@ function _trySpecialQuery(raw) {
   // ── Роли ──────────────────────────────────────────────────────────────────
   if (/\bя\s+(горожанин|горожанка|жительниц[аеу]?|житель|жителя|пользователь|простой\s+пользователь)\b/i.test(ql)) {
     setRole('citizen');
-    _showInfoCard('👤', 'Режим: Горожанин');
+    document.getElementById('queryInput').value = '';
+    document.getElementById('loadingState').className = 'hidden';
+    const el = document.getElementById('resultArea');
+    const chips = ROLE_CHIPS.citizen.slice(0, 8).map(c => {
+      const sq = c.q.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return `<button onclick="setQuery('${sq}')" class="text-xs px-3 py-1.5 rounded-full border bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600 transition-colors">${esc(c.q)}</button>`;
+    }).join('');
+    el.className = 'fade-in';
+    el.innerHTML = `
+      <div class="bg-violet-50 border border-violet-200 rounded-2xl p-4">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-xl">👤</span>
+          <span class="font-semibold text-violet-800">Режим: Горожанин</span>
+        </div>
+        <p class="text-violet-700 text-sm mb-3">Я знаю Новосибирск. Спросите о городских сервисах:</p>
+        <div class="flex flex-wrap gap-2">${chips}</div>
+      </div>`;
     return true;
   }
   if (/(\bя\s+служащ|\bслужащ\w*\s*(города|умного\s*города)?)/i.test(ql)) {
     const dist = _extractDistrict(ql);
     setRole('official', dist || officialDistrict);
-    _showInfoCard('🏙️', 'Режим: Служащий' + (dist ? ' · ' + dist.replace(' район', '') : ''));
+    document.getElementById('queryInput').value = '';
+    const dLabel = (dist || officialDistrict || '').replace(' район', '');
+    _showInfoCard('🏙️', 'Режим: Служащий' + (dLabel ? ' · ' + dLabel : '') + ' — панель загружается…');
+    setTimeout(() => {
+      const dash = document.getElementById('roleDashboard');
+      if (dash && !dash.classList.contains('hidden')) dash.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }, 800);
     return true;
   }
   if (/\bя\s+(мэр|руководитель)\b/i.test(ql)) {
     setRole('mayor');
-    _showInfoCard('🎖️', 'Режим: Руководитель');
+    document.getElementById('queryInput').value = '';
+    _showInfoCard('🏛️', 'Режим: Мэр — панель загружается…');
+    setTimeout(() => {
+      const dash = document.getElementById('roleDashboard');
+      if (dash && !dash.classList.contains('hidden')) dash.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }, 800);
     return true;
   }
 
