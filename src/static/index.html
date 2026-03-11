@@ -2572,7 +2572,7 @@ function _resetMap() {
     _mapTooltip = null;
   }
   if (_mapMouseMoveHandler) {
-    document.removeEventListener('mousemove', _mapMouseMoveHandler, true);
+    document.removeEventListener('click', _mapMouseMoveHandler);
     _mapMouseMoveHandler = null;
   }
 }
@@ -2735,86 +2735,75 @@ function _renderMap() {
       key: _mapglKey,
     });
 
-    // Tooltip — фиксированный div в document.body (избегаем overflow:hidden и z-index карты)
+    // Popup — показывается по клику на маркер (hover ненадёжен в mapgl canvas)
     if (_mapTooltip) { _mapTooltip.remove(); _mapTooltip = null; }
     const tooltip = document.createElement('div');
     tooltip.style.cssText = [
       'position:fixed', 'background:#1e293b', 'color:#e2e8f0',
-      'padding:7px 11px', 'border-radius:9px', 'font-size:12px',
-      'line-height:1.45', 'pointer-events:none', 'z-index:9999',
+      'padding:9px 13px', 'border-radius:10px', 'font-size:12px',
+      'line-height:1.5', 'pointer-events:none', 'z-index:9999',
       'display:none', 'max-width:260px', 'white-space:normal',
-      'box-shadow:0 4px 16px rgba(0,0,0,.5)', 'border:1px solid #334155',
+      'box-shadow:0 4px 18px rgba(0,0,0,.6)', 'border:1px solid #334155',
     ].join(';');
     document.body.appendChild(tooltip);
     _mapTooltip = tooltip;
 
-    // Capture-mode listener: перехватывает mousemove ДО того, как SDK может вызвать
-    // stopPropagation() для обработки панорамирования карты. Только сохраняет позицию.
-    if (_mapMouseMoveHandler) {
-      document.removeEventListener('mousemove', _mapMouseMoveHandler, true);
-    }
-    _mapMouseMoveHandler = (e) => {
-      _mapLastMouse.x = e.clientX;
-      _mapLastMouse.y = e.clientY;
-    };
-    document.addEventListener('mousemove', _mapMouseMoveHandler, { capture: true, passive: true });
+    let _activeMarkerEl = null;
 
-    function _showTooltip(row, markerEl) {
+    function _showPopup(row, markerEl, clientX, clientY) {
       tooltip.innerHTML = _buildMarkerLabel(row);
       tooltip.style.display = 'block';
-      let x = _mapLastMouse.x + 15;
-      let y = _mapLastMouse.y - 20;
-      if (x + 270 > window.innerWidth) x = _mapLastMouse.x - 278;
+      let x = clientX + 16;
+      let y = clientY - 28;
+      if (x + 272 > window.innerWidth)  x = clientX - 278;
       if (y + 100 > window.innerHeight) y = window.innerHeight - 104;
-      if (y < 4) y = 4;
+      if (y < 6) y = 6;
+      if (x < 6) x = 6;
       tooltip.style.left = x + 'px';
       tooltip.style.top  = y + 'px';
     }
 
+    function _closePopup() {
+      tooltip.style.display = 'none';
+      if (_activeMarkerEl) { _activeMarkerEl.style.transform = ''; _activeMarkerEl = null; }
+    }
+
+    // Закрыть попап при клике на фон карты или в любом другом месте страницы.
+    // Храним ссылку в _mapMouseMoveHandler чтобы _resetMap() мог снять listener.
+    if (_mapMouseMoveHandler) {
+      document.removeEventListener('click', _mapMouseMoveHandler);
+      _mapMouseMoveHandler = null;
+    }
+    _mapMouseMoveHandler = (e) => { if (!e.target.closest('[data-mkr]')) _closePopup(); };
+    document.addEventListener('click', _mapMouseMoveHandler);
+
     _currentMapRows.forEach(row => {
       const markerEl = document.createElement('div');
+      markerEl.dataset.mkr = '1';
       markerEl.style.cssText =
         'width:20px;height:20px;background:#3b82f6;border-radius:50%;' +
         'border:3px solid #fff;cursor:pointer;pointer-events:auto;' +
         'box-shadow:0 2px 6px rgba(0,0,0,.5);' +
         'transition:transform .12s;flex-shrink:0';
 
-      const sdkMarker = new mapgl.Marker(_mapInstance, {
+      new mapgl.Marker(_mapInstance, {
         coordinates: [row._lon, row._lat],
         element: markerEl,
       });
 
-      // Первый механизм: события SDK (работают для canvas- и DOM-маркеров)
-      try {
-        sdkMarker.on('mouseenter', () => {
-          markerEl.style.transform = 'scale(1.35)';
-          _showTooltip(row, markerEl);
-        });
-        sdkMarker.on('mouseleave', () => {
-          markerEl.style.transform = '';
-          tooltip.style.display = 'none';
-        });
-      } catch(_) {}
-
-      // Второй механизм: DOM-события на самом элементе и его SDK-обёртке
-      // (добавляем через rAF — SDK помещает element в DOM синхронно, но обёртка готова сразу)
-      const attachDom = (target) => {
-        target.addEventListener('mouseenter', () => {
-          markerEl.style.transform = 'scale(1.35)';
-          _showTooltip(row, markerEl);
-        });
-        target.addEventListener('mouseleave', () => {
-          markerEl.style.transform = '';
-          tooltip.style.display = 'none';
-        });
-      };
-      attachDom(markerEl);
-      requestAnimationFrame(() => {
-        const wrapper = markerEl.parentElement;
-        if (wrapper && wrapper !== document.body && wrapper !== container) {
-          wrapper.style.pointerEvents = 'auto';
-          attachDom(wrapper);
+      markerEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (_activeMarkerEl && _activeMarkerEl !== markerEl) {
+          _activeMarkerEl.style.transform = '';
         }
+        if (_activeMarkerEl === markerEl) {
+          // второй клик на тот же маркер — закрыть попап
+          _closePopup();
+          return;
+        }
+        _activeMarkerEl = markerEl;
+        markerEl.style.transform = 'scale(1.4)';
+        _showPopup(row, markerEl, e.clientX, e.clientY);
       });
     });
   } catch(e) {
