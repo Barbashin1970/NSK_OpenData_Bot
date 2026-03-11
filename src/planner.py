@@ -107,6 +107,11 @@ CONSTRUCTION_COMMISSIONED_PATTERNS = re.compile(
     r"\bввод\w*\s+в\s+эксплуатацию\b|\bвведен\w*\b|\bсдан\w*\s+в\s+эксплуатацию\b"
     r"|\bразрешени\w*\s+на\s+ввод\b"
 )
+CONSTRUCTION_PERMITS_PATTERNS = re.compile(
+    r"\bразрешени\w*\s+на\s+строительств\w*\b"
+    r"|\bвсе\s+разрешени\w*\b"
+    r"|\bполн\w*\s+(?:список|реестр)\s+разрешени\w*\b"
+)
 
 
 @dataclass
@@ -138,6 +143,16 @@ def make_plan(query: str, topic: str | None) -> Plan:
                 extra_filters = {"permit_type": "commissioned"}
             else:
                 operation = "CONSTRUCTION_COMMISSIONED"
+                extra_filters = {}
+        elif CONSTRUCTION_PERMITS_PATTERNS.search(q):
+            if COUNT_PATTERNS.search(q):
+                operation = "CONSTRUCTION_COUNT"
+                extra_filters = {"permit_type": "permits"}
+            elif GROUP_PATTERNS.search(q):
+                operation = "CONSTRUCTION_GROUP"
+                extra_filters = {"permit_type": "permits"}
+            else:
+                operation = "CONSTRUCTION_PERMITS"
                 extra_filters = {}
         elif GROUP_PATTERNS.search(q):
             operation = "CONSTRUCTION_GROUP"

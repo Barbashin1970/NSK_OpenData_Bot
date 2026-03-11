@@ -895,7 +895,7 @@ function _trySpecialQuery(raw) {
     return true;
   }
   // Публикации
-  if (/(публикаци\w+\s*(ции|центра)?|статьи?\s*(ции|центра))/i.test(ql)) {
+  if (/(публикаци\S*\s*(ции|центра)?|статьи?\s*(ции|центра))/i.test(ql)) {
     if (!_ciiPanelOpen) toggleCiiPanel();
     loadCiiSection('publications');
     return true;
@@ -907,7 +907,7 @@ function _trySpecialQuery(raw) {
     return true;
   }
   // Контакты
-  if (/(контакт\w+\s*(ции|центра)?|как\s+связаться\s*с?\s*(ции|центром)?)/i.test(ql)) {
+  if (/(контакт\S*\s*(ции|центра|центр[аеуи]|искусственного)?|как\s+связаться\s*с?\s*(ции|центром)?|контакты?\s+центра)/i.test(ql)) {
     if (!_ciiPanelOpen) toggleCiiPanel();
     loadCiiSection('contacts');
     return true;
@@ -1186,6 +1186,7 @@ function renderConstruction(data) {
       <span>${esc(data.note)}</span>
     </div>` : '';
 
+  // District filter options (used both for dist filter bar and type-switcher suffix)
   const distOpts = [
     {label: 'Весь город',      val: '',                        q: baseQuery},
     {label: 'Дзержинский',     val: 'Дзержинский район',       q: `${baseQuery} в Дзержинском районе`},
@@ -1200,10 +1201,53 @@ function renderConstruction(data) {
     {label: 'Центральный',     val: 'Центральный район',       q: `${baseQuery} в Центральном районе`},
   ];
 
+  // District suffix for type-switcher (preserves active district when switching type)
+  const activeDist = distOpts.find(d => d.val === currentDistrict);
+  const distSuffix = activeDist ? activeDist.q.slice(baseQuery.length) : '';
+
+  // Totals from meta (whole city)
+  const metaC = data.meta || {};
+  const pTotal = Number(metaC.permits_total || 0);
+  const aTotal = Number(metaC.active_total || 0);
+  const cTotal = Number(metaC.commissioned_total || 0);
+  const fmt = n => Number(n).toLocaleString('ru-RU');
+
+  const typeOpts = [
+    { op: 'CONSTRUCTION_PERMITS',      icon: '⛏️', label: 'Разрешения (124)',        cnt: pTotal, q: 'разрешения на строительство' + distSuffix },
+    { op: 'CONSTRUCTION_ACTIVE',       icon: '🔧', label: 'Активные стройки',         cnt: aTotal, q: 'активные стройки' + distSuffix },
+    { op: 'CONSTRUCTION_COMMISSIONED', icon: '🔑', label: 'Введено в экспл. (125)',   cnt: cTotal, q: 'ввод в эксплуатацию' + distSuffix },
+  ];
+
+  const formulaHtml = (pTotal > 0 && cTotal > 0) ? `
+    <div class="text-xs text-slate-400 mt-2 pt-2 border-t border-slate-100">
+      Формула: <strong class="text-slate-600">${fmt(pTotal)}</strong> разрешений −
+      <strong class="text-slate-600">${fmt(cTotal)}</strong> введённых =
+      <strong class="text-amber-600">${fmt(aTotal)}</strong> активных строек
+    </div>` : '';
+
+  const typeSwitcherHtml = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-3.5">
+      <div class="flex flex-wrap gap-2">
+        ${typeOpts.map(t => {
+          const isAct = op === t.op;
+          const safeQ = t.q.replace(/'/g, "\\'");
+          return `<button onclick="setQuery('${safeQ}')"
+            class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border font-medium transition-colors ${isAct
+              ? 'bg-slate-800 text-white border-slate-800'
+              : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800'}">
+            <span>${t.icon}</span>
+            <span>${t.label}</span>
+            ${t.cnt > 0 ? `<span class="ml-0.5 ${isAct ? 'text-slate-300' : 'text-slate-400'}">${fmt(t.cnt)}</span>` : ''}
+          </button>`;
+        }).join('')}
+      </div>
+      ${formulaHtml}
+    </div>`;
+
   const filterHtml = `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-3.5">
       <div class="flex flex-wrap items-center gap-x-2 gap-y-2">
-        <span class="text-xs text-slate-400 font-medium mr-1">⛏️ Район:</span>
+        <span class="text-xs text-slate-400 font-medium mr-1">🗺️ Район:</span>
         ${distOpts.map(d => {
           const isAct = currentDistrict === d.val || (!currentDistrict && d.val === '');
           const safeQ = d.q.replace(/'/g, "\\'");
@@ -1216,17 +1260,34 @@ function renderConstruction(data) {
     </div>`;
 
   const tableHtml = renderTable({...data, note: null});
-  return noteHtml + filterHtml + tableHtml;
+  return noteHtml + typeSwitcherHtml + filterHtml + tableHtml;
 }
 
 function renderConstructionCount(data) {
   const label = data.label || 'объектов';
   const dist = data.district ? `<div class="text-slate-400 text-sm mt-1">${esc(data.district)}</div>` : '';
+  const metaC = data.meta || {};
+  const pTotal = Number(metaC.permits_total || 0);
+  const aTotal = Number(metaC.active_total || 0);
+  const cTotal = Number(metaC.commissioned_total || 0);
+  const fmt = n => Number(n).toLocaleString('ru-RU');
+  const formulaHtml = (pTotal > 0 && cTotal > 0) ? `
+    <div class="text-xs text-slate-400 mt-3">
+      ${fmt(pTotal)} разрешений − ${fmt(cTotal)} введённых = <strong class="text-amber-600">${fmt(aTotal)}</strong> активных
+    </div>` : '';
+  const listLinks = `
+    <div class="flex flex-wrap justify-center gap-2 mt-4">
+      <button onclick="setQuery('разрешения на строительство')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">⛏️ Список разрешений</button>
+      <button onclick="setQuery('активные стройки')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🔧 Активные стройки</button>
+      <button onclick="setQuery('ввод в эксплуатацию')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🔑 Введено в экспл.</button>
+    </div>`;
   return `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 text-center">
       <div class="text-7xl font-bold text-blue-600 mb-2 tracking-tight">${Number(data.count).toLocaleString('ru-RU')}</div>
       <div class="text-slate-500 text-base">${esc(label)}</div>
       ${dist}
+      ${formulaHtml}
+      ${listLinks}
     </div>`;
 }
 
@@ -2137,7 +2198,7 @@ function toggleCiiPanel() {
     panel = document.createElement('section');
     panel.id = 'ciiPanel';
     panel.className = 'fade-in';
-    section.parentNode.insertBefore(panel, section.nextSibling);
+    section.parentNode.insertBefore(panel, section);
   }
   if (!_ciiPanelOpen) { panel.innerHTML = ''; return; }
 
