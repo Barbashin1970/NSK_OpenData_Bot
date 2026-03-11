@@ -226,6 +226,22 @@ def _seed_ecology_history() -> None:
         import logging
         logging.getLogger(__name__).warning(f"seed_ecology_history: {e}")
 
+
+@app.on_event("startup")
+async def _start_background_preloader() -> None:
+    """Фоновая загрузка всех тем opendata после старта сервера.
+
+    Стартует через 15 сек — Railway успевает пройти health check до начала
+    HTTP-запросов к opendata.novo-sibirsk.ru. Темы загружаются поочерёдно
+    с паузой 5 сек, чтобы не нагружать CPU и сеть.
+    Если пользователь запрашивает тему до того, как preloader до неё дошёл —
+    lazy fallback в /ask подгружает её синхронно.
+    """
+    import asyncio
+    from .updater import preload_all_async
+    asyncio.create_task(preload_all_async(delay_start=15.0))
+
+
 # ── Кастомный Swagger UI: навигационная панель с кнопкой «← На главную» ───────
 _NAV_BAR_HTML = """
 <style>
@@ -1376,11 +1392,16 @@ def get_ask(
 
     # ── Стандартные темы opendata ─────────────────────────────────────────────
     if not table_exists(topic):
-        return {
-            "query": q,
-            "topic": topic,
-            "error": f"Данные не загружены. POST /update?topic={topic}",
-        }
+        # Данных нет — тихо подгружаем нужную тему прямо сейчас.
+        # Первый запрос займёт 3–8 сек; после этого данные кэшируются на 24 ч.
+        log.info(f"Lazy load: тема '{topic}' не загружена, начинаю подгрузку")
+        from .updater import ensure_fresh
+        if not ensure_fresh(topic):
+            return {
+                "query": q,
+                "topic": topic,
+                "error": "Не удалось загрузить данные. Проверьте доступность opendata.novo-sibirsk.ru",
+            }
 
     result = execute_plan(plan)
 
