@@ -1231,7 +1231,7 @@ function renderConstruction(data) {
         ${typeOpts.map(t => {
           const isAct = op === t.op;
           const safeQ = t.q.replace(/'/g, "\\'");
-          return `<button onclick="setQuery('${safeQ}')"
+          return `<button onclick="askNow('${safeQ}')"
             class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border font-medium transition-colors ${isAct
               ? 'bg-slate-800 text-white border-slate-800'
               : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-800'}">
@@ -1251,7 +1251,7 @@ function renderConstruction(data) {
         ${distOpts.map(d => {
           const isAct = currentDistrict === d.val || (!currentDistrict && d.val === '');
           const safeQ = d.q.replace(/'/g, "\\'");
-          return `<button onclick="setQuery('${safeQ}')"
+          return `<button onclick="askNow('${safeQ}')"
             class="text-xs px-2.5 py-1 rounded-full border transition-colors ${isAct
               ? 'bg-blue-600 text-white border-blue-600 font-semibold'
               : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'}">${d.label}</button>`;
@@ -1277,9 +1277,9 @@ function renderConstructionCount(data) {
     </div>` : '';
   const listLinks = `
     <div class="flex flex-wrap justify-center gap-2 mt-4">
-      <button onclick="setQuery('разрешения на строительство')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">⛏️ Список разрешений</button>
-      <button onclick="setQuery('активные стройки')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🔧 Активные стройки</button>
-      <button onclick="setQuery('ввод в эксплуатацию')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🔑 Введено в экспл.</button>
+      <button onclick="askNow('разрешения на строительство')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">⛏️ Список разрешений</button>
+      <button onclick="askNow('активные стройки')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🔧 Активные стройки</button>
+      <button onclick="askNow('ввод в эксплуатацию')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🔑 Введено в экспл.</button>
     </div>`;
   return `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 text-center">
