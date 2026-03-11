@@ -1091,24 +1091,45 @@ const COL_LABELS = {
   район:'Район', количество:'Кол-во',
   NomRazr:'№ разрешения', DatRazr:'Дата', Zastr:'Застройщик',
   NameOb:'Объект', AdrOr:'Адрес', district:'Район', KadNom:'Кадастр. №',
+  RukName:'Руководитель', RukPos:'Должность',
 };
 
 function colLabel(c) { return COL_LABELS[c] || c; }
+
+// ─── COLLAPSIBLE TABLE ────────────────────────────────────────────────────────
+let _tblSeq = 0;
+
+function toggleTable(id) {
+  const tbody = document.getElementById(id + '_body');
+  const btn   = document.getElementById(id + '_btn');
+  const grad  = document.getElementById(id + '_grad');
+  if (!tbody || !btn) return;
+  const collapsed = btn.dataset.collapsed === 'true';
+  tbody.querySelectorAll('.tbl-row-hidden').forEach(r => {
+    r.style.display = collapsed ? '' : 'none';
+  });
+  if (grad) grad.style.display = collapsed ? 'none' : '';
+  btn.innerHTML     = collapsed ? '&#9650; Свернуть' : '&#9660; ' + btn.dataset.more;
+  btn.dataset.collapsed = String(!collapsed);
+}
 
 function renderTable(data) {
   const rows = data.rows || [];
   const cols = data.columns || [];
   if (!rows.length) return emptyState();
 
+  const tblId = `tbl${++_tblSeq}`;
   const count = data.count ?? rows.length;
   const shown = rows.length;
+  const needsCollapse = shown > 3;
 
-  const headCells = cols.map(c =>
-    `<th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-4 py-3 border-b border-slate-100 whitespace-nowrap">${colLabel(c)}</th>`
+  // First column: 40% width + word-wrap; rest: auto, no-wrap
+  const headCells = cols.map((c, i) =>
+    `<th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-4 py-3 border-b border-slate-100 ${i === 0 ? 'w-2/5' : 'whitespace-nowrap'}">${colLabel(c)}</th>`
   ).join('');
 
-  const body = rows.map(r => {
-    const cells = cols.map(c => {
+  const body = rows.map((r, rowIdx) => {
+    const cells = cols.map((c, i) => {
       const raw = r[c] ?? '';
       let val;
       if (c === 'Site' && raw && raw !== '—') {
@@ -1118,9 +1139,13 @@ function renderTable(data) {
       } else {
         val = `<span class="text-slate-700">${esc(String(raw === null || raw === undefined ? '—' : raw))}</span>`;
       }
-      return `<td class="px-4 py-2.5 text-sm whitespace-nowrap">${val}</td>`;
+      const tdClass = i === 0
+        ? 'px-4 py-2.5 text-sm max-w-0 break-words leading-snug'
+        : 'px-4 py-2.5 text-sm whitespace-nowrap';
+      return `<td class="${tdClass}">${val}</td>`;
     }).join('');
-    return `<tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50/80 transition-colors">${cells}</tr>`;
+    const extra = needsCollapse && rowIdx >= 3;
+    return `<tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50/80 transition-colors${extra ? ' tbl-row-hidden' : ''}"${extra ? ' style="display:none"' : ''}>${cells}</tr>`;
   }).join('');
 
   // Pagination bar
@@ -1149,6 +1174,18 @@ function renderTable(data) {
     ? `<div class="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">ℹ️ ${esc(data.note)}</div>`
     : '';
 
+  const moreLabel = `Показать все ${shown} строк`;
+  const collapseBar = needsCollapse ? `
+    <div class="px-5 py-2 border-t border-slate-100 flex justify-center bg-slate-50/60">
+      <button id="${tblId}_btn"
+              data-collapsed="true"
+              data-more="${moreLabel}"
+              onclick="toggleTable('${tblId}')"
+              class="text-xs text-slate-500 hover:text-blue-600 font-medium transition-colors py-0.5 flex items-center gap-1">
+        &#9660; ${moreLabel}
+      </button>
+    </div>` : '';
+
   return `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
@@ -1160,12 +1197,14 @@ function renderTable(data) {
           ${count > shown ? ` · показано ${shown}` : ''}
         </span>
       </div>
-      <div class="overflow-x-auto">
-        <table class="min-w-full">
+      <div class="relative overflow-x-auto">
+        <table class="w-full table-fixed">
           <thead><tr>${headCells}</tr></thead>
-          <tbody>${body}</tbody>
+          <tbody id="${tblId}_body">${body}</tbody>
         </table>
+        ${needsCollapse ? `<div id="${tblId}_grad" class="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent pointer-events-none"></div>` : ''}
       </div>
+      ${collapseBar}
       ${moreHtml}
     </div>
     ${noteHtml}

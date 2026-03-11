@@ -119,6 +119,7 @@ datasets:
       name_col: OuName
       display_cols:
         - OuName
+        - RukName
         - AdrDistr
         - AdrStreet
         - AdrDom
