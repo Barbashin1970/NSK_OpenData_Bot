@@ -27,6 +27,8 @@ PRELOAD_ORDER: list[str] = [
     "sport_grounds",
     "sport_orgs",
     "culture",
+    "construction_permits",
+    "construction_commissioned",
 ]
 
 # Пауза между темами при фоновой загрузке (секунды)

@@ -1143,6 +1143,12 @@ def get_ask(
         from .construction_opendata import get_construction_meta, permits_available
 
         if not permits_available():
+            log.info("Lazy load: construction_permits/commissioned не загружены, подгружаю")
+            from .updater import ensure_fresh
+            ensure_fresh("construction_permits")
+            ensure_fresh("construction_commissioned")
+
+        if not permits_available():
             return JSONResponse(
                 status_code=503,
                 content={
