@@ -1123,13 +1123,12 @@ function renderTable(data) {
   const shown = rows.length;
   const needsCollapse = shown > 3;
 
-  // First column: 40% width + word-wrap; rest: auto, no-wrap
-  const headCells = cols.map((c, i) =>
-    `<th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-4 py-3 border-b border-slate-100 ${i === 0 ? 'w-2/5' : 'whitespace-nowrap'}">${colLabel(c)}</th>`
+  const headCells = cols.map(c =>
+    `<th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-4 py-3 border-b border-slate-100 whitespace-nowrap">${colLabel(c)}</th>`
   ).join('');
 
   const body = rows.map((r, rowIdx) => {
-    const cells = cols.map((c, i) => {
+    const cells = cols.map(c => {
       const raw = r[c] ?? '';
       let val;
       if (c === 'Site' && raw && raw !== '—') {
@@ -1139,10 +1138,7 @@ function renderTable(data) {
       } else {
         val = `<span class="text-slate-700">${esc(String(raw === null || raw === undefined ? '—' : raw))}</span>`;
       }
-      const tdClass = i === 0
-        ? 'px-4 py-2.5 text-sm max-w-0 break-words leading-snug'
-        : 'px-4 py-2.5 text-sm whitespace-nowrap';
-      return `<td class="${tdClass}">${val}</td>`;
+      return `<td class="px-4 py-2.5 text-sm whitespace-nowrap">${val}</td>`;
     }).join('');
     const extra = needsCollapse && rowIdx >= 3;
     return `<tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50/80 transition-colors${extra ? ' tbl-row-hidden' : ''}"${extra ? ' style="display:none"' : ''}>${cells}</tr>`;
@@ -1198,7 +1194,7 @@ function renderTable(data) {
         </span>
       </div>
       <div class="relative overflow-x-auto">
-        <table class="w-full table-fixed">
+        <table class="min-w-full">
           <thead><tr>${headCells}</tr></thead>
           <tbody id="${tblId}_body">${body}</tbody>
         </table>

@@ -1815,7 +1815,8 @@ def post_update(
         description=(
             "ID темы для обновления. Если не указан — обновляются все 10 тем (~1–2 мин).\n\n"
             "Доступные ID: `parking`, `stops`, `schools`, `kindergartens`, "
-            "`libraries`, `pharmacies`, `sport_grounds`, `sport_orgs`, `culture`"
+            "`libraries`, `pharmacies`, `sport_grounds`, `sport_orgs`, `culture`, "
+            "`construction_permits`, `construction_commissioned`"
         ),
         examples={"default": {"summary": "Конкретная тема", "value": "parking"}},
     ),
@@ -1823,7 +1824,7 @@ def post_update(
     """
     Загружает или обновляет данные с [opendata.novo-sibirsk.ru](http://opendata.novo-sibirsk.ru).
 
-    - **Без `topic`** — обновляет все 10 тем (~1–2 минуты, ~4 МБ)
+    - **Без `topic`** — обновляет все 12 тем (~1–2 минуты, ~4 МБ)
     - **С `topic`** — обновляет только указанную тему (несколько секунд)
 
     Данные сохраняются в локальный DuckDB-кэш (`DATA/cache.db`).
