@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 _DATA_DIR   = Path(__file__).parent.parent / "data" / "ciinsu"
-_KB_PATH    = _DATA_DIR / "knowledge_base.json"
+_KB_PATH    = Path(__file__).parent / "ciinsu_knowledge_base.json"
 _NEWS_PATH  = _DATA_DIR / "news.json"
 _CONFIG_PATH = _DATA_DIR / "config.json"
 

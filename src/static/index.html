@@ -829,10 +829,99 @@ async function updateAndReload(topic) {
   } catch(e) { /* ignore */ }
 }
 
+// ─── Special query shortcuts (roles + ЦИИ) ───────────────────────────────────
+function _extractDistrict(text) {
+  const t = text.toLowerCase();
+  for (const d of NSK_DISTRICTS) {
+    if (!d.val) continue;
+    if (t.includes(d.val.replace(' район', '').toLowerCase())) return d.val;
+  }
+  return '';
+}
+
+function _showInfoCard(icon, msg) {
+  document.getElementById('loadingState').className = 'hidden';
+  const el = document.getElementById('resultArea');
+  el.className = 'fade-in bg-violet-50 border border-violet-200 rounded-2xl p-4';
+  el.innerHTML = `<div class="flex items-center gap-2 text-violet-800"><span class="text-xl">${icon}</span><span class="font-semibold text-sm">${msg}</span></div>`;
+}
+
+function _trySpecialQuery(raw) {
+  // Strip «Сигма» wake-word prefix
+  const q = raw.replace(/^сигма[!,.:)?\s]*/i, '').trim();
+  const ql = q.toLowerCase();
+
+  // ── Роли ──────────────────────────────────────────────────────────────────
+  if (/\bя\s+(горожанин|горожанка|жительниц[аеу]?|житель|жителя|пользователь|простой\s+пользователь)\b/i.test(ql)) {
+    setRole('citizen');
+    _showInfoCard('👤', 'Режим: Горожанин');
+    return true;
+  }
+  if (/(\bя\s+служащ|\bслужащ\w*\s*(города|умного\s*города)?)/i.test(ql)) {
+    const dist = _extractDistrict(ql);
+    setRole('official', dist || officialDistrict);
+    _showInfoCard('🏙️', 'Режим: Служащий' + (dist ? ' · ' + dist.replace(' район', '') : ''));
+    return true;
+  }
+  if (/\bя\s+(мэр|руководитель)\b/i.test(ql)) {
+    setRole('mayor');
+    _showInfoCard('🎖️', 'Режим: Руководитель');
+    return true;
+  }
+
+  // ── ЦИИ НГУ ───────────────────────────────────────────────────────────────
+  const cii = /\b(ции|центр\s*и\.?и\.?|центр\s*нгу)\b/i;
+
+  // О центре
+  if (
+    /что\s+такое\s+(ции|центр\s*(ии?|искусственного\s*интеллекта)|искусственный\s+интеллект)/i.test(ql) ||
+    /расскажи\s+о\s+(ции|центре)/i.test(ql) ||
+    (cii.test(ql) && !/проект|команд|публикац|новост|контакт/.test(ql))
+  ) {
+    if (!_ciiPanelOpen) toggleCiiPanel();
+    loadCiiSection('center');
+    return true;
+  }
+  // Проекты
+  if (/(проекты?\s+(ции|центра)|какие\s+проекты?\s*(центра|ции|в\s+работе)?|проекты?\s+в\s+работе)/i.test(ql)) {
+    if (!_ciiPanelOpen) toggleCiiPanel();
+    loadCiiSection('projects');
+    return true;
+  }
+  // Команда
+  if (/(команд[аеу]?\s*(ции|центра)|кто\s+работает\s+в\s*(ции|центре)|сотрудники?\s*(ции|центра))/i.test(ql)) {
+    if (!_ciiPanelOpen) toggleCiiPanel();
+    loadCiiSection('team');
+    return true;
+  }
+  // Публикации
+  if (/(публикаци\w+\s*(ции|центра)?|статьи?\s*(ции|центра))/i.test(ql)) {
+    if (!_ciiPanelOpen) toggleCiiPanel();
+    loadCiiSection('publications');
+    return true;
+  }
+  // Новости
+  if (/новост[иьюя]\s*(ции|центра)/i.test(ql)) {
+    if (!_ciiPanelOpen) toggleCiiPanel();
+    loadCiiSection('news');
+    return true;
+  }
+  // Контакты
+  if (/(контакт\w+\s*(ции|центра)?|как\s+связаться\s*с?\s*(ции|центром)?)/i.test(ql)) {
+    if (!_ciiPanelOpen) toggleCiiPanel();
+    loadCiiSection('contacts');
+    return true;
+  }
+
+  return false;
+}
+
 // ─── Ask ─────────────────────────────────────────────────────────────────────
 async function ask() {
   const q = document.getElementById('queryInput').value.trim();
   if (!q) return;
+
+  if (_trySpecialQuery(q)) return;
 
   // Reset pagination for a fresh query
   _pageQuery  = q;
