@@ -1324,9 +1324,10 @@ function renderConstruction(data) {
 
   const formulaHtml = (pTotal > 0 && cTotal > 0) ? `
     <div class="text-xs text-slate-400 mt-2 pt-2 border-t border-slate-100">
-      Формула: <strong class="text-slate-600">${fmt(pTotal)}</strong> разрешений −
-      <strong class="text-slate-600">${fmt(cTotal)}</strong> введённых =
-      <strong class="text-amber-600">${fmt(aTotal)}</strong> активных строек
+      Из <strong class="text-slate-600">${fmt(pTotal)}</strong> разрешений →
+      <strong class="text-amber-600">${fmt(aTotal)}</strong> активных
+      <span title="Один объект может иметь несколько разрешений (корпуса, этапы, стоянки). Исключение идёт по кадастровому номеру: если хоть одно разрешение участка введено в эксплуатацию — все разрешения этого участка убираются из «активных». Поэтому ${fmt(pTotal)} − ${fmt(cTotal)} ≠ ${fmt(aTotal)}" style="cursor:help;border-bottom:1px dashed #94a3b8">(?)</span>
+      · реестр введённых: <strong class="text-slate-600">${fmt(cTotal)}</strong> объектов
     </div>` : '';
 
   const typeSwitcherHtml = `
@@ -1377,7 +1378,9 @@ function renderConstructionCount(data) {
   const fmt = n => Number(n).toLocaleString('ru-RU');
   const formulaHtml = (pTotal > 0 && cTotal > 0) ? `
     <div class="text-xs text-slate-400 mt-3">
-      ${fmt(pTotal)} разрешений − ${fmt(cTotal)} введённых = <strong class="text-amber-600">${fmt(aTotal)}</strong> активных
+      Из ${fmt(pTotal)} разрешений → <strong class="text-amber-600">${fmt(aTotal)}</strong> активных
+      <span title="Исключение по кадастровому номеру: один участок может иметь несколько разрешений. Поэтому ${fmt(pTotal)} − ${fmt(cTotal)} ≠ ${fmt(aTotal)}" style="cursor:help;border-bottom:1px dashed #94a3b8">(?)</span>
+      · введено в экспл.: ${fmt(cTotal)}
     </div>` : '';
   const listLinks = `
     <div class="flex flex-wrap justify-center gap-2 mt-4">
