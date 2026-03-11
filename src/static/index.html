@@ -2000,7 +2000,216 @@ function renderTopics(topics) {
     </div>
   `;
 
-  document.getElementById('topicsGrid').innerHTML = cards + ecoCard + powerCard + camerasCard;
+  const ciiCard = `
+    <div id="ciiTile" class="topic-card bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 rounded-2xl p-4 cursor-pointer hover:border-violet-400 hover:shadow-md"
+         onclick="toggleCiiPanel()">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">🧠</span>
+        <span class="bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full text-xs">статично</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">Центр ИИ НГУ</div>
+      <div class="text-xs text-slate-500 mt-1">12 проектов · ainsu.vercel.app</div>
+    </div>
+  `;
+
+  document.getElementById('topicsGrid').innerHTML = cards + ecoCard + powerCard + camerasCard + ciiCard;
+}
+
+// ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────
+const _CII_SECTIONS = [
+  { key: 'center',       icon: '🏛️',  label: 'О центре',     sub: 'Миссия, направления, статистика' },
+  { key: 'projects',     icon: '⚙️',  label: 'Проекты',      sub: '12 активных проектов' },
+  { key: 'team',         icon: '👥',  label: 'Команда',      sub: 'Руководство и ключевые сотрудники' },
+  { key: 'publications', icon: '📄',  label: 'Публикации',   sub: 'Научные статьи 2024–2025' },
+  { key: 'news',         icon: '📰',  label: 'Новости',      sub: 'Последние события' },
+  { key: 'contacts',     icon: '📍',  label: 'Контакты',     sub: 'Адрес, телефон, email' },
+];
+
+let _ciiPanelOpen = false;
+
+function toggleCiiPanel() {
+  _ciiPanelOpen = !_ciiPanelOpen;
+  let panel = document.getElementById('ciiPanel');
+  if (!panel) {
+    const section = document.querySelector('section');
+    panel = document.createElement('section');
+    panel.id = 'ciiPanel';
+    panel.className = 'fade-in';
+    section.parentNode.insertBefore(panel, section.nextSibling);
+  }
+  if (!_ciiPanelOpen) { panel.innerHTML = ''; return; }
+
+  panel.innerHTML = `
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-lg">🧠</span>
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-violet-500">Центр ИИ НГУ</h2>
+      <button onclick="toggleCiiPanel()" class="ml-auto text-slate-400 hover:text-slate-600 text-sm">✕</button>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      ${_CII_SECTIONS.map(s => `
+        <div class="topic-card bg-white border border-violet-100 rounded-2xl p-4 cursor-pointer hover:border-violet-300 hover:shadow-md"
+             onclick="loadCiiSection('${s.key}')">
+          <div class="text-2xl mb-2">${s.icon}</div>
+          <div class="font-semibold text-sm text-slate-800 leading-tight">${s.label}</div>
+          <div class="text-xs text-slate-400 mt-1">${s.sub}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function loadCiiSection(key) {
+  const resultArea = document.getElementById('resultArea');
+  const loading = document.getElementById('loadingState');
+  resultArea.classList.add('hidden');
+  loading.classList.remove('hidden');
+  loading.classList.add('flex');
+  document.getElementById('loadingText').textContent = 'Загружаю данные ЦИИ НГУ...';
+
+  try {
+    const r = await fetch('/ciinsu?section=' + key);
+    const d = await r.json();
+    loading.classList.add('hidden');
+    loading.classList.remove('flex');
+    resultArea.classList.remove('hidden');
+    resultArea.innerHTML = _renderCiiSection(key, d);
+    resultArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch(e) {
+    loading.classList.add('hidden');
+    loading.classList.remove('flex');
+    showError('Ошибка загрузки данных ЦИИ НГУ.');
+  }
+}
+
+function _renderCiiSection(key, d) {
+  const wrap = (content) =>
+    `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 fade-in space-y-4">${content}</div>`;
+  const heading = (icon, text) =>
+    `<div class="flex items-center gap-2 mb-1"><span class="text-xl">${icon}</span><h3 class="font-bold text-slate-800 text-base">${text}</h3></div>`;
+
+  if (key === 'center') {
+    const c = d.data;
+    return wrap(`
+      ${heading('🏛️', 'О центре')}
+      <p class="text-sm text-slate-700">${c.name}</p>
+      <p class="text-sm text-slate-500">Основан: ${c.founded}</p>
+      <div class="flex gap-4 text-center mt-2">
+        <div class="flex-1 bg-violet-50 rounded-xl p-3">
+          <div class="text-xl font-bold text-violet-700">${c.stats.researchers}</div>
+          <div class="text-xs text-slate-500 mt-1">исследователей</div>
+        </div>
+        <div class="flex-1 bg-violet-50 rounded-xl p-3">
+          <div class="text-xl font-bold text-violet-700">${c.stats.doctors_of_science}</div>
+          <div class="text-xs text-slate-500 mt-1">д.н. и к.н.</div>
+        </div>
+        <div class="flex-1 bg-violet-50 rounded-xl p-3">
+          <div class="text-xl font-bold text-violet-700">${c.stats.projects}</div>
+          <div class="text-xs text-slate-500 mt-1">проектов</div>
+        </div>
+      </div>
+      <div class="text-sm text-slate-700 mt-3"><span class="font-semibold">Миссия:</span> ${c.mission}</div>
+      <div class="mt-3">
+        <div class="font-semibold text-sm text-slate-700 mb-2">Направления работы:</div>
+        <ul class="space-y-1">
+          ${c.directions.map(dir => `<li class="text-sm text-slate-600 flex gap-2"><span class="text-violet-400 mt-0.5">▸</span><span>${dir}</span></li>`).join('')}
+        </ul>
+      </div>
+    `);
+  }
+
+  if (key === 'projects') {
+    const rows = d.data;
+    return wrap(`
+      ${heading('⚙️', `Проекты ЦИИ НГУ (${rows.length})`)}
+      <div class="space-y-2">
+        ${rows.map(p => `
+          <div class="border border-slate-100 rounded-xl p-3 hover:border-violet-200 transition-colors">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="font-semibold text-sm text-slate-800">${esc(p.name)}</div>
+                <div class="text-xs text-violet-600 mt-0.5">${esc(p.short)}</div>
+                <div class="text-xs text-slate-500 mt-1">${esc(p.description)}</div>
+              </div>
+              ${p.url ? `<a href="${p.url}" target="_blank" class="text-violet-400 hover:text-violet-600 text-xs shrink-0">↗</a>` : ''}
+            </div>
+            ${p.partners?.length ? `<div class="text-xs text-slate-400 mt-1">Партнёры: ${p.partners.join(', ')}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `);
+  }
+
+  if (key === 'team') {
+    const rows = d.data;
+    return wrap(`
+      ${heading('👥', 'Команда ЦИИ НГУ')}
+      <div class="space-y-2">
+        ${rows.map(m => `
+          <div class="border border-slate-100 rounded-xl p-3">
+            <div class="font-semibold text-sm text-slate-800">${esc(m.name)}</div>
+            <div class="text-xs text-violet-600 mt-0.5">${esc(m.role)}</div>
+            <div class="text-xs text-slate-500 mt-1">${esc(m.area)}</div>
+            ${m.note ? `<div class="text-xs text-slate-400 mt-1 italic">${esc(m.note)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `);
+  }
+
+  if (key === 'publications') {
+    const rows = d.data;
+    return wrap(`
+      ${heading('📄', `Публикации (${rows.length})`)}
+      <div class="space-y-3">
+        ${rows.map(p => `
+          <div class="border-l-2 border-violet-200 pl-3">
+            <div class="text-sm text-slate-800 font-medium">${esc(p.title)}</div>
+            <div class="text-xs text-slate-500 mt-1">${esc(p.authors)} · ${esc(p.journal)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `);
+  }
+
+  if (key === 'news') {
+    const rows = d.data;
+    return wrap(`
+      ${heading('📰', 'Новости')}
+      <div class="space-y-3">
+        ${rows.map(n => `
+          <div class="border border-slate-100 rounded-xl p-3">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs text-violet-500 font-medium">${n.date}</span>
+            </div>
+            <div class="font-semibold text-sm text-slate-800">${esc(n.title)}</div>
+            <div class="text-xs text-slate-500 mt-1">${esc(n.summary)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `);
+  }
+
+  if (key === 'contacts') {
+    const c = d.data;
+    return wrap(`
+      ${heading('📍', 'Контакты ЦИИ НГУ')}
+      <div class="space-y-2 text-sm">
+        <div class="flex gap-2"><span class="text-slate-400 w-20">Адрес</span><span class="text-slate-700">${esc(c.address)}</span></div>
+        <div class="flex gap-2"><span class="text-slate-400 w-20">Email</span><a href="mailto:${c.email}" class="text-blue-600 hover:underline">${esc(c.email)}</a></div>
+        <div class="flex gap-2"><span class="text-slate-400 w-20">Телефон</span><span class="text-slate-700">${esc(c.phone)}</span></div>
+        <div class="flex gap-2"><span class="text-slate-400 w-20">Сайт ЦИИ</span><a href="${c.website}" target="_blank" class="text-blue-600 hover:underline">${c.website}</a></div>
+        <div class="flex gap-2"><span class="text-slate-400 w-20">НГУ</span><a href="${c.nsu_page}" target="_blank" class="text-blue-600 hover:underline">nsu.ru ↗</a></div>
+      </div>
+      <div class="mt-4">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Организации-партнёры</div>
+        <div class="flex flex-wrap gap-2">
+          ${c.parent_orgs.map(o => `<a href="${o.url}" target="_blank" class="px-3 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full text-xs hover:bg-violet-100">${esc(o.name)} ↗</a>`).join('')}
+        </div>
+      </div>
+    `);
+  }
+
+  return wrap(`<div class="text-slate-500 text-sm">Секция не найдена: ${esc(key)}</div>`);
 }
 
 // ─── Pagination ───────────────────────────────────────────────────────────────

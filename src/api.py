@@ -2362,6 +2362,14 @@ def get_ecology_risks(
     }
 
 
+# ── Центр ИИ НГУ ─────────────────────────────────────────────────────────────
+@app.get("/ciinsu", tags=["ЦИИ НГУ"])
+def get_ciinsu(section: str = Query("center", description="center | projects | team | publications | news | contacts")) -> dict:
+    """Данные о Центре искусственного интеллекта НГУ из data/ciinsu/knowledge_base.json."""
+    from .ciinsu import get_section
+    return get_section(section)
+
+
 # ── Статические файлы (tailwind.css, иконки и т.д.) ─────────────────────────
 if _STATIC.exists():
     app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
