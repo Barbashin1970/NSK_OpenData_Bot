@@ -1099,6 +1099,29 @@ function colLabel(c) { return COL_LABELS[c] || c; }
 // ─── COLLAPSIBLE TABLE ────────────────────────────────────────────────────────
 let _tblSeq = 0;
 
+// ─── District helpers for table filter bar ───────────────────────────────────
+function _stripDistrictFromQuery(q) {
+  // Strip district mentions using the same stems as router.py DISTRICTS
+  const stems = [
+    'дзержинск','железнодорожн','заельцовск','заельцов',
+    'калининск','кировск','ленинск','октябрьск',
+    'первомайск','советск','централь','центр','кольцов',
+    'академгородк','шлюз',
+  ];
+  let s = q;
+  for (const stem of stems) {
+    s = s.replace(new RegExp('\\s*(в\\s+)?' + stem + '[а-яёa-z]*\\s*(район[еа]?|р-не?)?', 'gi'), ' ');
+  }
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+function _distQuerySuffix(label) {
+  // Convert nominative adjective label → prepositional suffix for query
+  // "Советский" → " в Советском районе", "Железнодорожный" → " в Железнодорожном районе"
+  const prep = label.replace(/ский$/, 'ском').replace(/ный$/, 'ном');
+  return ` в ${prep} районе`;
+}
+
 function toggleTable(id) {
   const tbody = document.getElementById(id + '_body');
   const btn   = document.getElementById(id + '_btn');
@@ -1122,6 +1145,21 @@ function renderTable(data) {
   const count = data.count ?? rows.length;
   const shown = rows.length;
   const needsCollapse = shown > 3;
+
+  // ─ District filter bar ─────────────────────────────────────────────────────
+  const baseQ     = _pageQuery ? _stripDistrictFromQuery(_pageQuery) : '';
+  const activeDist = data.district || '';
+  const mainDists  = NSK_DISTRICTS.filter(d => !d.desc || d.val === '');
+  const distBarHtml = data._skipDistBar ? '' : `
+    <div class="dist-filter-bar border-b border-slate-100" style="border-radius:0">
+      <span class="text-xs text-slate-400 flex-shrink-0">Район:</span>
+      ${mainDists.map(di => {
+        const isAct = di.val === activeDist;
+        const q = di.val ? (baseQ + _distQuerySuffix(di.label)) : baseQ;
+        const safeQ = q.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `<span class="dist-filter-tag${isAct ? ' active' : ''}" onclick="askNow('${safeQ}')">${di.label}</span>`;
+      }).join('')}
+    </div>`;
 
   const headCells = cols.map(c =>
     `<th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-4 py-3 border-b border-slate-100 whitespace-nowrap">${colLabel(c)}</th>`
@@ -1193,6 +1231,7 @@ function renderTable(data) {
           ${count > shown ? ` · показано ${shown}` : ''}
         </span>
       </div>
+      ${distBarHtml}
       <div class="relative overflow-x-auto">
         <table class="min-w-full">
           <thead><tr>${headCells}</tr></thead>
@@ -1294,7 +1333,7 @@ function renderConstruction(data) {
       </div>
     </div>`;
 
-  const tableHtml = renderTable({...data, note: null});
+  const tableHtml = renderTable({...data, note: null, _skipDistBar: true});
   return noteHtml + typeSwitcherHtml + filterHtml + tableHtml;
 }
 
