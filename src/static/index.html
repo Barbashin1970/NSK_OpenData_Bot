@@ -2680,43 +2680,114 @@ async function loadMap() {
   }
 }
 
-function _buildMarkerLabel(row) {
-  // Камера фиксации (OSM): osm_id, maxspeed, name, ref
-  if (row.osm_id !== undefined) {
-    const title = esc(row.name || 'Камера фиксации');
-    const speed = row.maxspeed ? `<span style="color:#fbbf24">⚡ ${esc(row.maxspeed)} км/ч</span>` : '';
-    const ref   = row.ref ? `<span style="color:#94a3b8">${esc(row.ref)}</span>` : '';
-    const parts = [speed, ref].filter(Boolean).join(' · ');
-    return `<b style="display:block;margin-bottom:2px">${title}</b>${parts}`;
+// Сократить официальное название школы / детсада до типа + номера/имени
+function _shortOuName(s) {
+  if (!s) return '';
+  const types = [
+    { re: /детск[а-яё]*[-\s]+сад[а-яё]*/i,  label: 'Детский сад' },
+    { re: /ясли[-\s]*сад[а-яё]*/i,           label: 'Ясли-сад' },
+    { re: /ясли/i,                            label: 'Ясли' },
+    { re: /гимназ[а-яё]*/i,                  label: 'Гимназия' },
+    { re: /лице[а-яё]*/i,                    label: 'Лицей' },
+    { re: /школ[а-яё]*/i,                    label: 'Школа' },
+  ];
+  for (const {re, label} of types) {
+    if (!re.test(s)) continue;
+    const numM = s.match(/[№#]\s*(\d+)/);
+    if (numM) return `${label} №${numM[1]}`;
+    const nameM = s.match(/«([^»]{1,20})»/);
+    if (nameM) return `${label} «${nameM[1]}»`;
+    return label;
   }
-  // Имя объекта — перебираем поля по всем датасетам в порядке приоритета
-  const name = esc(
-    row.NameOb      // стройка (разрешения / ввод в эксплуатацию)
-    || row.OuName   // школы, детсады
-    || row.NazvUch  // спортивные организации
-    || row.OstName  // остановки транспорта
-    || row.ShortName // культура (сокращённое название из display_cols)
+  return s.length > 40 ? s.slice(0, 38) + '…' : s;
+}
+
+// Сократить наименование строительного объекта до ключевого типа
+function _shortNameOb(s) {
+  if (!s) return '';
+  const map = [
+    [/многоквартирн[а-яё]*\s+жил[а-яё]*\s+дом[а-яё]*/i, 'Многоквартирный дом'],
+    [/апартаментн[а-яё]*/i,                               'Апартаменты'],
+    [/жил[а-яё]*\s+дом[а-яё]*/i,                          'Жилой дом'],
+    [/торгово[-\s]офисн[а-яё]*/i,                         'Торгово-офисный центр'],
+    [/торгов[а-яё]*\s+(?:центр|комплекс)[а-яё]*/i,        'Торговый центр'],
+    [/офисн[а-яё]*\s+здани[а-яё]*/i,                      'Офисное здание'],
+    [/административн[а-яё]*\s+здани[а-яё]*/i,             'Административное здание'],
+    [/производственн[а-яё]*\s+(?:здани[а-яё]*|корпус)/i,  'Производственное здание'],
+    [/складск[а-яё]*\s+(?:здани[а-яё]*|комплекс)/i,       'Складской комплекс'],
+    [/склад[а-яё]*/i,                                      'Склад'],
+    [/автостоянк[а-яё]*/i,                                 'Автостоянка'],
+    [/гараж[а-яё]*/i,                                      'Гараж'],
+    [/спортивн[а-яё]*\s+(?:комплекс|центр)/i,             'Спортивный комплекс'],
+    [/школ[а-яё]*/i,                                       'Школа'],
+    [/детск[а-яё]*\s+сад[а-яё]*/i,                        'Детский сад'],
+    [/поликлиник[а-яё]*/i,                                 'Поликлиника'],
+    [/больниц[а-яё]*/i,                                    'Больница'],
+    [/гостиниц[а-яё]*/i,                                   'Гостиница'],
+    [/автозаправочн[а-яё]*/i,                              'АЗС'],
+    [/автосервис[а-яё]*/i,                                 'Автосервис'],
+  ];
+  for (const [re, label] of map) {
+    if (re.test(s)) return label;
+  }
+  return s.length > 45 ? s.slice(0, 43) + '…' : s;
+}
+
+function _buildMarkerLabel(row) {
+  // ── Камера фиксации (OSM) ─────────────────────────────────────────────────
+  // Поля: osm_id, maxspeed, name (название дороги), direction, ref
+  if (row.osm_id !== undefined) {
+    const speed = row.maxspeed
+      ? `<b style="font-size:14px;color:#fbbf24">⚡ ${esc(row.maxspeed)} км/ч</b>`
+      : '<b>Камера фиксации</b>';
+    const road = row.name
+      ? `<span style="display:block;margin-top:3px">${esc(row.name)}</span>`
+      : '';
+    const dir = row.direction
+      ? `<span style="display:block;color:#94a3b8;font-size:11px">${esc(row.direction)}</span>`
+      : '';
+    return speed + road + dir;
+  }
+
+  // ── Школы / детские сады (OuName) ─────────────────────────────────────────
+  if (row.OuName) {
+    const title   = esc(_shortOuName(row.OuName));
+    const street  = esc(row.AdrStreet || '');
+    const house   = esc(row.AdrDom || '');
+    const addr    = street ? (house ? `${street}, ${house}` : street) : '';
+    const addrHtml = addr ? `<span style="display:block;margin-top:2px">${addr}</span>` : '';
+    return `<b style="display:block">${title}</b>${addrHtml}`;
+  }
+
+  // ── Стройки (NameOb) ───────────────────────────────────────────────────────
+  if (row.NameOb) {
+    const title   = esc(_shortNameOb(row.NameOb));
+    const addr    = esc(row.AdrOr || row.AdrOb || '');
+    const addrHtml = addr ? `<span style="display:block;margin-top:2px">${addr}</span>` : '';
+    const dev     = row.Zastr
+      ? `<span style="display:block;color:#94a3b8;font-size:11px;margin-top:1px">${esc(row.Zastr)}</span>`
+      : '';
+    return `<b style="display:block">${title}</b>${addrHtml}${dev}`;
+  }
+
+  // ── Остальные датасеты (остановки, аптеки, библиотеки, культура, спорт) ───
+  const rawName =
+    row.NazvUch   // спортивные организации
+    || row.OstName  // остановки
+    || row.ShortName // культура
     || row.BiblName  // библиотеки
     || row.Name     // аптеки
-    || row.Type     // спортплощадки («Стадион», «Корт», …)
-    || row.SchoolName || row.OrgName || row.SportOrgName || row.CultureName // legacy
-    || ''
-  );
-  // Застройщик (только у строительных объектов)
-  const dev = row.Zastr ? `<span style="display:block;color:#94a3b8;font-size:11px;margin-top:1px">${esc(row.Zastr)}</span>` : '';
-  // Адрес: стройка — AdrOr напрямую, остальные — улица + дом
-  let addr = '';
-  if (row.AdrOr) {
-    addr = esc(row.AdrOr);
-  } else {
-    const street = esc(row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '');
-    const house  = esc(row.AdrDom   || row.Dom    || row.House  || '');
-    addr = street ? (house ? `${street}, ${house}` : street) : '';
-  }
+    || row.Type     // спортплощадки
+    || row.SchoolName || row.OrgName || row.SportOrgName || row.CultureName
+    || '';
+  const name = esc(rawName.length > 45 ? rawName.slice(0, 43) + '…' : rawName);
+  const street = esc(row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '');
+  const house  = esc(row.AdrDom   || row.Dom    || row.House  || '');
+  const addr   = street ? (house ? `${street}, ${house}` : street) : '';
   const addrHtml = addr ? `<span style="display:block;margin-top:2px">${addr}</span>` : '';
-  if (name) return `<b style="display:block">${name}</b>${dev}${addrHtml}`;
-  if (addr) return `${dev}${addrHtml}`;
-  return dev || 'Объект';
+  if (name) return `<b style="display:block">${name}</b>${addrHtml}`;
+  if (addr) return addrHtml;
+  return 'Объект';
 }
 
 function _renderMap() {
