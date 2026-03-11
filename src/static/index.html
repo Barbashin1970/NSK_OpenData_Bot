@@ -2768,14 +2768,18 @@ function _renderMap() {
       if (_activeMarkerEl) { _activeMarkerEl.style.transform = ''; _activeMarkerEl = null; }
     }
 
-    // Закрыть попап при клике на фон карты или в любом другом месте страницы.
-    // Храним ссылку в _mapMouseMoveHandler чтобы _resetMap() мог снять listener.
+    // Снять старый document listener если был
     if (_mapMouseMoveHandler) {
       document.removeEventListener('click', _mapMouseMoveHandler);
       _mapMouseMoveHandler = null;
     }
-    _mapMouseMoveHandler = (e) => { if (!e.target.closest('[data-mkr]')) _closePopup(); };
-    document.addEventListener('click', _mapMouseMoveHandler);
+
+    // Закрыть попап при клике на фон карты через SDK-событие карты.
+    // _markerJustClicked: флаг, чтобы map.click не закрыл попап сразу после открытия.
+    let _markerJustClicked = false;
+    _mapInstance.on('click', () => {
+      if (!_markerJustClicked) _closePopup();
+    });
 
     _currentMapRows.forEach(row => {
       const markerEl = document.createElement('div');
@@ -2786,24 +2790,33 @@ function _renderMap() {
         'box-shadow:0 2px 6px rgba(0,0,0,.5);' +
         'transition:transform .12s;flex-shrink:0';
 
-      new mapgl.Marker(_mapInstance, {
+      // Используем SDK-объект маркера — DOM-addEventListener на markerEl ненадёжен,
+      // потому что mapgl canvas перехватывает pointer-события на уровне SDK.
+      const marker = new mapgl.Marker(_mapInstance, {
         coordinates: [row._lon, row._lat],
         element: markerEl,
       });
 
-      markerEl.addEventListener('click', (e) => {
-        e.stopPropagation();
+      marker.on('click', (e) => {
+        _markerJustClicked = true;
+        setTimeout(() => { _markerJustClicked = false; }, 50);
+
         if (_activeMarkerEl && _activeMarkerEl !== markerEl) {
           _activeMarkerEl.style.transform = '';
         }
         if (_activeMarkerEl === markerEl) {
-          // второй клик на тот же маркер — закрыть попап
           _closePopup();
           return;
         }
         _activeMarkerEl = markerEl;
         markerEl.style.transform = 'scale(1.4)';
-        _showPopup(row, markerEl, e.clientX, e.clientY);
+
+        // Берём clientX/Y из originalEvent; fallback — container + point offset
+        const cX = e.originalEvent?.clientX
+          ?? (document.getElementById('map2gis').getBoundingClientRect().left + e.point.x);
+        const cY = e.originalEvent?.clientY
+          ?? (document.getElementById('map2gis').getBoundingClientRect().top + e.point.y);
+        _showPopup(row, markerEl, cX, cY);
       });
     });
   } catch(e) {
