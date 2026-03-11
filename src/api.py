@@ -1,12 +1,15 @@
 """FastAPI HTTP API для NSK OpenData Bot (bot serve)."""
 
 import json
+import logging
 import os
 import re as _re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 try:
     from fastapi import FastAPI, Query, UploadFile, File, Form, Header, HTTPException
@@ -1125,6 +1128,7 @@ def get_ask(
                 for tid, ds in registry.items()
             ]
             return {"query": q, "operation": "INFO", "topics": topics_list}
+        log.info("UNKNOWN_QUERY: %s", q)
         return {
             "query": q,
             "operation": "UNKNOWN",

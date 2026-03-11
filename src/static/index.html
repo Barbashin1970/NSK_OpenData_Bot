@@ -855,7 +855,7 @@ function _trySpecialQuery(raw) {
   const ql = q.toLowerCase();
 
   // ── Роли ──────────────────────────────────────────────────────────────────
-  if (/\bя\s+(горожанин|горожанка|жительниц[аеу]?|житель|жителя|пользователь|простой\s+пользователь)\b/i.test(ql)) {
+  if (/(?:^|\s)я\s+(?:горожанин|горожанка|жительниц[аеу]?|житель|жителя|пользователь|простой\s+пользователь)(?:\s|$)/i.test(ql)) {
     setRole('citizen');
     document.getElementById('queryInput').value = '';
     document.getElementById('loadingState').className = 'hidden';
@@ -876,7 +876,7 @@ function _trySpecialQuery(raw) {
       </div>`;
     return true;
   }
-  if (/(\bя\s+служащ|\bслужащ\w*\s*(города|умного\s*города)?)/i.test(ql)) {
+  if (/(?:(?:^|\s)я\s+служащ|(?:^|\s)служащ\w*\s*(?:города|умного\s*города)?)(?:\s|$)/i.test(ql)) {
     const dist = _extractDistrict(ql);
     setRole('official', dist || officialDistrict);
     document.getElementById('queryInput').value = '';
@@ -888,7 +888,7 @@ function _trySpecialQuery(raw) {
     }, 800);
     return true;
   }
-  if (/\bя\s+(мэр|руководитель)\b/i.test(ql)) {
+  if (/(?:^|\s)я\s+(?:мэр|руководитель)(?:\s|$)/i.test(ql)) {
     setRole('mayor');
     document.getElementById('queryInput').value = '';
     _showInfoCard('🏛️', 'Режим: Мэр — панель загружается…');
@@ -2092,19 +2092,23 @@ function renderUnknown(data) {
   const shuffled = [..._WORKING_QUESTIONS].sort(() => Math.random() - 0.5);
   const [q1, q2] = shuffled;
   return `
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 max-w-lg mx-auto text-center">
-      <span class="text-4xl block mb-4">🤔</span>
-      <p class="text-slate-600 text-sm leading-relaxed mb-6">${esc(msg)}</p>
-      <p class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-3">Попробуйте спросить</p>
-      <div class="flex flex-col gap-2.5 text-left">
-        <button class="w-full bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300
-                       rounded-xl px-4 py-3 text-sm text-slate-700 hover:text-blue-700
-                       transition-colors cursor-pointer text-left"
-                onclick="askNow('${q1}')">${esc(q1)}</button>
-        <button class="w-full bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300
-                       rounded-xl px-4 py-3 text-sm text-slate-700 hover:text-blue-700
-                       transition-colors cursor-pointer text-left"
-                onclick="askNow('${q2}')">${esc(q2)}</button>
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-4 max-w-xl mx-auto">
+      <div class="flex items-start gap-3">
+        <span class="text-2xl flex-shrink-0 mt-0.5">🤔</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-slate-600 text-sm leading-relaxed mb-3">${esc(msg)}</p>
+          <p class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-2">Попробуйте спросить</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button class="bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300
+                           rounded-xl px-3 py-2.5 text-xs text-slate-700 hover:text-blue-700
+                           transition-colors cursor-pointer text-left leading-snug"
+                    onclick="askNow('${q1}')">${esc(q1)}</button>
+            <button class="bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300
+                           rounded-xl px-3 py-2.5 text-xs text-slate-700 hover:text-blue-700
+                           transition-colors cursor-pointer text-left leading-snug"
+                    onclick="askNow('${q2}')">${esc(q2)}</button>
+          </div>
+        </div>
       </div>
     </div>`;
 }
