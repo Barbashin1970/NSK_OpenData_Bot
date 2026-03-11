@@ -1,5 +1,12 @@
 # Кэш данных — не включать в репозиторий
-data/
+# data/ciinsu/news.json и photos/ — исключение, отслеживаются в git
+data/raw/
+data/curated/
+data/logs/
+data/meta.json
+data/api_keys.json
+data/ciinsu/config.json
+data/ciinsu/knowledge_base.json
 *.db
 *.duckdb
 
