@@ -1171,7 +1171,6 @@ function toggleTable(id) {
 function renderTable(data) {
   const rows = data.rows || [];
   const cols = data.columns || [];
-  if (!rows.length) return emptyState();
 
   const tblId = `tbl${++_tblSeq}`;
   const count = data.count ?? rows.length;
@@ -1251,6 +1250,22 @@ function renderTable(data) {
         &#9660; ${moreLabel}
       </button>
     </div>` : '';
+
+  if (!rows.length) {
+    return `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
+          <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Результаты</span>
+          <span class="text-xs text-slate-400">Найдено: <strong class="text-slate-600">0</strong></span>
+        </div>
+        ${distBarHtml}
+        <div class="py-10 flex flex-col items-center gap-2 text-slate-400">
+          <span style="font-size:2rem">🔍</span>
+          <span class="text-sm">В этом районе объектов не найдено</span>
+        </div>
+      </div>
+    `;
+  }
 
   return `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
