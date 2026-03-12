@@ -478,12 +478,52 @@ def execute_construction(plan: Plan) -> dict[str, Any]:
         return {"error": str(e)}
 
 
+def _enrich_metro_coords(stations: list[dict]) -> list[dict]:
+    """Обогащает координаты станций из geocode_cache (только кеш, без live API-вызовов).
+
+    Точные 2GIS-координаты кешируются фоновым заданием при старте сервера
+    (_geocode_metro_bg). Если кеш пуст — возвращает статические координаты.
+    """
+    try:
+        from .geocoder import _get_cached, _address_key
+    except Exception:
+        return stations
+
+    enriched = []
+    for s in stations:
+        name = s.get("name", "")
+        cache_key = _address_key(f"Новосибирск, метро {name}")
+        cached = _get_cached(cache_key)
+        if cached and cached.get("lat") and cached.get("lon"):
+            s = {**s, "_lat": cached["lat"], "_lon": cached["lon"]}
+        enriched.append(s)
+    return enriched
+
+
+def _geocode_metro_bg() -> None:
+    """Геокодирует все 13 станций метро и сохраняет результат в geocode_cache.
+
+    Вызывается в фоновом потоке при старте сервера.
+    Делает live-запросы к 2GIS API; при отсутствии ключа — пропускает.
+    """
+    try:
+        from .geocoder import geocode
+        from .metro_data import METRO_STATIONS
+        for s in METRO_STATIONS:
+            geocode(f"метро {s['name']}")
+    except Exception as e:
+        log.warning(f"metro geocoding bg: {e}")
+
+
 def execute_metro(plan: Plan) -> dict[str, Any]:
     """Выполняет запросы к статическим данным метрополитена.
 
     Операции:
       METRO_INFO     — обзорная карточка: 2 линии, 13 станций, статистика
       METRO_STATIONS — список станций с фильтрами по линии / району
+
+    Координаты обогащаются через 2GIS-геокодер (если ключ задан), иначе
+    используются статические координаты из metro_data.py.
     """
     from .metro_data import get_metro_info, get_stations, METRO_LINES, METRO_INFO
 
@@ -494,9 +534,10 @@ def execute_metro(plan: Plan) -> dict[str, Any]:
     try:
         if op == "METRO_STATIONS":
             stations = get_stations(line_filter=line_filter, district_filter=district_filter)
+            stations = _enrich_metro_coords(stations)
             return {
                 "operation": op,
-                "info": {**METRO_INFO, "lines": METRO_LINES},   # нужен для renderMetro (stats)
+                "info": {**METRO_INFO, "lines": METRO_LINES},
                 "rows": stations,
                 "columns": ["name", "line", "address", "district", "_lon", "_lat", "interchange_with", "note", "passengers_day"],
                 "count": len(stations),
@@ -504,10 +545,12 @@ def execute_metro(plan: Plan) -> dict[str, Any]:
             }
         else:  # METRO_INFO
             info = get_metro_info()
+            enriched_stations = _enrich_metro_coords(list(info["stations"]))
+            enriched_info = {**info, "stations": enriched_stations}
             return {
                 "operation": "METRO_INFO",
-                "info": info,
-                "rows": info["stations"],          # координаты — для карты
+                "info": enriched_info,
+                "rows": enriched_stations,
                 "columns": ["name", "line", "address", "district", "_lon", "_lat"],
                 "count": info["stations_count"],
                 "lines": METRO_LINES,

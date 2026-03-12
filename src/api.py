@@ -231,6 +231,32 @@ def _seed_ecology_history() -> None:
 
 
 @app.on_event("startup")
+async def _geocode_metro_stations() -> None:
+    """Фоновое геокодирование станций метро через 2GIS при старте.
+
+    Ждёт 5 сек (ключ уже загружен), затем запускает _geocode_metro_bg()
+    в thread executor (blocking requests). Кеширует все 13 станций
+    в geocode_cache — последующие /ask?metro отдают точные координаты.
+    Если ключа нет — geocoder сам вернёт None и кеш останется пустым.
+    """
+    import asyncio
+
+    async def _run():
+        await asyncio.sleep(5)
+        try:
+            from .executor import _geocode_metro_bg
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _geocode_metro_bg)
+            import logging
+            logging.getLogger(__name__).info("metro geocoding: готово")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"metro geocoding startup: {e}")
+
+    asyncio.create_task(_run())
+
+
+@app.on_event("startup")
 async def _start_background_preloader() -> None:
     """Фоновая загрузка всех тем opendata после старта сервера.
 
