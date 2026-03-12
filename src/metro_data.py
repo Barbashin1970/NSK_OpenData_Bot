@@ -42,7 +42,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Заельцовская",
         "line": "1",
-        "_lon": 82.934, "_lat": 54.996,
+        "_lon": 82.9348, "_lat": 54.9978,
         "address": "ул. Дуси Ковальчук, 179",
         "district": "Заельцовский район",
         "interchange_with": [],
@@ -52,7 +52,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Гагаринская",
         "line": "1",
-        "_lon": 82.931, "_lat": 54.987,
+        "_lon": 82.9319, "_lat": 54.9899,
         "address": "ул. Гагарина, 91",
         "district": "Калининский район",
         "interchange_with": [],
@@ -62,7 +62,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Красный проспект",
         "line": "1",
-        "_lon": 82.925, "_lat": 54.979,
+        "_lon": 82.9202, "_lat": 54.9759,
         "address": "Красный просп., 13",
         "district": "Центральный район",
         "interchange_with": [],
@@ -72,7 +72,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Площадь Ленина",
         "line": "1",
-        "_lon": 82.919, "_lat": 54.971,
+        "_lon": 82.9184, "_lat": 54.9704,
         "address": "пл. Ленина, 1",
         "district": "Центральный район",
         "interchange_with": [["2", "Сибирская"]],
@@ -82,7 +82,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Октябрьская",
         "line": "1",
-        "_lon": 82.904, "_lat": 54.961,
+        "_lon": 82.9102, "_lat": 54.9644,
         "address": "ул. Октябрьская, 24",
         "district": "Центральный район",
         "interchange_with": [],
@@ -92,7 +92,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Речной вокзал",
         "line": "1",
-        "_lon": 82.896, "_lat": 54.952,
+        "_lon": 82.8969, "_lat": 54.9562,
         "address": "Красный просп., 1/1",
         "district": "Центральный район",
         "interchange_with": [],
@@ -102,7 +102,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Студенческая",
         "line": "1",
-        "_lon": 82.871, "_lat": 54.929,
+        "_lon": 82.8707, "_lat": 54.9330,
         "address": "пр. Карла Маркса, 7",
         "district": "Октябрьский район",
         "interchange_with": [],
@@ -112,7 +112,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Площадь Маркса",
         "line": "1",
-        "_lon": 82.894, "_lat": 54.861,
+        "_lon": 82.8973, "_lat": 54.8621,
         "address": "пл. Карла Маркса, 1",
         "district": "Октябрьский район",
         "interchange_with": [],
@@ -124,7 +124,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Берёзовая роща",
         "line": "2",
-        "_lon": 82.975, "_lat": 54.989,
+        "_lon": 82.9751, "_lat": 54.9888,
         "address": "ул. Кошурникова, 1",
         "district": "Дзержинский район",
         "interchange_with": [],
@@ -134,7 +134,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Маршала Покрышкина",
         "line": "2",
-        "_lon": 82.963, "_lat": 54.984,
+        "_lon": 82.9629, "_lat": 54.9839,
         "address": "ул. Кошурникова, 23",
         "district": "Дзержинский район",
         "interchange_with": [],
@@ -144,7 +144,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Золотая нива",
         "line": "2",
-        "_lon": 82.948, "_lat": 54.981,
+        "_lon": 82.9476, "_lat": 54.9809,
         "address": "ул. Кошурникова, 50",
         "district": "Дзержинский район",
         "interchange_with": [],
@@ -154,7 +154,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Площадь Гарина-Михайловского",
         "line": "2",
-        "_lon": 82.929, "_lat": 54.968,
+        "_lon": 82.9293, "_lat": 54.9683,
         "address": "пл. Гарина-Михайловского, 1",
         "district": "Центральный район",
         "interchange_with": [],
@@ -164,7 +164,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Сибирская",
         "line": "2",
-        "_lon": 82.921, "_lat": 54.971,
+        "_lon": 82.9211, "_lat": 54.9713,
         "address": "ул. 1905 года, 1",
         "district": "Центральный район",
         "interchange_with": [["1", "Площадь Ленина"]],
