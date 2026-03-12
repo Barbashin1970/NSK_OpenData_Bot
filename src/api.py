@@ -1185,6 +1185,33 @@ def get_ask(
             **result,
         }
 
+    # ── Метро ─────────────────────────────────────────────────────────────────
+    if topic == "metro":
+        from .executor import execute_metro
+        result = execute_metro(plan)
+        return {
+            "query": q,
+            "topic": "metro",
+            "topic_name": "Новосибирский метрополитен",
+            "confidence": route_result.confidence,
+            "operation": result.get("operation", plan.operation),
+            "district": plan.district,
+            **result,
+        }
+
+    # ── Аэропорт ──────────────────────────────────────────────────────────────
+    if topic == "airport":
+        from .executor import execute_airport
+        result = execute_airport(plan)
+        return {
+            "query": q,
+            "topic": "airport",
+            "topic_name": "Аэропорт Толмачёво (OVB)",
+            "confidence": route_result.confidence,
+            "operation": result.get("operation", plan.operation),
+            **result,
+        }
+
     # ── Экология и метеорология ───────────────────────────────────────────────
     if topic == "ecology":
         from .executor import execute_ecology

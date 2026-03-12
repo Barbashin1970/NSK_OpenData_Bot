@@ -528,6 +528,98 @@ _CONSTRUCTION_KEYWORDS = [
 _CONSTRUCTION_PRIMARY = ["стройк", "строек", "строительств", "застройщик", "новостройк", "стройплощадк", "ввод в эксплуатацию"]
 
 
+# ── Метро ─────────────────────────────────────────────────────────────────────
+_METRO_KEYWORDS = [
+    "метро",
+    "метрополитен",
+    "станция метро",
+    "станции метро",
+    "подземк",
+    "линия метро",
+    "ветка метро",
+    "метромост",
+    "электричка метро",
+]
+_METRO_PRIMARY = ["метро", "метрополитен", "подземк"]
+
+
+def _route_metro(q: str) -> "RouteResult | None":
+    """Проверяет, относится ли запрос к метрополитену."""
+    if not any(m in q for m in _METRO_PRIMARY):
+        return None
+
+    score = 0.0
+    matched: list[str] = []
+    for kw in _METRO_KEYWORDS:
+        kw_norm = _normalize(kw)
+        kw_parts = kw_norm.split()
+        if all(re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in kw_parts):
+            matched.append(kw)
+            score += len(kw_parts) ** 1.5
+
+    if score == 0:
+        score = 1.0
+        matched = ["метро"]
+
+    confidence = min(1.0, score / max(len(_METRO_KEYWORDS), 1) * 6)
+    confidence = max(confidence, 0.70)
+    return RouteResult(
+        topic="metro",
+        confidence=confidence,
+        name="Новосибирский метрополитен",
+        matched_keywords=matched,
+    )
+
+
+# ── Аэропорт ──────────────────────────────────────────────────────────────────
+_AIRPORT_KEYWORDS = [
+    "аэропорт",
+    "толмачёв",
+    "толмачев",
+    "авиарейс",
+    "вылет",
+    "прилёт",
+    "прилет",
+    "авиабилет",
+    "самолёт",
+    "самолет",
+    "рейс из новосибирск",
+    "рейс в новосибирск",
+    "ovb",
+    "новапорт",
+    "аэровокзал",
+]
+_AIRPORT_PRIMARY = ["аэропорт", "толмачёв", "толмачев", "авиарейс", "вылет", "прилёт", "прилет", "самолёт", "самолет", "авиабилет", "ovb", "аэровокзал"]
+
+
+def _route_airport(q: str) -> "RouteResult | None":
+    """Проверяет, относится ли запрос к аэропорту."""
+    if not any(m in q for m in _AIRPORT_PRIMARY):
+        return None
+
+    score = 0.0
+    matched: list[str] = []
+    for kw in _AIRPORT_KEYWORDS:
+        kw_norm = _normalize(kw)
+        kw_parts = kw_norm.split()
+        if all(re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in kw_parts):
+            matched.append(kw)
+            score += len(kw_parts) ** 1.5
+
+    if score == 0:
+        score = 1.0
+        matched = ["аэропорт"]
+
+    confidence = min(1.0, score / max(len(_AIRPORT_KEYWORDS), 1) * 6)
+    confidence = max(confidence, 0.70)
+    return RouteResult(
+        topic="airport",
+        confidence=confidence,
+        name="Аэропорт Толмачёво",
+        matched_keywords=matched,
+    )
+
+
 def _route_construction(q: str) -> "RouteResult | None":
     """Проверяет, относится ли запрос к теме строительства."""
     if not any(m in q for m in _CONSTRUCTION_PRIMARY):
@@ -594,6 +686,16 @@ def route(query: str) -> list[RouteResult]:
     construction_result = _route_construction(q)
     if construction_result:
         results.append(construction_result)
+
+    # Тема метро (не в YAML-реестре, обрабатывается отдельно)
+    metro_result = _route_metro(q)
+    if metro_result:
+        results.append(metro_result)
+
+    # Тема аэропорта (не в YAML-реестре, обрабатывается отдельно)
+    airport_result = _route_airport(q)
+    if airport_result:
+        results.append(airport_result)
 
     for topic_id, ds in registry.items():
         keywords: list[str] = ds.get("keywords", [])

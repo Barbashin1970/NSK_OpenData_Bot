@@ -1017,6 +1017,8 @@ function renderResult(data, query) {
   else if (op === 'CONSTRUCTION_COUNT')        html += renderConstructionCount(data);
   else if (op === 'CONSTRUCTION_GROUP')        html += renderGroup(data);
   else if (op && op.startsWith('CONSTRUCTION_')) html += renderConstruction(data);
+  else if (op && op.startsWith('METRO_'))      html += renderMetro(data);
+  else if (op === 'AIRPORT_INFO')              html += renderAirport(data);
   else                                         html += renderTable(data);
 
   el.innerHTML = html;
@@ -1396,6 +1398,191 @@ function renderConstructionCount(data) {
       ${formulaHtml}
       ${listLinks}
     </div>`;
+}
+
+// ─── METRO ────────────────────────────────────────────────────────────────────
+function renderMetro(data) {
+  const info   = data.info || {};
+  const lines  = info.lines  || data.lines  || {};
+  const stations = info.stations || data.rows || [];
+  const fmt = n => n != null ? Number(n).toLocaleString('ru-RU') : '—';
+
+  // ── Плашка 1: обзорная карточка ──────────────────────────────────────────
+  const lineBadges = Object.entries(lines).map(([id, ln]) =>
+    `<div class="flex items-center gap-2 py-2">
+       <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${esc(ln.color)};flex-shrink:0"></span>
+       <span class="font-medium text-slate-700">Линия ${id} — ${esc(ln.name)}</span>
+       <span class="text-slate-400 text-sm">(${ln.stations} ст.)</span>
+       <span class="ml-auto text-xs text-slate-400">${(ln.termini || []).join(' → ')}</span>
+     </div>`
+  ).join('<div class="border-t border-slate-100"></div>');
+
+  const infoCard = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="flex items-center gap-3 px-5 py-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white">
+        <span class="text-2xl">🚇</span>
+        <div>
+          <div class="font-bold text-lg leading-tight">${esc(info.name || 'Метрополитен')}</div>
+          <div class="text-blue-100 text-sm">Открыт в ${info.opened_year || 1985} году · ${info.lines_count || 2} линии · ${info.stations_count || 13} станций</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
+        <div class="px-5 py-3 text-center">
+          <div class="text-2xl font-bold text-slate-700">${info.stations_count || 13}</div>
+          <div class="text-xs text-slate-400 mt-0.5">станций</div>
+        </div>
+        <div class="px-5 py-3 text-center">
+          <div class="text-2xl font-bold text-slate-700">${fmt(info.daily_passengers)}</div>
+          <div class="text-xs text-slate-400 mt-0.5">пасс./день</div>
+        </div>
+        <div class="px-5 py-3 text-center">
+          <div class="text-2xl font-bold text-slate-700">${info.fare_rub || 30} ₽</div>
+          <div class="text-xs text-slate-400 mt-0.5">за поездку</div>
+        </div>
+      </div>
+      <div class="px-5 py-3 divide-y divide-slate-100">${lineBadges}</div>
+      ${info.bridge_length_m ? `<div class="px-5 pb-3 text-xs text-slate-400">Метромост через реку Обь — ${fmt(info.bridge_length_m)} м (открытая эстакада)</div>` : ''}
+      <div class="px-5 pb-4 flex flex-wrap gap-2">
+        <button onclick="askNow('станции метро')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600">📋 Все станции</button>
+        <button onclick="askNow('станции метро линия 1')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600">🔵 Линия 1</button>
+        <button onclick="askNow('станции метро линия 2')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-red-400 hover:text-red-600">🔴 Линия 2</button>
+        ${info.url ? `<a href="${esc(info.url)}" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🌐 nsk-metro.ru</a>` : ''}
+      </div>
+    </div>`;
+
+  // ── Плашка 2: список станций ───────────────────────────────────────────────
+  const LINE_COLOR = { '1': '#2563eb', '2': '#dc2626' };
+  const LINE_BG    = { '1': '#eff6ff', '2': '#fef2f2' };
+  const LINE_NAME  = { '1': 'Дзержинская', '2': 'Ленинская' };
+
+  const stationRows = stations.map(s => {
+    const col = LINE_COLOR[s.line] || '#64748b';
+    const bg  = LINE_BG[s.line]   || '#f8fafc';
+    const interchangeHtml = (s.interchange_with || []).length
+      ? `<span title="Пересадка: ${s.interchange_with.map(i => 'Линия ' + i[0] + ' — ' + i[1]).join(', ')}"
+              style="display:inline-flex;align-items:center;gap:2px;margin-left:6px;background:#f8f4ff;border:1px solid #a78bfa;border-radius:4px;padding:0 4px;font-size:10px;color:#6d28d9;font-weight:600;vertical-align:middle">
+           ⇆ пересадка
+         </span>` : '';
+    const pax = s.passengers_day
+      ? `<span class="text-xs text-slate-400 ml-auto">${fmt(s.passengers_day)} пасс./день</span>` : '';
+    return `
+      <tr class="hover:bg-slate-50 transition-colors">
+        <td class="px-4 py-2.5 font-medium text-slate-700">
+          ${esc(s.name)}${interchangeHtml}
+        </td>
+        <td class="px-3 py-2.5">
+          <span style="background:${bg};color:${col};border:1px solid ${col}44;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:600;white-space:nowrap">
+            Л${s.line}
+          </span>
+        </td>
+        <td class="px-3 py-2.5 text-sm text-slate-500">${esc(s.district || '')}</td>
+        <td class="px-3 py-2.5 text-xs text-slate-400">${s.passengers_day ? fmt(s.passengers_day) + ' пасс./д.' : ''}</td>
+      </tr>`;
+  }).join('');
+
+  const stationTable = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+        <span class="font-semibold text-slate-700 text-sm">Станции</span>
+        <span class="text-xs text-slate-400">${stations.length} из ${info.stations_count || 13}</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-slate-50 text-xs text-slate-400 uppercase tracking-wide">
+              <th class="px-4 py-2 text-left font-medium">Станция</th>
+              <th class="px-3 py-2 text-left font-medium">Линия</th>
+              <th class="px-3 py-2 text-left font-medium">Район</th>
+              <th class="px-3 py-2 text-left font-medium">Пассажиры</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">${stationRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  return infoCard + stationTable;
+}
+
+// ─── AIRPORT ──────────────────────────────────────────────────────────────────
+function renderAirport(data) {
+  const info = data.info || {};
+  const terminals = info.terminals || [];
+  const transport = info.transport || [];
+  const fmt = n => n != null ? Number(n).toLocaleString('ru-RU') : '—';
+
+  // ── Плашка 1: основная карточка ───────────────────────────────────────────
+  const terminalCards = terminals.map(t => `
+    <div class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+      <div class="flex items-center gap-2 mb-1.5">
+        <span class="font-bold text-slate-700">${esc(t.name)}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full ${t.id === 'B' ? 'bg-indigo-100 text-indigo-700' : 'bg-sky-100 text-sky-700'} font-medium">${esc(t.type)}</span>
+      </div>
+      <div class="text-xs text-slate-500 flex flex-wrap gap-1">
+        ${(t.airlines || []).slice(0,4).map(a => `<span class="bg-white border border-slate-200 rounded px-1.5 py-0.5">${esc(a)}</span>`).join('')}
+        ${(t.airlines || []).length > 4 ? `<span class="text-slate-400">+${(t.airlines || []).length - 4} авиакомпании</span>` : ''}
+      </div>
+      ${t.note ? `<div class="text-xs text-slate-400 mt-1.5">${esc(t.note)}</div>` : ''}
+    </div>`
+  ).join('');
+
+  const infoCard = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="flex items-center gap-3 px-5 py-4 bg-gradient-to-r from-sky-600 to-sky-500 text-white">
+        <span class="text-2xl">✈️</span>
+        <div>
+          <div class="font-bold text-lg leading-tight">${esc(info.name || 'Аэропорт Толмачёво')}</div>
+          <div class="text-sky-100 text-sm">${esc(info.iata || 'OVB')} · ${esc(info.icao || 'UNNT')} · ${info.distance_from_center_km || 20} км от центра</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
+        <div class="px-5 py-3 text-center">
+          <div class="text-2xl font-bold text-slate-700">${fmt(info.passengers_year_2023)}</div>
+          <div class="text-xs text-slate-400 mt-0.5">пасс./год (2023)</div>
+        </div>
+        <div class="px-5 py-3 text-center">
+          <div class="text-2xl font-bold text-slate-700">${info.flights_per_day || '~60'}</div>
+          <div class="text-xs text-slate-400 mt-0.5">рейсов/день</div>
+        </div>
+        <div class="px-5 py-3 text-center">
+          <div class="text-2xl font-bold text-slate-700">${terminals.length}</div>
+          <div class="text-xs text-slate-400 mt-0.5">терминала</div>
+        </div>
+      </div>
+      <div class="px-5 py-4 space-y-2">${terminalCards}</div>
+      <div class="px-5 pb-4 flex flex-wrap gap-2">
+        ${info.url ? `<a href="${esc(info.url)}" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🌐 tolmachevo.ru</a>` : ''}
+        <span class="text-xs px-3 py-1.5 text-slate-400">Открыт в ${info.opened_year || 1957} · ${info.runways || 2} ВПП</span>
+      </div>
+    </div>`;
+
+  // ── Плашка 2: как добраться ────────────────────────────────────────────────
+  const transportRows = transport.map(t => `
+    <div class="flex items-start gap-3 py-3">
+      <div class="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center flex-shrink-0 text-base">
+        ${t.type.includes('автобус') || t.type.includes('Экспресс') ? '🚌' : t.type.includes('Такси') ? '🚕' : '🚂'}
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="font-medium text-slate-700 text-sm">${esc(t.type)}</div>
+        ${(t.routes || []).length ? `<div class="text-xs text-slate-500 mt-0.5">${t.routes.map(r => esc(r)).join(' · ')}</div>` : ''}
+        ${t.note ? `<div class="text-xs text-slate-400 mt-0.5">${esc(t.note)}</div>` : ''}
+      </div>
+      <div class="flex-shrink-0 text-right">
+        <div class="text-sm font-semibold text-slate-600">~${t.duration_min} мин</div>
+      </div>
+    </div>`
+  ).join('<div class="border-t border-slate-100"></div>');
+
+  const transportCard = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3 border-b border-slate-100">
+        <span class="font-semibold text-slate-700 text-sm">Как добраться из центра</span>
+        <span class="text-xs text-slate-400 ml-2">(~${info.distance_from_center_km || 20} км)</span>
+      </div>
+      <div class="px-5 divide-y divide-slate-100">${transportRows}</div>
+    </div>`;
+
+  return infoCard + transportCard;
 }
 
 // ─── POWER ────────────────────────────────────────────────────────────────────
@@ -2790,6 +2977,26 @@ function _shortNameOb(s) {
 }
 
 function _buildMarkerLabel(row) {
+  // ── Метро (поле line = '1' или '2') ──────────────────────────────────────
+  if ('line' in row && (row.line === '1' || row.line === '2')) {
+    const LINE_COLOR = { '1': '#2563eb', '2': '#dc2626' };
+    const LINE_BG    = { '1': '#eff6ff', '2': '#fef2f2' };
+    const col = LINE_COLOR[row.line] || '#64748b';
+    const bg  = LINE_BG[row.line]   || '#f8fafc';
+    const badge = `<span style="background:${bg};color:${col};border:1px solid ${col}55;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700">Л${row.line}</span>`;
+    const name  = `<b style="display:block;margin-bottom:2px">${esc(row.name || 'Станция')}</b>`;
+    const dist  = row.district
+      ? `<span style="display:block;color:#64748b;font-size:11px">${esc(row.district)}</span>` : '';
+    const xch   = (row.interchange_with || []).length
+      ? `<span style="display:block;color:#6d28d9;font-size:11px;margin-top:2px">⇆ Пересадка: ${row.interchange_with.map(i => 'Л' + i[0]).join(', ')}</span>` : '';
+    return name + badge + ' ' + dist + xch;
+  }
+
+  // ── Аэропорт ──────────────────────────────────────────────────────────────
+  if ('iata' in row) {
+    return `<b>✈️ ${esc(row.name || 'Толмачёво')}</b><span style="display:block;color:#64748b;font-size:11px">${esc(row.iata || 'OVB')}</span>`;
+  }
+
   // ── Камера фиксации (OSM) ─────────────────────────────────────────────────
   // Поля: osm_id, maxspeed, name (название дороги), direction, ref
   if (row.osm_id !== undefined) {
@@ -2976,8 +3183,12 @@ function _renderMap() {
     _currentMapRows.forEach(row => {
       const markerEl = document.createElement('div');
       markerEl.dataset.mkr = '1';
+      // Цвет маркера по типу данных
+      let mkrColor = '#3b82f6';
+      if ('line' in row)       mkrColor = row.line === '2' ? '#dc2626' : '#2563eb'; // метро: синяя/красная линия
+      else if ('iata' in row)  mkrColor = '#0ea5e9';  // аэропорт: голубой
       markerEl.style.cssText =
-        'width:20px;height:20px;background:#3b82f6;border-radius:50%;' +
+        `width:20px;height:20px;background:${mkrColor};border-radius:50%;` +
         'border:3px solid #fff;cursor:pointer;pointer-events:auto;' +
         'box-shadow:0 2px 6px rgba(0,0,0,.5);' +
         'transition:transform .12s;flex-shrink:0';

@@ -97,6 +97,8 @@ Operation = Literal[
     "TRANSIT_ROUTE", "TRAFFIC_INDEX", "CAMERAS",
     "CONSTRUCTION_ACTIVE", "CONSTRUCTION_PERMITS", "CONSTRUCTION_COMMISSIONED",
     "CONSTRUCTION_COUNT", "CONSTRUCTION_GROUP",
+    "METRO_INFO", "METRO_STATIONS",
+    "AIRPORT_INFO",
 ]
 
 # --- Паттерны для запросов о строительстве ---
@@ -131,6 +133,50 @@ class Plan:
 def make_plan(query: str, topic: str | None) -> Plan:
     """Разбирает запрос и возвращает Plan."""
     q = query.lower()
+
+    # Для темы метро — специальные операции
+    if topic == "metro":
+        district = extract_district(query)
+        # Линия 1 / 2 из текста запроса
+        line_filter = None
+        q_low = query.lower()
+        if "линия 1" in q_low or "первая линия" in q_low or "дзержинск" in q_low:
+            line_filter = "1"
+        elif "линия 2" in q_low or "вторая линия" in q_low or "ленинск" in q_low:
+            line_filter = "2"
+
+        # COUNT → METRO_INFO (покажем общее кол-во в info-карточке)
+        # FILTER / TOP_N / «станции» / «список» / линейный фильтр → METRO_STATIONS
+        if COUNT_PATTERNS.search(q):
+            operation = "METRO_INFO"
+        elif (FILTER_PATTERNS.search(q) or TOP_N_PATTERNS.search(q)
+              or "станц" in q_low or line_filter):
+            operation = "METRO_STATIONS"
+        else:
+            operation = "METRO_INFO"   # по умолчанию — обзорная карточка
+
+        return Plan(
+            operation=operation,
+            topic="metro",
+            district=district,
+            street=None,
+            limit=13,
+            year=None,
+            min_value=None,
+            extra_filters={"line": line_filter or ""},
+        )
+
+    # Для темы аэропорта — всегда INFO
+    if topic == "airport":
+        return Plan(
+            operation="AIRPORT_INFO",
+            topic="airport",
+            district=None,
+            street=None,
+            limit=0,
+            year=None,
+            min_value=None,
+        )
 
     # Для темы строительства — специальные операции
     if topic == "construction":

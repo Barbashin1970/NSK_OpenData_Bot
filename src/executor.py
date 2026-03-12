@@ -476,3 +476,70 @@ def execute_construction(plan: Plan) -> dict[str, Any]:
     except Exception as e:
         log.error(f"Ошибка execute_construction: {e}")
         return {"error": str(e)}
+
+
+def execute_metro(plan: Plan) -> dict[str, Any]:
+    """Выполняет запросы к статическим данным метрополитена.
+
+    Операции:
+      METRO_INFO     — обзорная карточка: 2 линии, 13 станций, статистика
+      METRO_STATIONS — список станций с фильтрами по линии / району
+    """
+    from .metro_data import get_metro_info, get_stations, METRO_LINES
+
+    op = plan.operation
+    line_filter = plan.extra_filters.get("line") or None
+    district_filter = plan.district
+
+    try:
+        if op == "METRO_STATIONS":
+            stations = get_stations(line_filter=line_filter, district_filter=district_filter)
+            return {
+                "operation": op,
+                "rows": stations,
+                "columns": ["name", "line", "district", "_lon", "_lat", "interchange_with", "note", "passengers_day"],
+                "count": len(stations),
+                "lines": METRO_LINES,
+            }
+        else:  # METRO_INFO
+            info = get_metro_info()
+            return {
+                "operation": "METRO_INFO",
+                "info": info,
+                "rows": info["stations"],          # координаты — для карты
+                "columns": ["name", "line", "district", "_lon", "_lat"],
+                "count": info["stations_count"],
+                "lines": METRO_LINES,
+            }
+
+    except Exception as e:
+        log.error(f"Ошибка execute_metro: {e}")
+        return {"error": str(e)}
+
+
+def execute_airport(plan: Plan) -> dict[str, Any]:
+    """Выполняет запросы к статическим данным аэропорта Толмачёво.
+
+    Операция:
+      AIRPORT_INFO — полная информационная карточка аэропорта
+    """
+    from .airport_data import get_airport_info
+
+    try:
+        info = get_airport_info()
+        return {
+            "operation": "AIRPORT_INFO",
+            "info": info,
+            # Единственная строка — сам аэропорт (для отметки на карте)
+            "rows": [{
+                "_lon": info["_lon"],
+                "_lat": info["_lat"],
+                "name": info["short_name"],
+                "iata": info["iata"],
+            }],
+            "count": 1,
+        }
+
+    except Exception as e:
+        log.error(f"Ошибка execute_airport: {e}")
+        return {"error": str(e)}
