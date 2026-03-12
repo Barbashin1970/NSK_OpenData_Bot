@@ -473,6 +473,9 @@ async function loadRoleDashboard() {
     dashEl.innerHTML = currentRole === 'mayor'
       ? renderMayorDashboard(power, eco, risks)
       : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData);
+    // Скрыть info-карточку "панель загружается…" после рендера дашборда
+    const ra = document.getElementById('resultArea');
+    if (ra && ra.classList.contains('bg-violet-50')) ra.className = 'hidden';
     requestAnimationFrame(() => {
       document.querySelectorAll('.bar-fill[data-pct]').forEach(b => { b.style.width = b.dataset.pct + '%'; });
     });
