@@ -2709,6 +2709,55 @@ function _shortOuName(s) {
   return s.length > 40 ? s.slice(0, 38) + '…' : s;
 }
 
+// Форматировать поле «Маршруты» остановки в компактные бейджи А/Т/МТ
+function _formatRoutes(s) {
+  if (!s) return '';
+  // Формат: "Автобус: 6, 18, 44.Троллейбус: 10, 22.Маршрутное такси: 44, 44а."
+  // Разбиваем по точке перед заглавной буквой (граница типа)
+  const sections = s.split(/\.\s*(?=[А-ЯA-Z])/);
+  const TYPES = [
+    [/автобус\w*/i,            'А',   '#c2410c', '#fff7ed'],
+    [/троллейбус\w*/i,         'Т',   '#1d4ed8', '#eff6ff'],
+    [/маршрутн\w+\s+такси/i,  'МТ',  '#6d28d9', '#f5f3ff'],
+    [/трамва\w*/i,             'Тр',  '#15803d', '#f0fdf4'],
+    [/метро\w*/i,              'М',   '#b91c1c', '#fef2f2'],
+  ];
+  const parts = [];
+  for (const section of sections) {
+    const ci = section.indexOf(':');
+    if (ci === -1) continue;
+    const typePart = section.slice(0, ci).trim();
+    const numPart  = section.slice(ci + 1).replace(/[.,]+$/, '').trim();
+    if (!numPart) continue;
+    let matched = false;
+    for (const [re, code, col, bg] of TYPES) {
+      if (!re.test(typePart)) continue;
+      parts.push(
+        `<span style="background:${bg};color:${col};border:1px solid ${col}55;` +
+        `border-radius:3px;padding:0 3px;font-size:10px;font-weight:700;line-height:1.6">${code}</span>` +
+        `\u202f<span style="font-size:12px">${esc(numPart)}</span>`
+      );
+      matched = true; break;
+    }
+    if (!matched) parts.push(`<span style="font-size:12px">${esc(typePart)}: ${esc(numPart)}</span>`);
+  }
+  return parts.length
+    ? parts.join('<br>')
+    : `<span style="font-size:12px;color:#64748b">${esc(s.length > 60 ? s.slice(0, 58) + '…' : s)}</span>`;
+}
+
+// Определить тип библиотеки из её названия (детская / научная / юношеская / …)
+function _libTypeLabel(s) {
+  if (!s) return '';
+  const l = s.toLowerCase();
+  if (/детск/.test(l) || /\bцдб\b/.test(l))   return 'Детская';
+  if (/научн/.test(l))                          return 'Научная';
+  if (/юношеск/.test(l))                        return 'Юношеская';
+  if (/семейн/.test(l))                         return 'Семейная';
+  if (/центральн/.test(l) || /\bцгб\b/.test(l) || /\bцб\b/.test(l)) return 'Центральная';
+  return '';
+}
+
 // Сократить наименование строительного объекта до ключевого типа
 function _shortNameOb(s) {
   if (!s) return '';
@@ -2777,16 +2826,81 @@ function _buildMarkerLabel(row) {
     return `<b style="display:block">${title}</b>${addrHtml}${dev}`;
   }
 
-  // ── Остальные датасеты (остановки, аптеки, библиотеки, культура, спорт) ───
-  const rawName =
-    row.NazvUch   // спортивные организации
-    || row.OstName  // остановки
-    || row.ShortName // культура
-    || row.BiblName  // библиотеки
-    || row.Name     // аптеки
-    || row.Type     // спортплощадки
-    || row.SchoolName || row.OrgName || row.SportOrgName || row.CultureName
-    || '';
+  // ── Остановки транспорта (OstName) ────────────────────────────────────────
+  if ('OstName' in row) {
+    const name   = esc(row.OstName || 'Остановка');
+    const routes = _formatRoutes(row.Marshryt);
+    const street = row.AdrStreet
+      ? `<span style="display:block;color:#64748b;font-size:11px;margin-top:1px">${esc(row.AdrStreet)}</span>` : '';
+    const routesHtml = routes
+      ? `<div style="margin-top:4px;line-height:1.8">${routes}</div>` : '';
+    return `<b style="display:block">${name}</b>${street}${routesHtml}`;
+  }
+
+  // ── Библиотеки (BiblName) ─────────────────────────────────────────────────
+  if ('BiblName' in row) {
+    const typeLabel = _libTypeLabel(row.BiblName);
+    const typeBadge = typeLabel
+      ? `<span style="display:block;color:#6366f1;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${esc(typeLabel)}</span>` : '';
+    const name   = esc(row.BiblName || 'Библиотека');
+    const street = esc(row.AdrStreet || '');
+    const house  = esc(row.AdrDom || '');
+    const addr   = street ? (house ? `${street}, ${house}` : street) : '';
+    const addrHtml = addr ? `<span style="display:block;margin-top:2px">${addr}</span>` : '';
+    return `${typeBadge}<b style="display:block">${name}</b>${addrHtml}`;
+  }
+
+  // ── Аптеки (Name) ─────────────────────────────────────────────────────────
+  if ('Name' in row) {
+    const typeText = (row.Type && !/^[Аа]птека$/.test(row.Type.trim())) ? row.Type.trim() : '';
+    const typeBadge = typeText
+      ? `<span style="display:block;color:#0ea5e9;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${esc(typeText)}</span>` : '';
+    const name   = esc(row.Name || '');
+    const street = esc(row.AdrStr || '');
+    const house  = esc(row.AdrDom || '');
+    const addr   = street ? (house ? `${street}, ${house}` : street) : '';
+    const addrHtml = addr ? `<span style="display:block;margin-top:2px">${addr}</span>` : '';
+    return `${typeBadge}<b style="display:block">${name}</b>${addrHtml}`;
+  }
+
+  // ── Спортивные организации (NazvUch) ──────────────────────────────────────
+  if ('NazvUch' in row) {
+    const sport = row.VidSporta
+      ? `<span style="display:block;color:#15803d;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${esc(row.VidSporta)}</span>` : '';
+    const raw  = row.NazvUch || '';
+    const name = esc(raw.length > 42 ? raw.slice(0, 40) + '…' : raw);
+    const street = esc(row.Ulica || '');
+    const house  = esc(row.Dom || '');
+    const addr   = street ? (house ? `${street}, ${house}` : street) : '';
+    const addrHtml = addr ? `<span style="display:block;margin-top:2px">${addr}</span>` : '';
+    return `${sport}<b style="display:block">${name}</b>${addrHtml}`;
+  }
+
+  // ── Спортплощадки (VidSport) ───────────────────────────────────────────────
+  if ('VidSport' in row) {
+    const sport = row.VidSport
+      ? `<span style="display:block;color:#15803d;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${esc(row.VidSport)}</span>` : '';
+    const name   = esc(row.Type || 'Спортплощадка');
+    const street = esc(row.Street || '');
+    const house  = esc(row.House || '');
+    const addr   = street ? (house ? `${street}, ${house}` : street) : '';
+    const addrHtml = addr ? `<span style="display:block;margin-top:2px">${addr}</span>` : '';
+    return `<b style="display:block">${name}</b>${sport}${addrHtml}`;
+  }
+
+  // ── Культура (ShortName) ──────────────────────────────────────────────────
+  if ('ShortName' in row) {
+    const raw  = row.ShortName || '';
+    const name = esc(raw.length > 45 ? raw.slice(0, 43) + '…' : raw);
+    const street = esc(row.Ulica || '');
+    const house  = esc(row.Dom || '');
+    const addr   = street ? (house ? `${street}, ${house}` : street) : '';
+    const addrHtml = addr ? `<span style="display:block;margin-top:2px">${addr}</span>` : '';
+    return `<b style="display:block">${name}</b>${addrHtml}`;
+  }
+
+  // ── Парковки и прочее (fallback) ──────────────────────────────────────────
+  const rawName = row.ParkType || '';
   const name = esc(rawName.length > 45 ? rawName.slice(0, 43) + '…' : rawName);
   const street = esc(row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '');
   const house  = esc(row.AdrDom   || row.Dom    || row.House  || '');
