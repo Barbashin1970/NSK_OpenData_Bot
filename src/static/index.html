@@ -1407,6 +1407,18 @@ function renderMetro(data) {
   const stations = info.stations || data.rows || [];
   const fmt = n => n != null ? Number(n).toLocaleString('ru-RU') : '—';
 
+  // Active line filter: detect from current query
+  const _ql = (_pageQuery || document.getElementById('queryInput')?.value || '').toLowerCase();
+  const _activeLine = _ql.includes('линия 2') ? '2' : _ql.includes('линия 1') ? '1' : 'all';
+
+  // Counts: use actual stations.length so filtered view shows correct number
+  const totalCount = info.stations_count || 13;
+  const displayCount = stations.length;
+  const countBadge = displayCount === totalCount ? String(displayCount) : `${displayCount} из ${totalCount}`;
+
+  // daily_passengers: robust fallback to 243 000 (static, never changes)
+  const dailyPax = info.daily_passengers ?? 243000;
+
   // ── Плашка 1: обзорная карточка ──────────────────────────────────────────
   const lineBadges = Object.entries(lines).map(([id, ln]) =>
     `<div class="flex items-center gap-2 py-2">
@@ -1417,22 +1429,40 @@ function renderMetro(data) {
      </div>`
   ).join('<div class="border-t border-slate-100"></div>');
 
+  // Subtitle changes with active filter
+  const linesSubtitle = _activeLine === '1' ? 'Линия 1 — Дзержинская (синяя)'
+                      : _activeLine === '2' ? 'Линия 2 — Ленинская (красная)'
+                      : `${info.lines_count || 2} линии · ${totalCount} станций`;
+
+  // Button styles: active gets filled, inactive gets outline only
+  const _ba = 'text-xs px-3 py-1.5 rounded-xl border font-medium transition-colors';
+  const _bi = `${_ba} bg-white text-slate-600 border-slate-200`;
+  const btnAll = _activeLine === 'all'
+    ? `${_ba} bg-slate-700 text-white border-slate-700`
+    : `${_bi} hover:border-slate-500 hover:text-slate-700`;
+  const btnL1 = _activeLine === '1'
+    ? `${_ba} bg-blue-600 text-white border-blue-600`
+    : `${_bi} hover:border-blue-400 hover:text-blue-600`;
+  const btnL2 = _activeLine === '2'
+    ? `${_ba} bg-red-600 text-white border-red-600`
+    : `${_bi} hover:border-red-400 hover:text-red-600`;
+
   const infoCard = `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div class="flex items-center gap-3 px-5 py-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white">
         <span class="text-2xl">🚇</span>
         <div>
           <div class="font-bold text-lg leading-tight">${esc(info.name || 'Метрополитен')}</div>
-          <div class="text-blue-100 text-sm">Открыт в ${info.opened_year || 1985} году · ${info.lines_count || 2} линии · ${info.stations_count || 13} станций</div>
+          <div class="text-blue-100 text-sm">Открыт в ${info.opened_year || 1985} году · ${linesSubtitle}</div>
         </div>
       </div>
       <div class="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
         <div class="px-5 py-3 text-center">
-          <div class="text-2xl font-bold text-slate-700">${info.stations_count || 13}</div>
-          <div class="text-xs text-slate-400 mt-0.5">станций</div>
+          <div class="text-2xl font-bold text-slate-700">${displayCount}</div>
+          <div class="text-xs text-slate-400 mt-0.5">станций${_activeLine !== 'all' ? ' Л' + _activeLine : ''}</div>
         </div>
         <div class="px-5 py-3 text-center">
-          <div class="text-2xl font-bold text-slate-700">${fmt(info.daily_passengers)}</div>
+          <div class="text-2xl font-bold text-slate-700">${fmt(dailyPax)}</div>
           <div class="text-xs text-slate-400 mt-0.5">пасс./день</div>
         </div>
         <div class="px-5 py-3 text-center">
@@ -1441,11 +1471,11 @@ function renderMetro(data) {
         </div>
       </div>
       <div class="px-5 py-3 divide-y divide-slate-100">${lineBadges}</div>
-      ${info.bridge_length_m ? `<div class="px-5 pb-3 text-xs text-slate-400">Метромост через реку Обь — ${fmt(info.bridge_length_m)} м (открытая эстакада)</div>` : ''}
+      ${(info.bridge_length_m || 822) ? `<div class="px-5 pb-3 text-xs text-slate-400">Метромост через реку Обь — ${fmt(info.bridge_length_m || 822)} м (открытая эстакада)</div>` : ''}
       <div class="px-5 pb-4 flex flex-wrap gap-2">
-        <button onclick="askNow('станции метро')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600">📋 Все станции</button>
-        <button onclick="askNow('станции метро линия 1')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600">🔵 Линия 1</button>
-        <button onclick="askNow('станции метро линия 2')" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-red-400 hover:text-red-600">🔴 Линия 2</button>
+        <button onclick="askNow('станции метро')" class="${btnAll}">📋 Все станции</button>
+        <button onclick="askNow('станции метро линия 1')" class="${btnL1}">🔵 Линия 1</button>
+        <button onclick="askNow('станции метро линия 2')" class="${btnL2}">🔴 Линия 2</button>
         ${info.url ? `<a href="${esc(info.url)}" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🌐 nsk-metro.ru</a>` : ''}
       </div>
     </div>`;
@@ -1484,7 +1514,7 @@ function renderMetro(data) {
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div class="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
         <span class="font-semibold text-slate-700 text-sm">Станции</span>
-        <span class="text-xs text-slate-400">${stations.length} из ${info.stations_count || 13}</span>
+        <span class="text-xs text-slate-400">${countBadge}</span>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -2738,7 +2768,7 @@ const _METRO_STATIONS_STATIC = [
   {name:'Октябрьская',line:'1',_lon:82.904,_lat:54.961,address:'ул. Октябрьская, 24',district:'Центральный район',interchange_with:[]},
   {name:'Речной вокзал',line:'1',_lon:82.896,_lat:54.952,address:'Красный просп., 1/1',district:'Центральный район',interchange_with:[]},
   {name:'Студенческая',line:'1',_lon:82.871,_lat:54.929,address:'пр. Карла Маркса, 7',district:'Октябрьский район',interchange_with:[]},
-  {name:'Площадь Маркса',line:'1',_lon:82.888,_lat:54.861,address:'пл. Карла Маркса, 1',district:'Октябрьский район',interchange_with:[]},
+  {name:'Площадь Маркса',line:'1',_lon:82.894,_lat:54.861,address:'пл. Карла Маркса, 1',district:'Октябрьский район',interchange_with:[]},
   {name:'Берёзовая роща',line:'2',_lon:82.975,_lat:54.989,address:'ул. Кошурникова, 1',district:'Дзержинский район',interchange_with:[]},
   {name:'Маршала Покрышкина',line:'2',_lon:82.963,_lat:54.984,address:'ул. Кошурникова, 23',district:'Дзержинский район',interchange_with:[]},
   {name:'Золотая нива',line:'2',_lon:82.948,_lat:54.981,address:'ул. Кошурникова, 50',district:'Дзержинский район',interchange_with:[]},
@@ -3155,13 +3185,25 @@ function _renderMap() {
 
   const lats = _currentMapRows.map(r => r._lat);
   const lons = _currentMapRows.map(r => r._lon);
-  const centerLat = lats.reduce((a, b) => a + b, 0) / lats.length;
-  const centerLon = lons.reduce((a, b) => a + b, 0) / lons.length;
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  // Midpoint of bounding box (not arithmetic mean) — avoids bias toward northern clusters
+  const centerLat = (minLat + maxLat) / 2;
+  const centerLon = (minLon + maxLon) / 2;
+  // Dynamic zoom: latSpan/lonSpan in degrees, lon corrected for ~55°N latitude
+  const latSpan = maxLat - minLat;
+  const lonSpan = (maxLon - minLon) * Math.cos(centerLat * Math.PI / 180);
+  const maxSpan = Math.max(latSpan, lonSpan);
+  let zoom = 14;
+  if (maxSpan > 0.15) zoom = 11;
+  else if (maxSpan > 0.07) zoom = 12;
+  else if (maxSpan > 0.03) zoom = 13;
+  else if (maxSpan < 0.001) zoom = 16;
 
   try {
     _mapInstance = new mapgl.Map('map2gis', {
       center: [centerLon, centerLat],
-      zoom: 13,
+      zoom,
       key: _mapglKey,
     });
 

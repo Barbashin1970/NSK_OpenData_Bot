@@ -112,7 +112,7 @@ METRO_STATIONS: list[dict] = [
     {
         "name": "Площадь Маркса",
         "line": "1",
-        "_lon": 82.888, "_lat": 54.861,
+        "_lon": 82.894, "_lat": 54.861,
         "address": "пл. Карла Маркса, 1",
         "district": "Октябрьский район",
         "interchange_with": [],
