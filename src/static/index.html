@@ -1124,6 +1124,9 @@ const COL_LABELS = {
   NomRazr:'№ разрешения', DatRazr:'Дата', Zastr:'Застройщик',
   NameOb:'Объект', AdrOr:'Адрес', district:'Район', KadNom:'Кадастр. №',
   RukName:'Руководитель', RukPos:'Должность',
+  // Тепловые источники
+  short_name:'Название', type:'Тип', fuel:'Топливо', thermal_gcal_h:'Мощность, Гкал/ч',
+  electric_mw:'Эл. мощность, МВт', operator_group:'Оператор', digitalization_status:'Цифровизация',
 };
 
 function colLabel(c) { return COL_LABELS[c] || c; }
@@ -2579,8 +2582,20 @@ function renderTopics(topics) {
     </div>
   `;
 
-  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Камеры → остальные датасеты
-  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + camerasCard + cards;
+  const heatSourcesCard = `
+    <div class="topic-card bg-gradient-to-br from-orange-50 to-red-50 border border-orange-200 rounded-2xl p-4 cursor-pointer hover:border-orange-400 hover:shadow-md"
+         onclick="setQuery('тепловые источники новосибирска')">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">🏭</span>
+        <span class="bg-orange-100 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded-full text-xs">статично</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">Тепловые источники</div>
+      <div class="text-xs text-slate-500 mt-1">СГК + УЭВ СО РАН · 7 объектов</div>
+    </div>
+  `;
+
+  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Камеры → Тепло → остальные датасеты
+  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + camerasCard + heatSourcesCard + cards;
 }
 
 // ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────
@@ -3133,6 +3148,27 @@ function _buildMarkerLabel(row) {
   // ── Аэропорт ──────────────────────────────────────────────────────────────
   if ('iata' in row) {
     return `<b>✈️ ${esc(row.name || 'Толмачёво')}</b><span style="display:block;color:#64748b;font-size:11px">${esc(row.iata || 'OVB')}</span>`;
+  }
+
+  // ── Тепловые источники (heat_sources) ────────────────────────────────────
+  if ('operator_group' in row && 'thermal_gcal_h' in row) {
+    const isPilot = row.digitalization_status === 'пилот';
+    const pilotBadge = isPilot
+      ? `<span style="display:inline-block;background:#fef3c7;color:#d97706;border:1px solid #fcd34d;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700;vertical-align:middle">🟡 ПИЛОТ НГУ</span> `
+      : '';
+    const typeBadge = row.type === 'ТЭЦ'
+      ? `<span style="display:inline-block;background:#fee2e2;color:#dc2626;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700">ТЭЦ</span>`
+      : `<span style="display:inline-block;background:#e0f2fe;color:#0369a1;border-radius:4px;padding:0 5px;font-size:10px;font-weight:700">Котельная</span>`;
+    const power = row.thermal_gcal_h != null
+      ? `<span style="display:block;margin-top:3px;font-size:12px">🔥 <b>${esc(String(row.thermal_gcal_h))}</b> Гкал/ч</span>`
+      : '';
+    const elec = row.electric_mw != null
+      ? `<span style="display:block;font-size:11px;color:#64748b">⚡ ${esc(String(row.electric_mw))} МВт</span>`
+      : '';
+    const zone = row.network_zone
+      ? `<span style="display:block;color:#94a3b8;font-size:10px;margin-top:2px">${esc(row.network_zone)}</span>`
+      : '';
+    return `${pilotBadge}${typeBadge} <b>${esc(row.short_name || row.name || '')}</b>${power}${elec}${zone}`;
   }
 
   // ── Камера фиксации (OSM) ─────────────────────────────────────────────────

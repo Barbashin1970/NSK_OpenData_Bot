@@ -1,0 +1,185 @@
+{
+  "type": "FeatureCollection",
+  "name": "nsk_heat_sources_v1",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "date": "2026-03-12",
+    "project": "Предиктивная аналитика тепловых сетей НГУ",
+    "operators": [
+      "АО «СГК-Новосибирск»",
+      "ФГУП «УЭВ» СО РАН"
+    ],
+    "total_objects": 7,
+    "coordinate_system": "WGS84",
+    "contact": "НГУ — проект цифровизации тепловых сетей"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [82.9238, 54.8603]},
+      "properties": {
+        "id": "sgk_tec2",
+        "name": "Новосибирская ТЭЦ-2",
+        "short_name": "ТЭЦ-2",
+        "operator": "АО «СГК-Новосибирск»",
+        "operator_inn": "5405270340",
+        "operator_group": "СГК",
+        "type": "ТЭЦ",
+        "fuel": "Уголь",
+        "address": "г. Новосибирск, ул. Станционная, 4 к.2",
+        "district": "Ленинский",
+        "thermal_gcal_h": 1330,
+        "electric_mw": 345,
+        "year_built": 1936,
+        "network_zone": "Левобережье",
+        "contacts": {"phone": "+7 (383) 289-99-00", "web": "sibgenco.ru"},
+        "digitalization_status": "нет",
+        "note": "Историческая первая ТЭЦ Новосибирска. Обслуживает левобережье (Ленинский р-н)."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [83.0427, 54.9183]},
+      "properties": {
+        "id": "sgk_tec3",
+        "name": "Новосибирская ТЭЦ-3",
+        "short_name": "ТЭЦ-3",
+        "operator": "АО «СГК-Новосибирск»",
+        "operator_inn": "5405270340",
+        "operator_group": "СГК",
+        "type": "ТЭЦ",
+        "fuel": "Уголь",
+        "address": "г. Новосибирск, ул. Чаплыгина, 57",
+        "district": "Центральный",
+        "thermal_gcal_h": 945,
+        "electric_mw": 497,
+        "year_built": 1942,
+        "network_zone": "Правобережье-Центр",
+        "contacts": {"phone": "+7 (383) 289-99-00", "web": "sibgenco.ru"},
+        "digitalization_status": "нет",
+        "note": "Модернизация котлоагрегата 2025–2027, инвестиции ~24 млрд руб. (РБК, дек.2025)"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [83.0501, 54.8958]},
+      "properties": {
+        "id": "sgk_tec4",
+        "name": "Новосибирская ТЭЦ-4",
+        "short_name": "ТЭЦ-4",
+        "operator": "АО «СГК-Новосибирск»",
+        "operator_inn": "5405270340",
+        "operator_group": "СГК",
+        "type": "ТЭЦ",
+        "fuel": "Уголь",
+        "address": "г. Новосибирск, ул. Богдана Хмельницкого, 102",
+        "district": "Октябрьский",
+        "thermal_gcal_h": 1160,
+        "electric_mw": 490,
+        "year_built": 1956,
+        "network_zone": "Правобережье-Центр",
+        "contacts": {"phone": "+7 (383) 289-99-00", "web": "sibgenco.ru"},
+        "digitalization_status": "нет",
+        "note": "Основной источник теплоснабжения центра правобережья."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [82.9583, 54.8372]},
+      "properties": {
+        "id": "sgk_tec5",
+        "name": "Новосибирская ТЭЦ-5",
+        "short_name": "ТЭЦ-5",
+        "operator": "АО «СГК-Новосибирск»",
+        "operator_inn": "5405270340",
+        "operator_group": "СГК",
+        "type": "ТЭЦ",
+        "fuel": "Уголь",
+        "address": "г. Новосибирск, ул. Выборная, 201/5",
+        "district": "Октябрьский (Иня)",
+        "thermal_gcal_h": 2730,
+        "electric_mw": 1200,
+        "year_built": 1985,
+        "network_zone": "Левобережье-Юг",
+        "contacts": {"phone": "+7 (383) 289-99-00", "web": "sibgenco.ru"},
+        "digitalization_status": "нет",
+        "note": "Крупнейшая ТЭЦ Новосибирска и Западной Сибири. Электрическая мощность 1200 МВт."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [78.3226, 55.3614]},
+      "properties": {
+        "id": "sgk_tec_barabinsk",
+        "name": "Барабинская ТЭЦ",
+        "short_name": "ТЭЦ-Барабинск",
+        "operator": "АО «СГК-Новосибирск»",
+        "operator_inn": "5405270340",
+        "operator_group": "СГК",
+        "type": "ТЭЦ",
+        "fuel": "Уголь",
+        "address": "г. Куйбышев (Барабинск), ул. Куйбышева",
+        "district": "Куйбышевский район НСО",
+        "thermal_gcal_h": 430,
+        "electric_mw": 110,
+        "year_built": 1957,
+        "network_zone": "Куйбышев-НСО",
+        "contacts": {"phone": "+7 (383) 289-99-00", "web": "sibgenco.ru"},
+        "digitalization_status": "нет",
+        "note": "Единственная ТЭЦ СГК вне г. Новосибирска в НСО."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [83.068, 54.827]},
+      "properties": {
+        "id": "uev_ts1",
+        "name": "Тепловая станция № 1 (ФГУП «УЭВ»)",
+        "short_name": "ТС-1 УЭВ",
+        "operator": "ФГУП «УЭВ»",
+        "operator_inn": "5408183046",
+        "operator_group": "УЭВ-СО-РАН",
+        "type": "Газовая котельная",
+        "fuel": "Природный газ",
+        "address": "г. Новосибирск, пос. Речкуновка (Советский р-н)",
+        "district": "Советский",
+        "thermal_gcal_h": 357.6,
+        "electric_mw": null,
+        "year_built": null,
+        "network_zone": "Академгородок-Речкуновка",
+        "contacts": {"phone": "+7 (383) 326-98-16", "office": "ул. Инженерная, 17", "email": "ueiv@uev.ru", "web": "uev.ru"},
+        "digitalization_status": "пилот",
+        "note": "ТС-1 расположена в Речкуновке. Пилот цифровизации с НГУ запущен авг.2025."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [83.0964, 54.8456]},
+      "properties": {
+        "id": "uev_ts2",
+        "name": "Тепловая станция № 2 (ФГУП «УЭВ»)",
+        "short_name": "ТС-2 УЭВ",
+        "operator": "ФГУП «УЭВ»",
+        "operator_inn": "5408183046",
+        "operator_group": "УЭВ-СО-РАН",
+        "type": "Газовая котельная",
+        "fuel": "Природный газ",
+        "address": "г. Новосибирск, ул. Арбузова, 1Г",
+        "district": "Советский",
+        "thermal_gcal_h": 262.2,
+        "electric_mw": null,
+        "year_built": null,
+        "network_zone": "Академгородок-мкр.Щ",
+        "contacts": {"phone": "+7 (383) 332-51-84", "office": "ул. Инженерная, 17", "email": "ueiv@uev.ru", "web": "uev.ru"},
+        "digitalization_status": "пилот",
+        "note": "ТС-2 в мкр.Щ. Датчики давления/температуры смонтированы в 2025 г. (пилот НГУ+УЭВ)."
+      }
+    }
+  ]
+}

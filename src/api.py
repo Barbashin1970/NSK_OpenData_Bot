@@ -1533,6 +1533,48 @@ def get_ask(
                 },
             }
 
+    # ── Тепловые источники (статический GeoJSON) ──────────────────────────────
+    if topic == "heat_sources":
+        from .heat_sources import (
+            query_heat_sources,
+            count_heat_sources,
+            TABLE_COLUMNS,
+        )
+
+        # Определяем фильтры из плана
+        extra = plan.extra_filters or {}
+        operator_group = extra.get("operator_group", "")
+        pilot_only = extra.get("pilot_only", False)
+
+        rows = query_heat_sources(operator_group=operator_group, pilot_only=pilot_only)
+        total = len(rows)
+
+        if plan.operation == "COUNT":
+            return {
+                "query": q,
+                "topic": topic,
+                "topic_name": route_result.name,
+                "confidence": round(route_result.confidence, 3),
+                "operation": "COUNT",
+                "count": total,
+                "rows": [],
+                "columns": [],
+            }
+
+        return {
+            "query": q,
+            "topic": topic,
+            "topic_name": route_result.name,
+            "confidence": round(route_result.confidence, 3),
+            "operation": "FILTER",
+            "count": total,
+            "rows": rows,
+            "columns": TABLE_COLUMNS,
+            "coords_enriched": True,
+            "coords_source": "GeoJSON (статические координаты)",
+            "_skipDistBar": True,
+        }
+
     # ── Стандартные темы opendata ─────────────────────────────────────────────
     if not table_exists(topic):
         # Данных нет — тихо подгружаем нужную тему прямо сейчас.

@@ -442,6 +442,48 @@ def _route_cameras(q: str) -> "RouteResult | None":
     )
 
 
+# ── Тепловые источники (ТЭЦ, котельные СГК и УЭВ) ────────────────────────────
+_HEAT_SOURCES_PRIMARY = ["тэц", "тепловые источник", "тепловые станц", "тепловая станц", "сгк", "уэв"]
+_HEAT_SOURCES_KEYWORDS = [
+    "тэц",
+    "тепловые источник",
+    "тепловые станц",
+    "тепловая станц",
+    "тепловая электроцентраль",
+    "сгк",
+    "уэв",
+    "теплоэнерг",
+    "источник тепла",
+    "тепловая мощност",
+    "котельная сгк",
+    "газовая котельная",
+    "тепловые объект",
+    "источник теплоснабжен",
+]
+
+
+def _route_heat_sources(q: str) -> "RouteResult | None":
+    """Маршрутизация запросов к справочнику тепловых источников."""
+    if not any(m in q for m in _HEAT_SOURCES_PRIMARY):
+        return None
+
+    score = sum(
+        len(kw.split()) ** 1.5
+        for kw in _HEAT_SOURCES_KEYWORDS
+        if all(re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in _normalize(kw).split())
+    )
+    if score == 0:
+        score = 1.0
+
+    confidence = min(1.0, max(score / 8, 0.6))
+    return RouteResult(
+        topic="heat_sources",
+        confidence=confidence,
+        name="Тепловые источники НСО",
+        matched_keywords=[kw for kw in _HEAT_SOURCES_KEYWORDS if _normalize(kw) in q],
+    )
+
+
 # ── Индекс пробок / дорожная нагрузка ────────────────────────────────────────
 _TRAFFIC_PRIMARY = ["пробк", "трафик", "загруженност", "час пик", "дорог сейчас", "индекс пробок"]
 
@@ -681,6 +723,11 @@ def route(query: str) -> list[RouteResult]:
     cameras_result = _route_cameras(q)
     if cameras_result:
         results.append(cameras_result)
+
+    # Тема тепловых источников (не в YAML-реестре, обрабатывается отдельно)
+    heat_sources_result = _route_heat_sources(q)
+    if heat_sources_result:
+        results.append(heat_sources_result)
 
     # Тема строительства (не в YAML-реестре, обрабатывается отдельно)
     construction_result = _route_construction(q)
