@@ -1472,6 +1472,10 @@ function renderMetro(data) {
       </div>
       <div class="px-5 py-3 divide-y divide-slate-100">${lineBadges}</div>
       ${(info.bridge_length_m || 822) ? `<div class="px-5 pb-3 text-xs text-slate-400">Метромост через реку Обь — ${fmt(info.bridge_length_m || 822)} м (открытая эстакада)</div>` : ''}
+      <div class="px-3 pb-3">
+        <img src="/static/nsk_metro_map.jpg" alt="Схема Новосибирского метро"
+             style="width:100%;border-radius:0.5rem;border:1px solid #e2e8f0;display:block" />
+      </div>
       <div class="px-5 pb-4 flex flex-wrap gap-2">
         <button onclick="askNow('станции метро')" class="${btnAll}">📋 Все станции</button>
         <button onclick="askNow('станции метро линия 1')" class="${btnL1}">🔵 Линия 1</button>
@@ -3201,6 +3205,17 @@ function _renderMap() {
   else if (maxSpan < 0.001) zoom = 16;
 
   try {
+    // Метро: пустая карта 2GIS без кастомных маркеров — на ней уже нанесены станции метро
+    const _isMetroView = _currentMapRows.every(r => 'line' in r);
+    if (_isMetroView) {
+      _mapInstance = new mapgl.Map('map2gis', {
+        center: [82.8969, 54.9562], // Речной вокзал — центральная точка метросети
+        zoom: 12,
+        key: _mapglKey,
+      });
+      return;
+    }
+
     _mapInstance = new mapgl.Map('map2gis', {
       center: [centerLon, centerLat],
       zoom,
