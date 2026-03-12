@@ -1,16 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Blue circle background -->
   <defs>
-    <clipPath id="circle">
-      <circle cx="256" cy="256" r="256"/>
-    </clipPath>
-  </defs>
-  <!-- Blue gradient background -->
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="40%" r="60%">
+    <radialGradient id="bg" cx="40%" cy="35%" r="65%">
       <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#1e40af"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </radialGradient>
+    <radialGradient id="eyeGrad" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0369a1"/>
     </radialGradient>
   </defs>
-  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
-  <image href="/static/img/sigma-cat.png" x="32" y="32" width="448" height="448" clip-path="url(#circle)"/>
+
+  <circle cx="50" cy="50" r="50" fill="url(#bg)"/>
+
+  <!-- Left ear (outer) -->
+  <polygon points="18,42 26,14 40,38" fill="white"/>
+  <!-- Left ear (inner pink) -->
+  <polygon points="22,40 28,20 37,38" fill="#fda4af"/>
+
+  <!-- Right ear (outer) -->
+  <polygon points="60,38 74,14 82,42" fill="white"/>
+  <!-- Right ear (inner pink) -->
+  <polygon points="63,38 72,20 78,40" fill="#fda4af"/>
+
+  <!-- Head -->
+  <ellipse cx="50" cy="57" rx="29" ry="26" fill="white"/>
+
+  <!-- Eyes -->
+  <ellipse cx="40" cy="52" rx="6" ry="7" fill="url(#eyeGrad)"/>
+  <ellipse cx="60" cy="52" rx="6" ry="7" fill="url(#eyeGrad)"/>
+  <!-- Pupils -->
+  <ellipse cx="41" cy="53" rx="3" ry="5" fill="#0c1a2e"/>
+  <ellipse cx="61" cy="53" rx="3" ry="5" fill="#0c1a2e"/>
+  <!-- Eye shine -->
+  <circle cx="42.5" cy="50" r="1.8" fill="white" opacity="0.9"/>
+  <circle cx="62.5" cy="50" r="1.8" fill="white" opacity="0.9"/>
+
+  <!-- Nose -->
+  <path d="M 47 63 L 50 60 L 53 63 Z" fill="#f472b6"/>
+
+  <!-- Mouth -->
+  <path d="M 50 63 Q 44 69 41 66" stroke="#9ca3af" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+  <path d="M 50 63 Q 56 69 59 66" stroke="#9ca3af" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+
+  <!-- Whiskers left -->
+  <line x1="18" y1="60" x2="40" y2="64" stroke="white" stroke-width="1.2" opacity="0.7"/>
+  <line x1="18" y1="66" x2="40" y2="66" stroke="white" stroke-width="1.2" opacity="0.7"/>
+  <line x1="20" y1="72" x2="40" y2="68" stroke="white" stroke-width="1.2" opacity="0.7"/>
+
+  <!-- Whiskers right -->
+  <line x1="60" y1="64" x2="82" y2="60" stroke="white" stroke-width="1.2" opacity="0.7"/>
+  <line x1="60" y1="66" x2="82" y2="66" stroke="white" stroke-width="1.2" opacity="0.7"/>
+  <line x1="60" y1="68" x2="80" y2="72" stroke="white" stroke-width="1.2" opacity="0.7"/>
 </svg>
