@@ -1520,6 +1520,7 @@ def get_ask(
                 "topic_name": route_result.name,
                 "confidence": round(route_result.confidence, 3),
                 "operation": "FILTER",
+                "district": district or "",
                 "count": total,
                 "rows": rows,
                 "columns": ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref", "district"],
