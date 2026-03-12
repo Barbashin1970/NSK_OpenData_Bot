@@ -2729,6 +2729,23 @@ async function fetchPage(offset) {
   }
 }
 
+// ─── Metro stations (static, for map overlay) ─────────────────────────────────
+const _METRO_STATIONS_STATIC = [
+  {name:'Заельцовская',line:'1',_lon:82.934,_lat:54.996,address:'ул. Дуси Ковальчук, 179',district:'Заельцовский район',interchange_with:[]},
+  {name:'Гагаринская',line:'1',_lon:82.931,_lat:54.987,address:'ул. Гагарина, 91',district:'Калининский район',interchange_with:[]},
+  {name:'Красный проспект',line:'1',_lon:82.925,_lat:54.979,address:'Красный просп., 13',district:'Центральный район',interchange_with:[]},
+  {name:'Площадь Ленина',line:'1',_lon:82.919,_lat:54.971,address:'пл. Ленина, 1',district:'Центральный район',interchange_with:[['2','Сибирская']]},
+  {name:'Октябрьская',line:'1',_lon:82.904,_lat:54.961,address:'ул. Октябрьская, 24',district:'Центральный район',interchange_with:[]},
+  {name:'Речной вокзал',line:'1',_lon:82.896,_lat:54.952,address:'Красный просп., 1/1',district:'Центральный район',interchange_with:[]},
+  {name:'Студенческая',line:'1',_lon:82.871,_lat:54.929,address:'пр. Карла Маркса, 7',district:'Октябрьский район',interchange_with:[]},
+  {name:'Площадь Маркса',line:'1',_lon:82.888,_lat:54.861,address:'пл. Карла Маркса, 1',district:'Октябрьский район',interchange_with:[]},
+  {name:'Берёзовая роща',line:'2',_lon:82.975,_lat:54.989,address:'ул. Кошурникова, 1',district:'Дзержинский район',interchange_with:[]},
+  {name:'Маршала Покрышкина',line:'2',_lon:82.963,_lat:54.984,address:'ул. Кошурникова, 23',district:'Дзержинский район',interchange_with:[]},
+  {name:'Золотая нива',line:'2',_lon:82.948,_lat:54.981,address:'ул. Кошурникова, 50',district:'Дзержинский район',interchange_with:[]},
+  {name:'Площадь Гарина-Михайловского',line:'2',_lon:82.929,_lat:54.968,address:'пл. Гарина-Михайловского, 1',district:'Центральный район',interchange_with:[]},
+  {name:'Сибирская',line:'2',_lon:82.921,_lat:54.971,address:'ул. 1905 года, 1',district:'Центральный район',interchange_with:[['1','Площадь Ленина']]},
+];
+
 // ─── 2GIS Map ─────────────────────────────────────────────────────────────────
 let _mapglKey = null;
 let _mapInstance = null;
@@ -2979,17 +2996,28 @@ function _shortNameOb(s) {
 function _buildMarkerLabel(row) {
   // ── Метро (поле line = '1' или '2') ──────────────────────────────────────
   if ('line' in row && (row.line === '1' || row.line === '2')) {
+    const METRO_TERMINI = {
+      '1': ['Заельцовская', 'Площадь Маркса'],
+      '2': ['Берёзовая роща', 'Площадь Гарина-Михайловского'],
+    };
     const LINE_COLOR = { '1': '#2563eb', '2': '#dc2626' };
     const LINE_BG    = { '1': '#eff6ff', '2': '#fef2f2' };
     const col = LINE_COLOR[row.line] || '#64748b';
     const bg  = LINE_BG[row.line]   || '#f8fafc';
-    const badge = `<span style="background:${bg};color:${col};border:1px solid ${col}55;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700">Л${row.line}</span>`;
-    const name  = `<b style="display:block;margin-bottom:2px">${esc(row.name || 'Станция')}</b>`;
-    const dist  = row.district
-      ? `<span style="display:block;color:#64748b;font-size:11px">${esc(row.district)}</span>` : '';
-    const xch   = (row.interchange_with || []).length
-      ? `<span style="display:block;color:#6d28d9;font-size:11px;margin-top:2px">⇆ Пересадка: ${row.interchange_with.map(i => 'Л' + i[0]).join(', ')}</span>` : '';
-    return name + badge + ' ' + dist + xch;
+    const mBadge    = `<span style="display:inline-block;background:#dc2626;color:#fff;border-radius:4px;padding:0 5px;font-size:11px;font-weight:800;vertical-align:middle">М</span>`;
+    const lineBadge = `<span style="background:${bg};color:${col};border:1px solid ${col}55;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700">Л${row.line}</span>`;
+    const name  = `<b style="display:block;margin-bottom:3px">${esc(row.name || 'Станция')}</b>`;
+    const isInterchange = (row.interchange_with || []).length > 0;
+    let lineInfo;
+    if (isInterchange) {
+      lineInfo = `<span style="display:block;color:#6d28d9;font-size:11px;margin-top:3px">⇆ Станция пересадки</span>`;
+    } else {
+      const t = METRO_TERMINI[row.line] || [];
+      const tStr = t.length === 2 ? `${t[0]} → ${t[1]}` : '';
+      lineInfo = tStr ? `<span style="display:block;color:#64748b;font-size:11px;margin-top:3px">Линия ${row.line} (${tStr})</span>` : '';
+    }
+    const addr = row.address ? `<span style="display:block;color:#94a3b8;font-size:10px;margin-top:1px">${esc(row.address)}</span>` : '';
+    return name + mBadge + ' ' + lineBadge + lineInfo + addr;
   }
 
   // ── Аэропорт ──────────────────────────────────────────────────────────────
@@ -3222,6 +3250,43 @@ function _renderMap() {
         _showPopup(row, markerEl, cX, cY);
       });
     });
+
+    // ── Оверлей метро (только в режиме остановок) ─────────────────────────────
+    const _isStopsView = _currentMapRows.some(r => 'OstName' in r);
+    if (_isStopsView) {
+      _METRO_STATIONS_STATIC.forEach(mRow => {
+        const mEl = document.createElement('div');
+        mEl.dataset.mkr = '1';
+        const mColor = mRow.line === '2' ? '#dc2626' : '#2563eb';
+        mEl.style.cssText =
+          `width:22px;height:22px;background:${mColor};border-radius:5px;` +
+          'border:2px solid #fff;cursor:pointer;pointer-events:auto;' +
+          'box-shadow:0 2px 7px rgba(0,0,0,.55);' +
+          'display:flex;align-items:center;justify-content:center;' +
+          'font-size:12px;font-weight:900;color:#fff;' +
+          'transition:transform .12s;flex-shrink:0';
+        mEl.textContent = 'М';
+
+        const mMarker = new mapgl.Marker(_mapInstance, {
+          coordinates: [mRow._lon, mRow._lat],
+          element: mEl,
+        });
+
+        mMarker.on('click', (e) => {
+          _markerJustClicked = true;
+          setTimeout(() => { _markerJustClicked = false; }, 50);
+          if (_activeMarkerEl && _activeMarkerEl !== mEl) _activeMarkerEl.style.transform = '';
+          if (_activeMarkerEl === mEl) { _closePopup(); return; }
+          _activeMarkerEl = mEl;
+          mEl.style.transform = 'scale(1.4)';
+          const cX = e.originalEvent?.clientX
+            ?? (document.getElementById('map2gis').getBoundingClientRect().left + e.point.x);
+          const cY = e.originalEvent?.clientY
+            ?? (document.getElementById('map2gis').getBoundingClientRect().top + e.point.y);
+          _showPopup(mRow, mEl, cX, cY);
+        });
+      });
+    }
   } catch(e) {
     container.innerHTML = '<div class="p-4 text-sm text-red-500">Ошибка инициализации карты: ' + esc(String(e)) + '</div>';
   }

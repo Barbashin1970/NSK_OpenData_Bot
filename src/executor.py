@@ -497,7 +497,7 @@ def execute_metro(plan: Plan) -> dict[str, Any]:
             return {
                 "operation": op,
                 "rows": stations,
-                "columns": ["name", "line", "district", "_lon", "_lat", "interchange_with", "note", "passengers_day"],
+                "columns": ["name", "line", "address", "district", "_lon", "_lat", "interchange_with", "note", "passengers_day"],
                 "count": len(stations),
                 "lines": METRO_LINES,
             }
@@ -507,7 +507,7 @@ def execute_metro(plan: Plan) -> dict[str, Any]:
                 "operation": "METRO_INFO",
                 "info": info,
                 "rows": info["stations"],          # координаты — для карты
-                "columns": ["name", "line", "district", "_lon", "_lat"],
+                "columns": ["name", "line", "address", "district", "_lon", "_lat"],
                 "count": info["stations_count"],
                 "lines": METRO_LINES,
             }
