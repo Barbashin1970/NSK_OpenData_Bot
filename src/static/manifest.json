@@ -1,0 +1,17 @@
+{
+  "name": "Сигма — Открытые данные Новосибирска",
+  "short_name": "Сигма",
+  "description": "Открытые данные Новосибирска — только спроси",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e3a5f",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/static/img/sigma-cat.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

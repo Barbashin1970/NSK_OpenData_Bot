@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NSK OpenData Bot — Открытые данные Новосибирска</title>
+  <title>Сигма — Открытые данные Новосибирска</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+  <link rel="icon" type="image/png" href="/static/img/sigma-cat.png">
+  <link rel="apple-touch-icon" href="/static/img/sigma-cat.png">
+  <link rel="manifest" href="/static/manifest.json">
   <link rel="stylesheet" href="/static/tailwind.css">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -110,10 +114,10 @@
     <!-- Branding -->
     <div class="flex items-center justify-between gap-3 mb-7">
       <div class="flex items-center gap-3">
-        <div class="w-11 h-11 bg-white/15 rounded-2xl flex items-center justify-center text-2xl shadow-inner">🗂️</div>
+        <img src="/static/img/sigma-cat.png" class="w-11 h-11 rounded-2xl object-cover shadow-inner" alt="Сигма">
         <div>
-          <h1 class="text-xl font-bold leading-tight tracking-tight">NSK OpenData Bot</h1>
-          <p class="text-blue-300 text-xs mt-0.5">Открытые данные мэрии Новосибирска · opendata.novo-sibirsk.ru</p>
+          <h1 class="text-xl font-bold leading-tight tracking-tight">Сигма</h1>
+          <p class="text-blue-300 text-xs mt-0.5">Открытые данные — только спроси</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -211,7 +215,7 @@
   <footer class="text-center text-xs text-slate-400 pb-4 space-y-1">
     <p>Данные: <a href="http://opendata.novo-sibirsk.ru" target="_blank" class="hover:text-blue-500 transition-colors">opendata.novo-sibirsk.ru</a> · Отключения: <a href="http://051.novo-sibirsk.ru" target="_blank" class="hover:text-blue-500 transition-colors">051.novo-sibirsk.ru</a></p>
     <p>
-      NSK OpenData Bot · ЦИИ НГУ · 
+      Сигма · ЦИИ НГУ ·
       <a href="/docs" target="_blank" class="hover:text-blue-500 transition-colors">API Docs ↗</a> · 
       <a href="https://github.com/Barbashin1970/NSK_OpenData_Bot" target="_blank" class="hover:text-blue-500 transition-colors">Инструкция (GitHub) ↗</a> · 
       <span id="footerTime"></span>
@@ -2756,11 +2760,11 @@ function renderTopics(topics) {
   `;
 
   const emissionsCard = `
-    <div class="topic-card bg-gradient-to-br from-slate-50 to-zinc-100 border border-slate-300 rounded-2xl p-4 cursor-pointer hover:border-slate-500 hover:shadow-md"
+    <div class="topic-card bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 rounded-2xl p-4 cursor-pointer hover:border-violet-400 hover:shadow-md"
          onclick="setQuery('выбросы в атмосферу нсо')">
       <div class="flex justify-between items-start mb-2">
-        <span class="text-2xl">🌫️</span>
-        <span class="bg-slate-200 text-slate-700 border border-slate-300 px-1.5 py-0.5 rounded-full text-xs">2024</span>
+        <span class="text-2xl">⚗️</span>
+        <span class="bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full text-xs">2024</span>
       </div>
       <div class="font-semibold text-sm text-slate-800 leading-tight">Выбросы в атмосферу</div>
       <div class="text-xs text-slate-500 mt-1">2-ТП Воздух · 34 МО НСО</div>
