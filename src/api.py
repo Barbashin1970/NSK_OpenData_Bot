@@ -1575,6 +1575,44 @@ def get_ask(
             "_skipDistBar": True,
         }
 
+    # ── Выбросы в атмосферу 2-ТП Воздух (статический JSON) ──────────────────
+    if topic == "emissions":
+        from .emissions import query_emissions, get_emissions_meta, TABLE_COLUMNS as EMIT_COLS
+
+        extra = plan.extra_filters or {}
+        top_n = plan.limit if plan.operation == "TOP_N" else 0
+        rows = query_emissions(top_n=top_n)
+        meta = get_emissions_meta()
+        total = len(rows)
+
+        if plan.operation == "COUNT":
+            return {
+                "query": q,
+                "topic": topic,
+                "topic_name": route_result.name,
+                "confidence": round(route_result.confidence, 3),
+                "operation": "COUNT",
+                "count": total,
+                "rows": [],
+                "columns": [],
+            }
+
+        return {
+            "query": q,
+            "topic": topic,
+            "topic_name": route_result.name,
+            "confidence": round(route_result.confidence, 3),
+            "operation": "FILTER",
+            "count": total,
+            "rows": rows,
+            "columns": EMIT_COLS,
+            "coords_enriched": True,
+            "coords_source": f"2-ТП Воздух {meta.get('year', 2024)} (центроиды МО)",
+            "_skipDistBar": True,
+            "_emissionsView": True,
+            "meta": meta,
+        }
+
     # ── Стандартные темы opendata ─────────────────────────────────────────────
     if not table_exists(topic):
         # Данных нет — тихо подгружаем нужную тему прямо сейчас.

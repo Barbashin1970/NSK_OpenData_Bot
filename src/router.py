@@ -484,6 +484,46 @@ def _route_heat_sources(q: str) -> "RouteResult | None":
     )
 
 
+# ── Выбросы в атмосферу (2-ТП Воздух) ───────────────────────────────────────
+_EMISSIONS_PRIMARY = ["выброс", "загрязнен воздух", "атмосфер загрязн", "2-тп", "двутп"]
+_EMISSIONS_KEYWORDS = [
+    "выброс",
+    "загрязнение воздух",
+    "атмосферный выброс",
+    "качество воздух",
+    "загрязнен атмосфер",
+    "вредные выброс",
+    "2-тп воздух",
+    "экология воздух",
+    "so2",
+    "диоксид серы",
+    "твердые частиц",
+    "пыл выброс",
+]
+
+
+def _route_emissions(q: str) -> "RouteResult | None":
+    """Маршрутизация запросов к данным выбросов 2-ТП Воздух."""
+    if not any(m in q for m in _EMISSIONS_PRIMARY):
+        return None
+
+    score = sum(
+        len(kw.split()) ** 1.5
+        for kw in _EMISSIONS_KEYWORDS
+        if all(re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in _normalize(kw).split())
+    )
+    if score == 0:
+        score = 1.0
+
+    confidence = min(1.0, max(score / 8, 0.65))
+    return RouteResult(
+        topic="emissions",
+        confidence=confidence,
+        name="Выбросы в атмосферу НСО (2-ТП Воздух 2024)",
+        matched_keywords=[kw for kw in _EMISSIONS_KEYWORDS if _normalize(kw) in q],
+    )
+
+
 # ── Индекс пробок / дорожная нагрузка ────────────────────────────────────────
 _TRAFFIC_PRIMARY = ["пробк", "трафик", "загруженност", "час пик", "дорог сейчас", "индекс пробок"]
 
@@ -728,6 +768,11 @@ def route(query: str) -> list[RouteResult]:
     heat_sources_result = _route_heat_sources(q)
     if heat_sources_result:
         results.append(heat_sources_result)
+
+    # Тема выбросов в атмосферу (не в YAML-реестре, обрабатывается отдельно)
+    emissions_result = _route_emissions(q)
+    if emissions_result:
+        results.append(emissions_result)
 
     # Тема строительства (не в YAML-реестре, обрабатывается отдельно)
     construction_result = _route_construction(q)

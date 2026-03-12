@@ -257,6 +257,8 @@ const ROLE_CHIPS = {
   citizen: [
     {q: "нет горячей воды"},
     {q: "отключения электричества сейчас"},
+    {q: "метро Новосибирск", geo: true},
+    {q: "аэропорт Толмачёво", geo: true},
     {q: "топ-5 аптек", geo: true},
     {q: "аптеки в Центральном районе", geo: true},
     {q: "библиотеки для детей", geo: true},
@@ -943,7 +945,92 @@ function _trySpecialQuery(raw) {
     return true;
   }
 
+  // ── Риски для жизни → таблица выбросов по МО НСО ─────────────────────────
+  if (/риск[иа]?\s+(для\s+)?жизни|экологическ\S+\s+риск/i.test(ql)) {
+    document.getElementById('queryInput').value = '';
+    document.getElementById('loadingState').className = 'hidden';
+    _showRisksView();
+    return true;
+  }
+
   return false;
+}
+
+async function _showRisksView() {
+  const el = document.getElementById('resultArea');
+  el.className = 'fade-in';
+  el.innerHTML = '<div class="text-center py-10 text-slate-400 text-sm">⏳ Загрузка данных о выбросах…</div>';
+  try {
+    const r = await fetch('/ask?q=' + encodeURIComponent('выбросы в атмосферу'));
+    const data = await r.json();
+    const rows = (data.rows || []).slice(0, 15);
+    if (!rows.length) throw new Error('no data');
+    const maxVal = Math.max(...rows.map(r => r.vsego_t || 0));
+    const fmt = v => (v != null && v !== '') ? Number(v).toLocaleString('ru-RU') : '—';
+
+    const tableRows = rows.map((row, i) => {
+      const val = row.vsego_t || 0;
+      const pct = Math.round(val / maxVal * 100);
+      const barColor = val > 10000 ? 'bg-red-500' : val > 3000 ? 'bg-orange-400' : val > 800 ? 'bg-yellow-400' : 'bg-green-400';
+      const badge = row.data_status === 'report'
+        ? '<span class="text-[9px] text-emerald-600 font-semibold">✓</span>'
+        : '<span class="text-[9px] text-amber-500">~</span>';
+      return `
+        <tr class="border-b border-slate-100 hover:bg-slate-50">
+          <td class="py-2 px-3 text-xs font-medium text-slate-700 whitespace-nowrap">${i + 1}. ${esc(row.name || '')} ${badge}</td>
+          <td class="py-2 px-4 min-w-[160px]">
+            <div class="flex items-center gap-2">
+              <div class="flex-1 bg-slate-100 rounded-full h-2">
+                <div class="${barColor} h-2 rounded-full transition-all" style="width:${pct}%"></div>
+              </div>
+              <span class="text-xs font-semibold text-slate-800 w-24 text-right">${fmt(val)} т</span>
+            </div>
+          </td>
+          <td class="py-2 px-3 text-xs text-slate-500 hidden sm:table-cell">SO₂ ${fmt(row.so2_t)} / NOx ${fmt(row.nox_t)}</td>
+        </tr>`;
+    }).join('');
+
+    const year = data.meta?.year || 2024;
+    el.innerHTML = `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-gradient-to-r from-rose-50 to-orange-50 border-b border-slate-200 px-5 py-3.5 flex items-center gap-3">
+          <span class="text-2xl">🏥</span>
+          <div>
+            <div class="font-semibold text-slate-800">Экологические риски НСО</div>
+            <div class="text-xs text-slate-500">Выбросы загрязняющих веществ в атмосферу · 2-ТП Воздух ${year}</div>
+          </div>
+          <button onclick="askNow('выбросы в атмосферу нсо')"
+            class="ml-auto text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors whitespace-nowrap">
+            Полная таблица + карта →
+          </button>
+        </div>
+        <div class="px-4 py-2.5 text-xs text-amber-700 bg-amber-50 border-b border-amber-100">
+          ✓ — официальный отчёт &nbsp;·&nbsp; ~ — оценка (требует верификации по данным rpn.gov.ru)
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200">
+                <th class="py-2 px-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Муниципальное образование</th>
+                <th class="py-2 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Всего, т/год</th>
+                <th class="py-2 px-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">SO₂ / NOx</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
+        <div class="px-4 py-2.5 border-t border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+          <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-green-400 mr-1"></span>&lt; 800 т</span>
+          <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400 mr-1"></span>800 – 3 000 т</span>
+          <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-orange-400 mr-1"></span>3 000 – 10 000 т</span>
+          <span><span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 mr-1"></span>&gt; 10 000 т</span>
+          <span class="ml-auto">Источник: Росприроднадзор · rpn.gov.ru</span>
+        </div>
+      </div>`;
+  } catch(e) {
+    document.getElementById('resultArea').innerHTML =
+      '<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка загрузки данных о выбросах</div>';
+  }
 }
 
 // ─── Ask ─────────────────────────────────────────────────────────────────────
@@ -1127,6 +1214,10 @@ const COL_LABELS = {
   // Тепловые источники
   short_name:'Название', type:'Тип', fuel:'Топливо', thermal_gcal_h:'Мощность, Гкал/ч',
   electric_mw:'Эл. мощность, МВт', operator_group:'Оператор', digitalization_status:'Цифровизация',
+  // Выбросы 2-ТП Воздух
+  vsego_t:'Всего, т/год', tverdye_t:'Твёрдые, т', so2_t:'SO₂, т', co_t:'CO, т',
+  nox_t:'NOx, т', los_t:'ЛОС, т', prochie_t:'Прочие, т',
+  main_sources:'Основные источники', data_status:'Статус данных',
 };
 
 function colLabel(c) { return COL_LABELS[c] || c; }
@@ -2594,8 +2685,20 @@ function renderTopics(topics) {
     </div>
   `;
 
-  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Камеры → Тепло → остальные датасеты
-  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + camerasCard + heatSourcesCard + cards;
+  const emissionsCard = `
+    <div class="topic-card bg-gradient-to-br from-slate-50 to-zinc-100 border border-slate-300 rounded-2xl p-4 cursor-pointer hover:border-slate-500 hover:shadow-md"
+         onclick="setQuery('выбросы в атмосферу нсо')">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">🌫️</span>
+        <span class="bg-slate-200 text-slate-700 border border-slate-300 px-1.5 py-0.5 rounded-full text-xs">2024</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">Выбросы в атмосферу</div>
+      <div class="text-xs text-slate-500 mt-1">2-ТП Воздух · 34 МО НСО</div>
+    </div>
+  `;
+
+  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Камеры → Тепло → Выбросы → остальные датасеты
+  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + camerasCard + heatSourcesCard + emissionsCard + cards;
 }
 
 // ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────
@@ -2997,7 +3100,17 @@ async function loadMap() {
     btn.disabled = false;
     btn.textContent = `🗺 Скрыть карту`;
 
-    panel.innerHTML = '<div id="map2gis" style="height:420px;border-radius:1rem;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 1px 8px rgba(0,0,0,.08)"></div>';
+    const _isEmit = rows.length > 0 && 'vsego_t' in rows[0];
+    const emitLegend = _isEmit ? `
+      <div class="flex flex-wrap items-center gap-3 px-1 py-2 text-xs text-slate-500">
+        <span class="font-medium text-slate-700">Выбросы, т/год:</span>
+        <span class="flex items-center gap-1"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#22c55e;opacity:.82"></span>&lt; 800</span>
+        <span class="flex items-center gap-1"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#eab308;opacity:.82"></span>800 – 3 000</span>
+        <span class="flex items-center gap-1"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#f97316;opacity:.82"></span>3 000 – 10 000</span>
+        <span class="flex items-center gap-1"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#dc2626;opacity:.82"></span>&gt; 10 000</span>
+        <span class="ml-auto opacity-60">~ — оценка, ✓ — отчёт 2-ТП</span>
+      </div>` : '';
+    panel.innerHTML = emitLegend + '<div id="map2gis" style="height:420px;border-radius:1rem;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 1px 8px rgba(0,0,0,.08)"></div>';
     panel.classList.remove('hidden');
 
     if (!window.mapgl) {
@@ -3280,6 +3393,20 @@ function _buildMarkerLabel(row) {
     return `<b style="display:block">${name}</b>${addrHtml}`;
   }
 
+  // ── Выбросы 2-ТП Воздух (vsego_t field) ─────────────────────────────────
+  if ('vsego_t' in row) {
+    const fmt = v => v != null ? Number(v).toLocaleString('ru-RU') : '—';
+    const status = row.data_status === 'report'
+      ? '<span style="background:#166534;color:#bbf7d0;border-radius:4px;padding:1px 5px;font-size:10px">✓ Отчёт</span>'
+      : '<span style="background:#78350f;color:#fde68a;border-radius:4px;padding:1px 5px;font-size:10px">~ Оценка</span>';
+    const year = row._year || 2024;
+    const sources = row.main_sources ? `<span style="display:block;margin-top:3px;opacity:.75;font-size:11px">${esc(row.main_sources)}</span>` : '';
+    return `${status} <b>${esc(row.name || row.short || '')}</b> · ${year}<br>
+<span style="color:#fca5a5">●</span> Всего: <b>${fmt(row.vsego_t)} т/год</b><br>
+<span style="opacity:.8">Твёрдые: ${fmt(row.tverdye_t)} т &nbsp; SO₂: ${fmt(row.so2_t)} т</span><br>
+<span style="opacity:.8">CO: ${fmt(row.co_t)} т &nbsp; NOx: ${fmt(row.nox_t)} т &nbsp; ЛОС: ${fmt(row.los_t)} т</span>${sources}`;
+  }
+
   // ── Парковки и прочее (fallback) ──────────────────────────────────────────
   const rawName = row.ParkType || '';
   const name = esc(rawName.length > 45 ? rawName.slice(0, 43) + '…' : rawName);
@@ -3377,18 +3504,40 @@ function _renderMap() {
       if (!_markerJustClicked) _closePopup();
     });
 
+    // Для выбросов: радиус пропорционален sqrt(vsego_t), цвет по уровню
+    const _isEmissionsView = _currentMapRows.length > 0 && 'vsego_t' in _currentMapRows[0];
+    const _emissionsMax = _isEmissionsView
+      ? Math.max(..._currentMapRows.map(r => r.vsego_t || 0))
+      : 1;
+
     _currentMapRows.forEach(row => {
       const markerEl = document.createElement('div');
       markerEl.dataset.mkr = '1';
-      // Цвет маркера по типу данных
-      let mkrColor = '#3b82f6';
-      if ('line' in row)       mkrColor = row.line === '2' ? '#dc2626' : '#2563eb'; // метро: синяя/красная линия
-      else if ('iata' in row)  mkrColor = '#0ea5e9';  // аэропорт: голубой
-      markerEl.style.cssText =
-        `width:20px;height:20px;background:${mkrColor};border-radius:50%;` +
-        'border:3px solid #fff;cursor:pointer;pointer-events:auto;' +
-        'box-shadow:0 2px 6px rgba(0,0,0,.5);' +
-        'transition:transform .12s;flex-shrink:0';
+
+      if (_isEmissionsView) {
+        // Круг: размер ∝ sqrt(vsego_t / max), от 10px до 52px диаметр
+        const val = row.vsego_t || 0;
+        const diam = Math.round(10 + 42 * Math.sqrt(val / _emissionsMax));
+        const color = val > 10000 ? '#dc2626'
+                    : val > 3000  ? '#f97316'
+                    : val > 800   ? '#eab308'
+                    :               '#22c55e';
+        markerEl.style.cssText =
+          `width:${diam}px;height:${diam}px;background:${color};border-radius:50%;` +
+          'border:2px solid rgba(255,255,255,0.7);cursor:pointer;pointer-events:auto;' +
+          'box-shadow:0 2px 8px rgba(0,0,0,.4);opacity:0.82;' +
+          'transition:transform .12s,opacity .12s;flex-shrink:0';
+      } else {
+        // Цвет маркера по типу данных
+        let mkrColor = '#3b82f6';
+        if ('line' in row)       mkrColor = row.line === '2' ? '#dc2626' : '#2563eb'; // метро
+        else if ('iata' in row)  mkrColor = '#0ea5e9';  // аэропорт
+        markerEl.style.cssText =
+          `width:20px;height:20px;background:${mkrColor};border-radius:50%;` +
+          'border:3px solid #fff;cursor:pointer;pointer-events:auto;' +
+          'box-shadow:0 2px 6px rgba(0,0,0,.5);' +
+          'transition:transform .12s;flex-shrink:0';
+      }
 
       // Используем SDK-объект маркера — DOM-addEventListener на markerEl ненадёжен,
       // потому что mapgl canvas перехватывает pointer-события на уровне SDK.
