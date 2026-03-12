@@ -12,17 +12,13 @@ log = logging.getLogger(__name__)
 
 _JSON_PATH = Path(__file__).parent.parent / "data" / "nsk_emissions_2tp.json"
 
+# Колонки для таблицы (без _lat/_lon — они в rows для карты, но не в таблице)
 TABLE_COLUMNS = [
     "name",
-    "type",
     "vsego_t",
-    "tverdye_t",
     "so2_t",
-    "co_t",
     "nox_t",
-    "los_t",
-    "prochie_t",
-    "main_sources",
+    "co_t",
     "data_status",
     "_lat",
     "_lon",
