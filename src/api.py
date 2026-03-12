@@ -918,6 +918,84 @@ def run_tests():
     )
 
 
+# ── Метро-подсказки для транзитных маршрутов ──────────────────────────────────
+_METRO_DISTRICT_ENTRY: dict[str, tuple[str, str]] = {
+    "Заельцовский":    ("Заельцовская", "1"),
+    "Калининский":     ("Гагаринская", "1"),
+    "Октябрьский":     ("Площадь Маркса", "1"),
+    "Дзержинский":     ("Золотая нива", "2"),
+    "Железнодорожный": ("Площадь Гарина-Михайловского", "2"),
+    # Центральный обслуживается обеими линиями — выбирается динамически
+}
+_METRO_NO_SERVICE = frozenset({"Советский", "Кировский", "Ленинский", "Первомайский", "Кольцово"})
+
+
+def _metro_route_hint(from_d: str, to_d: str) -> dict:
+    """Подсказка маршрута на метро между двумя районами НСК.
+
+    Возвращает dict:
+      available: bool — есть ли вариант на метро
+      from_station / to_station — станции входа и выхода
+      from_line / to_line — «1» или «2»
+      transfer: bool — нужна ли пересадка
+      transfer_exit / transfer_enter — станции пересадки (если transfer=True)
+    """
+    def _base(d: str) -> str:
+        return d.replace(" район", "").strip()
+
+    fb, tb = _base(from_d), _base(to_d)
+
+    if fb in _METRO_NO_SERVICE:
+        return {"available": False, "reason": f"{fb} район — станций метро нет"}
+    if tb in _METRO_NO_SERVICE:
+        return {"available": False, "reason": f"{tb} район — станций метро нет"}
+
+    is_from_central = (fb == "Центральный")
+    is_to_central   = (tb == "Центральный")
+
+    if not is_from_central and fb not in _METRO_DISTRICT_ENTRY:
+        return {"available": False}
+    if not is_to_central and tb not in _METRO_DISTRICT_ENTRY:
+        return {"available": False}
+
+    # Определяем линию назначения
+    if is_to_central:
+        to_station, to_line = None, None   # уточним после from_line
+    else:
+        to_station, to_line = _METRO_DISTRICT_ENTRY[tb]
+
+    # Определяем линию и станцию отправления
+    if is_from_central:
+        target = to_line or "1"
+        from_station = "Площадь Ленина" if target == "1" else "Сибирская"
+        from_line    = target
+    else:
+        from_station, from_line = _METRO_DISTRICT_ENTRY[fb]
+
+    # Уточняем станцию назначения в Центральном
+    if is_to_central:
+        to_station = "Площадь Ленина" if from_line == "1" else "Сибирская"
+        to_line    = from_line
+
+    transfer = (from_line != to_line)
+    result: dict = {
+        "available":    True,
+        "from_station": from_station,
+        "from_line":    from_line,
+        "to_station":   to_station,
+        "to_line":      to_line,
+        "transfer":     transfer,
+    }
+    if transfer:
+        if from_line == "1":
+            result["transfer_exit"]  = "Площадь Ленина"
+            result["transfer_enter"] = "Сибирская"
+        else:
+            result["transfer_exit"]  = "Сибирская"
+            result["transfer_enter"] = "Площадь Ленина"
+    return result
+
+
 @app.get("/docs", include_in_schema=False)
 def custom_swagger_ui() -> HTMLResponse:
     """Swagger UI с навигационной панелью и кнопкой возврата на главную страницу."""
@@ -1383,6 +1461,7 @@ def get_ask(
                 "from": from_district, "to": to_district,
                 "common_routes_count": len(common),
                 "connections": connections,
+                "metro_route": _metro_route_hint(from_district, to_district),
                 "hint": hint,
                 "notice": (
                     "⚠️ Данные о маршрутах взяты из открытых данных мэрии Новосибирска "

@@ -2184,16 +2184,73 @@ const _WORKING_QUESTIONS = [
 ];
 
 // ─── TRANSIT ROUTE ───────────────────────────────────────────────────────────
+function _metroLineBadge(line) {
+  const bg  = line === '1' ? '#2563eb' : '#dc2626';
+  const lbl = line === '1' ? 'Л1 Дзержинская' : 'Л2 Ленинская';
+  return `<span style="background:${bg};color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap">${lbl}</span>`;
+}
+
+function _metroRouteBlock(metro, from, to) {
+  if (!metro || !metro.available) {
+    const reason = metro && metro.reason ? metro.reason : '';
+    return reason
+      ? `<div class="bg-slate-50 rounded-xl border border-slate-200 px-4 py-3 flex items-center gap-2 text-sm text-slate-500">
+           <span>🚇</span><span>Метро: ${esc(reason)}</span>
+         </div>`
+      : '';
+  }
+  const arr = '<span class="text-slate-400 mx-1">→</span>';
+  let routeHtml;
+  if (!metro.transfer) {
+    routeHtml = `
+      <div class="flex flex-wrap items-center gap-2">
+        ${_metroLineBadge(metro.from_line)}
+        ${arr}
+        <span class="text-slate-700 font-medium text-sm">${esc(metro.from_station)}</span>
+        ${arr}
+        <span class="text-slate-700 font-medium text-sm">${esc(metro.to_station)}</span>
+        <span class="text-[11px] px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium border border-emerald-200">Без пересадок</span>
+      </div>`;
+  } else {
+    routeHtml = `
+      <div class="flex flex-wrap items-center gap-2">
+        ${_metroLineBadge(metro.from_line)}
+        ${arr}
+        <span class="text-slate-700 font-medium text-sm">${esc(metro.from_station)}</span>
+        ${arr}
+        <span class="text-slate-600 text-sm">${esc(metro.transfer_exit)}</span>
+        <span class="text-[11px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium border border-amber-200">⇆ пересадка</span>
+        <span class="text-slate-600 text-sm">${esc(metro.transfer_enter)}</span>
+        ${arr}
+        ${_metroLineBadge(metro.to_line)}
+        ${arr}
+        <span class="text-slate-700 font-medium text-sm">${esc(metro.to_station)}</span>
+      </div>`;
+  }
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+      <div class="flex items-center gap-2 mb-2.5">
+        <span class="text-xl">🚇</span>
+        <span class="font-semibold text-slate-700">Вариант на метро</span>
+      </div>
+      ${routeHtml}
+    </div>`;
+}
+
 function renderTransitRoute(data) {
   const from = data.from || '—';
   const to   = data.to   || '—';
   const conns = data.connections || [];
+  const metroBlock = _metroRouteBlock(data.metro_route, from, to);
 
   if (!conns.length) {
     return `
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <p class="text-slate-500 text-sm mb-3">Общих маршрутов между <b>${esc(from)}</b> и <b>${esc(to)}</b> не найдено в базе данных.</p>
-        ${data.hint ? `<a href="${esc(data.hint)}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all">🗺 Открыть маршрут в 2ГИС</a>` : ''}
+      <div class="space-y-3">
+        ${metroBlock}
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+          <p class="text-slate-500 text-sm mb-3">Общих маршрутов между <b>${esc(from)}</b> и <b>${esc(to)}</b> не найдено в базе данных.</p>
+          ${data.hint ? `<a href="${esc(data.hint)}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-all">🗺 Открыть маршрут в 2ГИС</a>` : ''}
+        </div>
       </div>`;
   }
 
@@ -2221,12 +2278,13 @@ function renderTransitRoute(data) {
 
   return `
     <div class="space-y-4">
+      ${metroBlock}
       <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
         <div class="flex items-center gap-3 mb-1">
           <span class="text-2xl">🚌</span>
           <div>
             <p class="font-semibold text-slate-800">${esc(from)} → ${esc(to)}</p>
-            <p class="text-slate-500 text-sm">Найдено ${conns.length} общих маршрутов</p>
+            <p class="text-slate-500 text-sm">Найдено ${conns.length} общих наземных маршрутов</p>
           </div>
         </div>
       </div>
