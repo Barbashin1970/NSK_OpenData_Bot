@@ -22,7 +22,7 @@
   "features": [
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [82.9238, 54.8603]},
+      "geometry": {"type": "Point", "coordinates": [82.8741, 55.0009]},
       "properties": {
         "id": "sgk_tec2",
         "name": "Новосибирская ТЭЦ-2",
@@ -45,7 +45,7 @@
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [83.0427, 54.9183]},
+      "geometry": {"type": "Point", "coordinates": [82.8532, 55.0090]},
       "properties": {
         "id": "sgk_tec3",
         "name": "Новосибирская ТЭЦ-3",
@@ -68,7 +68,7 @@
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [83.0501, 54.8958]},
+      "geometry": {"type": "Point", "coordinates": [82.9893, 55.1003]},
       "properties": {
         "id": "sgk_tec4",
         "name": "Новосибирская ТЭЦ-4",
@@ -79,7 +79,7 @@
         "type": "ТЭЦ",
         "fuel": "Уголь",
         "address": "г. Новосибирск, ул. Богдана Хмельницкого, 102",
-        "district": "Октябрьский",
+        "district": "Калининский",
         "thermal_gcal_h": 1160,
         "electric_mw": 490,
         "year_built": 1956,
@@ -91,7 +91,7 @@
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [82.9583, 54.8372]},
+      "geometry": {"type": "Point", "coordinates": [83.0615, 55.0055]},
       "properties": {
         "id": "sgk_tec5",
         "name": "Новосибирская ТЭЦ-5",
@@ -114,7 +114,7 @@
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [78.3226, 55.3614]},
+      "geometry": {"type": "Point", "coordinates": [78.3656, 55.4478]},
       "properties": {
         "id": "sgk_tec_barabinsk",
         "name": "Барабинская ТЭЦ",
@@ -137,7 +137,7 @@
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [83.068, 54.827]},
+      "geometry": {"type": "Point", "coordinates": [83.0764, 54.7906]},
       "properties": {
         "id": "uev_ts1",
         "name": "Тепловая станция № 1 (ФГУП «УЭВ»)",
@@ -160,7 +160,7 @@
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [83.0964, 54.8456]},
+      "geometry": {"type": "Point", "coordinates": [83.1194, 54.8729]},
       "properties": {
         "id": "uev_ts2",
         "name": "Тепловая станция № 2 (ФГУП «УЭВ»)",
