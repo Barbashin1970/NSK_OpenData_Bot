@@ -855,7 +855,7 @@ function _trySpecialQuery(raw) {
   const ql = q.toLowerCase();
 
   // ── Роли ──────────────────────────────────────────────────────────────────
-  if (/(?:^|\s)я\s+(?:горожанин|горожанка|жительниц[аеу]?|житель|жителя|пользователь|простой\s+пользователь)(?:\s|$)/i.test(ql)) {
+  if (/^(?:я\s+)?(?:горожанин[а-яё]*|горожанк[а-яё]+|жительниц[аеу]?|житель[яю]?|пользователь(?:\s+города)?)(?:\s|$)/i.test(ql)) {
     setRole('citizen');
     document.getElementById('queryInput').value = '';
     document.getElementById('loadingState').className = 'hidden';
@@ -876,7 +876,7 @@ function _trySpecialQuery(raw) {
       </div>`;
     return true;
   }
-  if (/(?:(?:^|\s)я\s+служащ|(?:^|\s)служащ\w*\s*(?:города|умного\s*города)?)(?:\s|$)/i.test(ql)) {
+  if (/^(?:я\s+)?служащ/i.test(ql)) {
     const dist = _extractDistrict(ql);
     setRole('official', dist || officialDistrict);
     document.getElementById('queryInput').value = '';
@@ -888,7 +888,7 @@ function _trySpecialQuery(raw) {
     }, 800);
     return true;
   }
-  if (/(?:^|\s)я\s+(?:мэр|руководитель)(?:\s|$)/i.test(ql)) {
+  if (/^(?:я\s+)?(?:мэр|руководитель)(?:\s|$)/i.test(ql)) {
     setRole('mayor');
     document.getElementById('queryInput').value = '';
     _showInfoCard('🏛️', 'Режим: Мэр — панель загружается…');
