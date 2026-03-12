@@ -485,7 +485,7 @@ def execute_metro(plan: Plan) -> dict[str, Any]:
       METRO_INFO     — обзорная карточка: 2 линии, 13 станций, статистика
       METRO_STATIONS — список станций с фильтрами по линии / району
     """
-    from .metro_data import get_metro_info, get_stations, METRO_LINES
+    from .metro_data import get_metro_info, get_stations, METRO_LINES, METRO_INFO
 
     op = plan.operation
     line_filter = plan.extra_filters.get("line") or None
@@ -496,6 +496,7 @@ def execute_metro(plan: Plan) -> dict[str, Any]:
             stations = get_stations(line_filter=line_filter, district_filter=district_filter)
             return {
                 "operation": op,
+                "info": {**METRO_INFO, "lines": METRO_LINES},   # нужен для renderMetro (stats)
                 "rows": stations,
                 "columns": ["name", "line", "address", "district", "_lon", "_lat", "interchange_with", "note", "passengers_day"],
                 "count": len(stations),

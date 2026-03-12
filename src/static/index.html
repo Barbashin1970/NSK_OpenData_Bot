@@ -2790,10 +2790,13 @@ function _resetMap() {
 
 function maybeShowMapBtn(data, query) {
   if (!_mapglKey) return;
-  if (!['FILTER', 'TOP_N', 'CONSTRUCTION_ACTIVE', 'CONSTRUCTION_COMMISSIONED'].includes(data.operation)) return;
+  const op = data.operation || '';
+  const _isMetroAirport = op.startsWith('METRO_') || op === 'AIRPORT_INFO';
+  if (!['FILTER', 'TOP_N', 'CONSTRUCTION_ACTIVE', 'CONSTRUCTION_COMMISSIONED'].includes(op) && !_isMetroAirport) return;
   if (!data.rows || !data.rows.length) return;
   _lastMapQuery = query;
-  _lastMapCoordsEnriched = Boolean(data.coords_enriched);
+  // Метро и аэропорт — координаты уже в rows, геокодирование не нужно
+  _lastMapCoordsEnriched = Boolean(data.coords_enriched) || _isMetroAirport;
   _lastPageRows = data.rows;  // сохраняем строки для coords_enriched-сценария
   const el = document.getElementById('resultArea');
   const wrap = document.createElement('div');
@@ -3262,7 +3265,7 @@ function _renderMap() {
           `width:22px;height:22px;background:${mColor};border-radius:5px;` +
           'border:2px solid #fff;cursor:pointer;pointer-events:auto;' +
           'box-shadow:0 2px 7px rgba(0,0,0,.55);' +
-          'display:flex;align-items:center;justify-content:center;' +
+          'text-align:center;line-height:18px;' +
           'font-size:12px;font-weight:900;color:#fff;' +
           'transition:transform .12s;flex-shrink:0';
         mEl.textContent = 'М';
