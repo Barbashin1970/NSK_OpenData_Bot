@@ -3488,6 +3488,18 @@ function _buildMarkerLabel(row) {
     return `${pilotBadge}${typeBadge} <b>${esc(row.short_name || row.name || '')}</b>${power}${elec}${zone}`;
   }
 
+  // ── Медицинское учреждение (OSM) ─────────────────────────────────────────
+  // Поля: osm_id, name, facility_type, type_label, emergency, phone, address, district
+  if ('facility_type' in row) {
+    const typeIcon = row.facility_type === 'hospital' ? '🏥' : '🏨';
+    const typeLabel = esc(row.type_label || row.facility_type || 'Учреждение');
+    const name = esc(row.name || '');
+    const addr = row.address ? `<span style="display:block;margin-top:3px;color:#94a3b8;font-size:11px">📍 ${esc(row.address)}</span>` : '';
+    const phone = row.phone ? `<span style="display:block;color:#60a5fa;font-size:11px">📞 ${esc(row.phone)}</span>` : '';
+    const emerg = row.emergency === 'yes' ? `<span style="display:block;color:#f87171;font-size:11px">🚑 Приёмный покой</span>` : '';
+    return `<b>${typeIcon} ${typeLabel}</b><span style="display:block;margin-top:2px">${name}</span>${addr}${phone}${emerg}`;
+  }
+
   // ── Камера фиксации (OSM) ─────────────────────────────────────────────────
   // Поля: osm_id, maxspeed, name (название дороги), direction, ref
   if (row.osm_id !== undefined) {
