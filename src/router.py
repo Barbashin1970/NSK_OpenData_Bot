@@ -702,6 +702,53 @@ def _route_airport(q: str) -> "RouteResult | None":
     )
 
 
+# ── Медицинские учреждения ────────────────────────────────────────────────────
+_MEDICAL_PRIMARY = [
+    "больниц", "поликлиник", "клиник", "медицин", "стационар",
+    "хирург", "инфекцион", "онколог", "амбулатор",
+]
+_MEDICAL_KEYWORDS = [
+    "больниц",
+    "поликлиник",
+    "клиник",
+    "медицинск учреждени",
+    "медицинск организаци",
+    "медицинск помощ",
+    "стационар",
+    "хирургическ",
+    "инфекционн больниц",
+    "онкологическ",
+    "амбулатор",
+    "скорая помощ",
+    "приёмный покой",
+    "приемный покой",
+    "лечебн учреждени",
+    "гкб",
+]
+
+
+def _route_medical(q: str) -> "RouteResult | None":
+    """Маршрутизация запросов к медицинским учреждениям (OSM Overpass)."""
+    if not any(m in q for m in _MEDICAL_PRIMARY):
+        return None
+
+    score = sum(
+        len(kw.split()) ** 1.5
+        for kw in _MEDICAL_KEYWORDS
+        if all(re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in _normalize(kw).split())
+    )
+    if score == 0:
+        score = 1.0
+
+    confidence = min(1.0, max(score / 8, 0.60))
+    return RouteResult(
+        topic="medical",
+        confidence=confidence,
+        name="Медицинские учреждения Новосибирска",
+        matched_keywords=[kw for kw in _MEDICAL_KEYWORDS if _normalize(kw) in q],
+    )
+
+
 def _route_construction(q: str) -> "RouteResult | None":
     """Проверяет, относится ли запрос к теме строительства."""
     if not any(m in q for m in _CONSTRUCTION_PRIMARY):
@@ -773,6 +820,11 @@ def route(query: str) -> list[RouteResult]:
     emissions_result = _route_emissions(q)
     if emissions_result:
         results.append(emissions_result)
+
+    # Тема медицинских учреждений (не в YAML-реестре, обрабатывается отдельно)
+    medical_result = _route_medical(q)
+    if medical_result:
+        results.append(medical_result)
 
     # Тема строительства (не в YAML-реестре, обрабатывается отдельно)
     construction_result = _route_construction(q)

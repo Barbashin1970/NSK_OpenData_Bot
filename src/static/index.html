@@ -285,6 +285,8 @@ const ROLE_CHIPS = {
     {q: "детские спортивные организации", geo: true},
     {q: "школы в Советском районе", geo: true},
     {q: "камеры видеофиксации", geo: true},
+    {q: "больницы Новосибирска", geo: true},
+    {q: "поликлиники в Дзержинском районе", geo: true},
     {q: "активные стройки", geo: true},
     {q: "что ты умеешь"},
   ],
@@ -303,6 +305,8 @@ const ROLE_CHIPS = {
     {q: "библиотеки города", geo: true},
     {q: "культурные организации", geo: true},
     {q: "камеры фиксации нарушений", geo: true},
+    {q: "больницы по районам"},
+    {q: "поликлиники города", geo: true},
     {q: "активные стройки", geo: true},
     {q: "стройки по районам"},
   ],
@@ -318,6 +322,8 @@ const ROLE_CHIPS = {
     {q: "культурные организации", geo: true},
     {q: "аптеки в Центральном районе", geo: true},
     {q: "камеры видеофиксации на дорогах", geo: true},
+    {q: "больницы по районам"},
+    {q: "больницы с приёмным покоем", geo: true},
     {q: "активные стройки", geo: true},
     {q: "стройки по районам"},
   ],
@@ -2587,41 +2593,135 @@ function renderUnknown(data) {
 }
 
 // ─── INFO ─────────────────────────────────────────────────────────────────────
-const TOPIC_ICONS = {
-  parking:'🚗', stops:'🚌', culture:'🎭', schools:'🏫',
-  kindergartens:'🧒', libraries:'📚',
-  sport_grounds:'⚽', pharmacies:'💊', sport_orgs:'🏋️',
-  construction_permits:'⛏️', construction_commissioned:'🔑',
-};
+function renderInfo(_data) {
+  // Разделы по концепции IQ города
+  const sections = [
+    {
+      id: 'utility',
+      label: 'ЖКХ и коммунальное',
+      color: 'amber',
+      items: [
+        { icon: '⚡', name: 'Отключения электричества',   q: 'отключения электричества сейчас' },
+        { icon: '🔥', name: 'Отключения отопления',       q: 'отключения отопления сейчас' },
+        { icon: '💧', name: 'Нет горячей воды',           q: 'нет горячей воды сейчас' },
+        { icon: '🚿', name: 'Нет холодной воды',          q: 'нет холодной воды сейчас' },
+        { icon: '🔮', name: 'Газоснабжение',              q: 'отключения газа сейчас' },
+        { icon: '📋', name: 'Плановые отключения',        q: 'плановые отключения на неделю' },
+        { icon: '📈', name: 'История отключений',         q: 'история отключений за неделю' },
+      ],
+    },
+    {
+      id: 'ecology',
+      label: 'Экология и погода',
+      color: 'emerald',
+      items: [
+        { icon: '🌿', name: 'Качество воздуха сейчас',   q: 'качество воздуха в городе' },
+        { icon: '😷', name: 'Превышения ПДК PM2.5',      q: 'превышение ПДК по PM2.5' },
+        { icon: '🌡️', name: 'Прогноз погоды',            q: 'прогноз погоды на неделю' },
+        { icon: '⚠️', name: 'Риски для жизни',           q: 'риски для жизни в городе' },
+        { icon: '📉', name: 'Динамика загрязнения',       q: 'динамика качества воздуха' },
+        { icon: '🏭', name: 'Выбросы по предприятиям',   q: 'выбросы в атмосферу НСО' },
+      ],
+    },
+    {
+      id: 'transport',
+      label: 'Транспорт и дороги',
+      color: 'blue',
+      items: [
+        { icon: '🚗', name: 'Пробки сейчас',             q: 'пробки сейчас' },
+        { icon: '🚇', name: 'Метро Новосибирска',        q: 'метро Новосибирск' },
+        { icon: '✈️', name: 'Аэропорт Толмачёво',       q: 'аэропорт Толмачёво' },
+        { icon: '🚌', name: 'Остановки транспорта',      q: 'остановки в Центральном районе' },
+        { icon: '🗺️', name: 'Маршруты между районами',  q: 'как проехать из Академгородка в Центральный' },
+        { icon: '🅿️', name: 'Парковки',                 q: 'парковки в Центральном районе' },
+      ],
+    },
+    {
+      id: 'construction',
+      label: 'Строительство',
+      color: 'orange',
+      items: [
+        { icon: '🏗️', name: 'Активные стройки',         q: 'активные стройки Новосибирска' },
+        { icon: '📄', name: 'Разрешения на строительство', q: 'разрешения на строительство' },
+        { icon: '🔑', name: 'Введено в эксплуатацию',   q: 'ввод в эксплуатацию по районам' },
+        { icon: '📊', name: 'Стройки по районам',        q: 'стройки по районам' },
+      ],
+    },
+    {
+      id: 'infra',
+      label: 'Инфраструктура города',
+      color: 'purple',
+      items: [
+        { icon: '🏥', name: 'Больницы и поликлиники',   q: 'больницы Новосибирска' },
+        { icon: '💊', name: 'Аптеки',                   q: 'аптеки в центре' },
+        { icon: '🏫', name: 'Школы',                    q: 'школы по районам' },
+        { icon: '🧒', name: 'Детские сады',             q: 'детские сады в Советском районе' },
+        { icon: '📚', name: 'Библиотеки',               q: 'библиотеки города' },
+        { icon: '🎭', name: 'Культура',                 q: 'культурные организации' },
+        { icon: '🏋️', name: 'Спортивные организации',  q: 'спортивные организации' },
+        { icon: '⚽', name: 'Спортплощадки',            q: 'спортплощадки в Дзержинском районе' },
+      ],
+    },
+    {
+      id: 'safety',
+      label: 'Безопасность',
+      color: 'red',
+      items: [
+        { icon: '📷', name: 'Камеры фиксации ПДД',      q: 'камеры видеофиксации' },
+        { icon: '🌡️', name: 'Тепловые источники ТЭЦ',  q: 'тепловые источники Новосибирска' },
+      ],
+    },
+  ];
 
-function renderInfo(data) {
-  const topics = data.topics || [];
-  const cards = topics.map(t => `
-    <div class="bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl p-4 cursor-pointer transition-all topic-card"
-         onclick="setQuery('покажи ${esc(t.name)}')">
-      <span class="text-xl block mb-2">${TOPIC_ICONS[t.id] || '📊'}</span>
-      <div class="font-semibold text-sm text-slate-800">${esc(t.name)}</div>
-      <div class="text-xs text-slate-400 mt-1 leading-relaxed">${esc(t.description || '')}</div>
-    </div>
-  `).join('');
+  const colorMap = {
+    amber:   { bg: 'bg-amber-50',   border: 'border-amber-200',   text: 'text-amber-700',   hover: 'hover:bg-amber-100' },
+    emerald: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', hover: 'hover:bg-emerald-100' },
+    blue:    { bg: 'bg-blue-50',    border: 'border-blue-200',    text: 'text-blue-700',    hover: 'hover:bg-blue-100' },
+    orange:  { bg: 'bg-orange-50',  border: 'border-orange-200',  text: 'text-orange-700',  hover: 'hover:bg-orange-100' },
+    purple:  { bg: 'bg-purple-50',  border: 'border-purple-200',  text: 'text-purple-700',  hover: 'hover:bg-purple-100' },
+    red:     { bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     hover: 'hover:bg-red-100' },
+  };
+
+  const hasVoice = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  const voiceHint = hasVoice
+    ? `<span class="inline-flex items-center gap-1.5 bg-white/60 border border-slate-200 rounded-full px-2.5 py-1 text-xs text-slate-600"><span>🎙</span> Скажите <b>«Сигма»</b> — и я услышу</span>`
+    : `<span class="inline-flex items-center gap-1.5 bg-white/60 border border-slate-200 rounded-full px-2.5 py-1 text-xs text-slate-500">🎙 Голосовой ввод: Chrome / Safari</span>`;
+
+  const sectionsHtml = sections.map(sec => {
+    const c = colorMap[sec.color] || colorMap.blue;
+    const items = sec.items.map(it => `
+      <button onclick="setQuery('${esc(it.q)}')"
+              class="flex items-center gap-2 w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-700 ${c.hover} transition-colors group">
+        <span class="text-sm flex-shrink-0 w-5 text-center">${it.icon}</span>
+        <span class="group-hover:text-slate-900 leading-tight">${esc(it.name)}</span>
+      </button>
+    `).join('');
+    return `
+      <div class="${c.bg} ${c.border} border rounded-xl p-3">
+        <div class="text-xs font-semibold ${c.text} uppercase tracking-wide mb-2">${esc(sec.label)}</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-0.5">${items}</div>
+      </div>
+    `;
+  }).join('');
 
   return `
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-      <p class="text-slate-500 text-sm mb-4">Я умею отвечать на вопросы о:</p>
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${cards}</div>
-      <div class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 cursor-pointer hover:bg-amber-100 transition-colors topic-card"
-             onclick="setQuery('отключения электричества сейчас')">
-          <span class="text-xl block mb-2">⚡</span>
-          <div class="font-semibold text-sm text-slate-800">Отключения ЖКХ</div>
-          <div class="text-xs text-slate-400 mt-1">Электро, вода, тепло · 051.novo-sibirsk.ru · реальное время</div>
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <!-- Шапка-приветствие -->
+      <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4 text-white">
+        <div class="flex items-start gap-3">
+          <img src="/static/img/sigma-cat.png" class="h-10 w-10 rounded-full flex-shrink-0 object-cover" alt="Сима">
+          <div class="min-w-0">
+            <p class="font-semibold text-base leading-snug">Привет! Я — Сима</p>
+            <p class="text-blue-100 text-xs mt-0.5 leading-relaxed">Ваш голосовой навигатор по открытым данным Новосибирска. Спросите меня о городе — голосом или текстом.</p>
+          </div>
         </div>
-        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 cursor-pointer hover:bg-emerald-100 transition-colors topic-card"
-             onclick="setQuery('качество воздуха в городе')">
-          <span class="text-xl block mb-2">🍃</span>
-          <div class="font-semibold text-sm text-slate-800">Экология и погода</div>
-          <div class="text-xs text-slate-400 mt-1">AQI · PM2.5 · PM10 · NO₂ · Open-Meteo · обновл. 15 мин</div>
-        </div>
+        <div class="mt-3 flex flex-wrap gap-2">${voiceHint}</div>
+      </div>
+      <!-- Разделы -->
+      <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">${sectionsHtml}</div>
+      <!-- Подпись -->
+      <div class="px-4 pb-3 text-center text-xs text-slate-400">
+        Данные: мэрия Новосибирска · OpenStreetMap · Open-Meteo · 051.novo-sibirsk.ru
       </div>
     </div>
   `;

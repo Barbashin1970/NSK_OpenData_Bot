@@ -79,6 +79,7 @@ _API_DESCRIPTION = """
 | `sport_orgs` | Спортивные организации | ~89 |
 | `culture` | Организации культуры | ~11 |
 | `cameras` | Камеры фиксации нарушений ПДД | ~60 (OSM) |
+| `medical` | Медицинские учреждения (больницы, поликлиники) | ~100+ (OSM) |
 | `power_outages` | Отключения ЖКХ (электро/тепло/вода/газ) | реальное время |
 | `ecology` | Качество воздуха + погода | реальное время |
 | `construction` | Разрешения на строительство + ввод в эксплуатацию | ~5 942 + ~1 935 |
@@ -813,6 +814,26 @@ def run_tests():
             health_checks.append({"topic": "ecology", "status": "missing",
                                   "msg": "Ошибка проверки экологии"})
 
+        # ── Медицинские учреждения ───────────────────────────────────────────
+        try:
+            from .medical_cache import get_medical_meta, is_medical_stale, count_medical
+            med_meta = get_medical_meta()
+            if med_meta.get("last_updated"):
+                stale = is_medical_stale()
+                n = med_meta.get("total_rows", count_medical())
+                ts = str(med_meta["last_updated"])[:16].replace("T", " ")
+                health_checks.append({
+                    "topic": "medical",
+                    "status": "stale" if stale else "ok",
+                    "msg": f"{n} медучреждений · OSM · {ts}",
+                })
+            else:
+                health_checks.append({"topic": "medical", "status": "missing",
+                                      "msg": "Нет данных о медучреждениях"})
+        except Exception:
+            health_checks.append({"topic": "medical", "status": "missing",
+                                  "msg": "Ошибка проверки медучреждений"})
+
         # ── Камеры фиксации ──────────────────────────────────────────────────
         try:
             from .cameras_cache import get_cameras_meta, is_cameras_stale, count_cameras
@@ -1531,6 +1552,93 @@ def get_ask(
                     "total_rows": meta.get("total_rows", 0),
                     "source": "OpenStreetMap · Overpass API",
                 },
+            }
+
+    # ── Медицинские учреждения (OSM Overpass, TTL 72ч) ────────────────────────
+    if topic == "medical":
+        from .medical_cache import (
+            query_medical, count_medical, group_by_district as _medical_group,
+            get_medical_meta, upsert_medical, is_medical_stale,
+        )
+        from .medical_fetcher import fetch_medical
+
+        if is_medical_stale():
+            fetched = fetch_medical()
+            if fetched:
+                upsert_medical(fetched)
+
+        op = plan.operation
+        meta = get_medical_meta()
+        district = plan.district
+        facility_type = plan.extra_filters.get("facility_type", "") or None
+        emergency_only = plan.extra_filters.get("emergency_only", "") == "1"
+
+        _medical_source = {
+            "last_updated": str(meta.get("last_updated") or ""),
+            "total_rows": meta.get("total_rows", 0),
+            "source": "OpenStreetMap · Overpass API · ODbL",
+            "ttl_hours": 72,
+        }
+
+        if op == "MEDICAL_COUNT":
+            total = count_medical(
+                district_filter=district,
+                facility_type=facility_type,
+                emergency_only=emergency_only,
+            )
+            return {
+                "query": q,
+                "topic": topic,
+                "topic_name": route_result.name,
+                "confidence": round(route_result.confidence, 3),
+                "operation": "COUNT",
+                "count": total,
+                "rows": [],
+                "columns": [],
+                "medical_meta": _medical_source,
+            }
+        elif op == "MEDICAL_GROUP":
+            rows = _medical_group()
+            return {
+                "query": q,
+                "topic": topic,
+                "topic_name": route_result.name,
+                "confidence": round(route_result.confidence, 3),
+                "operation": "GROUP",
+                "rows": rows,
+                "columns": ["район", "количество", "больниц", "поликлиник"],
+                "count": sum(r.get("количество", 0) for r in rows),
+                "medical_meta": _medical_source,
+            }
+        else:  # MEDICAL_LIST (FILTER)
+            lim = plan.limit or 20
+            off = plan.offset or 0
+            rows = query_medical(
+                limit=lim,
+                offset=off,
+                district_filter=district,
+                facility_type=facility_type,
+                emergency_only=emergency_only,
+            )
+            total = count_medical(
+                district_filter=district,
+                facility_type=facility_type,
+                emergency_only=emergency_only,
+            )
+            return {
+                "query": q,
+                "topic": topic,
+                "topic_name": route_result.name,
+                "confidence": round(route_result.confidence, 3),
+                "operation": "FILTER",
+                "district": district or "",
+                "count": total,
+                "rows": rows,
+                "columns": ["name", "type_label", "emergency", "address",
+                            "phone", "district", "_lat", "_lon"],
+                "coords_enriched": True,
+                "coords_source": "OpenStreetMap (предзагружены)",
+                "medical_meta": _medical_source,
             }
 
     # ── Тепловые источники (статический GeoJSON) ──────────────────────────────

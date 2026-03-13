@@ -99,6 +99,7 @@ Operation = Literal[
     "CONSTRUCTION_COUNT", "CONSTRUCTION_GROUP",
     "METRO_INFO", "METRO_STATIONS",
     "AIRPORT_INFO",
+    "MEDICAL_LIST", "MEDICAL_COUNT", "MEDICAL_GROUP",
 ]
 
 # --- Паттерны для запросов о строительстве ---
@@ -164,6 +165,46 @@ def make_plan(query: str, topic: str | None) -> Plan:
             year=None,
             min_value=None,
             extra_filters={"line": line_filter or ""},
+        )
+
+    # Для темы медицины — специальные операции
+    if topic == "medical":
+        district = extract_district(query)
+        sub = extract_sub_district(query)
+        sub_district = sub[1] if sub else None
+        limit = extract_limit(query) or 20
+
+        # Тип учреждения из запроса
+        q_low = query.lower()
+        facility_type = ""
+        if "больниц" in q_low or "стационар" in q_low or "хирург" in q_low or "инфекцион" in q_low:
+            facility_type = "hospital"
+        elif "поликлиник" in q_low or "амбулатор" in q_low or "клиник" in q_low:
+            facility_type = "clinic"
+
+        # Приёмный покой / скорая помощь
+        emergency_only = "приём" in q_low or "приемн" in q_low or "скорая" in q_low
+
+        if COUNT_PATTERNS.search(q):
+            operation = "MEDICAL_COUNT"
+        elif GROUP_PATTERNS.search(q):
+            operation = "MEDICAL_GROUP"
+        else:
+            operation = "MEDICAL_LIST"
+
+        return Plan(
+            operation=operation,
+            topic="medical",
+            district=district,
+            street=None,
+            limit=limit,
+            year=None,
+            min_value=None,
+            sub_district=sub_district,
+            extra_filters={
+                "facility_type": facility_type,
+                "emergency_only": "1" if emergency_only else "",
+            },
         )
 
     # Для темы аэропорта — всегда INFO
