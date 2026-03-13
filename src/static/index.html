@@ -178,8 +178,15 @@
       >🎙</button>
     </div>
 
-    <!-- Example chips -->
-    <div id="chips" class="flex flex-wrap gap-2 mt-4"></div>
+    <!-- Example chips — сворачиваемый блок подсказок -->
+    <div class="mt-3">
+      <button id="chipsToggleBtn" onclick="toggleChips()"
+        class="flex items-center gap-1.5 text-white/45 hover:text-white/80 text-xs transition-colors mb-2 select-none">
+        <span>Примеры вопросов</span>
+        <span id="chipsChevron" style="display:inline-block;transition:transform .2s ease;font-size:10px;line-height:1">▼</span>
+      </button>
+      <div id="chips" class="flex flex-wrap gap-2"></div>
+    </div>
   </div>
 </header>
 
@@ -267,6 +274,7 @@ const NSK_DISTRICTS = [
 // geo: true — запрос возвращает список объектов с адресами → появится кнопка «На карте»
 const ROLE_CHIPS = {
   citizen: [
+    {q: "что ты умеешь", bold: true},           // первый — онбординг нового пользователя
     {q: "нет горячей воды"},
     {q: "отключения электричества сейчас"},
     {q: "метро Новосибирск", geo: true},
@@ -288,7 +296,6 @@ const ROLE_CHIPS = {
     {q: "больницы Новосибирска", geo: true},
     {q: "поликлиники в Дзержинском районе", geo: true},
     {q: "активные стройки", geo: true},
-    {q: "что ты умеешь"},
   ],
   official: [
     {q: "аварийные отключения ЖКХ сейчас"},
@@ -329,13 +336,23 @@ const ROLE_CHIPS = {
   ],
 };
 
+// Состояние сворачивания подсказок — сохраняется в localStorage
+// По умолчанию открыто; опытный пользователь может свернуть и это запомнится
+let _chipsOpen = localStorage.getItem('nsk_chips_open') !== 'false';
+
 function buildChips() {
   const el = document.getElementById('chips');
   const chips = ROLE_CHIPS[currentRole] || ROLE_CHIPS.citizen;
   const hasKey = Boolean(_mapglKey);
   el.innerHTML = chips.map(item => {
-    const q = item.q;
-    const geo = item.geo && hasKey;
+    const q    = item.q;
+    const geo  = item.geo && hasKey;
+    const bold = item.bold;  // флаг для выделения ключевого чипа жирным
+
+    // Жирный чип (что ты умеешь) — выделен сильнее чем обычный
+    if (bold) {
+      return `<button class="chip px-3.5 py-1.5 bg-white/25 hover:bg-white/40 text-white border border-white/40 text-xs rounded-full cursor-pointer font-semibold" data-query="${esc(q)}" title="Узнайте все возможности бота">${q}</button>`;
+    }
     const cls = geo
       ? 'bg-blue-500/20 hover:bg-blue-500/35 text-blue-100 border border-blue-400/30 hover:border-blue-400/60'
       : 'bg-white/15 hover:bg-white/25 text-white border border-white/20';
@@ -345,6 +362,28 @@ function buildChips() {
   el.querySelectorAll('[data-query]').forEach(btn =>
     btn.addEventListener('click', () => setQuery(btn.dataset.query))
   );
+  _applyChipsState();
+}
+
+/** Применяет текущее состояние открыт/свёрнут к DOM */
+function _applyChipsState() {
+  const el      = document.getElementById('chips');
+  const chevron = document.getElementById('chipsChevron');
+  if (!el) return;
+  if (_chipsOpen) {
+    el.style.display = 'flex';
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+  } else {
+    el.style.display = 'none';
+    if (chevron) chevron.style.transform = 'rotate(-90deg)';
+  }
+}
+
+/** Сворачивает/разворачивает блок примеров вопросов */
+function toggleChips() {
+  _chipsOpen = !_chipsOpen;
+  localStorage.setItem('nsk_chips_open', _chipsOpen);
+  _applyChipsState();
 }
 
 // ─── Role system ──────────────────────────────────────────────────────────────
