@@ -140,7 +140,7 @@
         </div>
         <!-- 2GIS badge — icon+text on desktop, icon-only on mobile -->
         <div id="mapglBadge" class="hidden flex-shrink-0 flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs rounded-xl font-medium" title="2GIS API ключ загружен · карты и геокодирование доступны">
-          🗺<span class="hidden sm:inline"> 2GIS</span>
+          📍<span class="hidden sm:inline"> 2GIS</span>
         </div>
         <!-- API Docs — hidden on mobile -->
         <a href="/docs" target="_blank"
@@ -868,7 +868,7 @@ function _showInfoCard(icon, msg) {
 
 function _trySpecialQuery(raw) {
   // Strip «Сигма» wake-word prefix
-  const q = raw.replace(/^сигма[!,.:)?\s]*/i, '').trim();
+  const q = raw.replace(/^с[ие]гм[ао][!,.:)?\s]*/i, '').trim();
   const ql = q.toLowerCase();
 
   // ── Роли ──────────────────────────────────────────────────────────────────
@@ -3718,7 +3718,7 @@ function toggleVoice() {
   _recognition.onresult = (e) => {
     let text = e.results[0][0].transcript;
     // Срезаем wake-word «Сигма» (с любым знаком или без)
-    text = text.replace(/^(сигма[!,.!]?\s*)/i, '').trim();
+    text = text.replace(/^(с[ие]гм[ао][!,.]?\s*)/i, '').trim();
     document.getElementById('queryInput').value = text;
     resetMic();
     if (text) ask();
