@@ -515,16 +515,36 @@ marker.on('click', (e) => {
 });
 ```
 
-### 2. Позиционирование fixed-попапа по координатам клика
+### 2. Позиционирование fixed-попапа: десктоп + touch
 
-SDK-событие передаёт нативный MouseEvent в `e.originalEvent`:
+На **десктопе** `e.originalEvent` — `MouseEvent` с `.clientX/.clientY`.
+На **мобильном** `e.originalEvent` — `TouchEvent` без `.clientX` (оно `undefined`).
+
+Используется вспомогательная функция `_getEventCoords(e)` — единственное место, знающее о touch. `_showPopup` не изменялась:
+
 ```javascript
-const cX = e.originalEvent?.clientX
-  ?? (document.getElementById('map2gis').getBoundingClientRect().left + e.point.x);
-const cY = e.originalEvent?.clientY
-  ?? (document.getElementById('map2gis').getBoundingClientRect().top + e.point.y);
+function _getEventCoords(e) {
+  const oe = e.originalEvent;
+  if (oe && oe.changedTouches && oe.changedTouches.length > 0) {
+    // Touch-устройство (iOS/Android)
+    return { x: oe.changedTouches[0].clientX, y: oe.changedTouches[0].clientY };
+  }
+  if (oe && oe.clientX != null) {
+    // Десктоп — MouseEvent (основной путь, логика не изменена)
+    return { x: oe.clientX, y: oe.clientY };
+  }
+  // Финальный fallback: SDK e.point — пиксели внутри canvas
+  const rect = document.getElementById('map2gis').getBoundingClientRect();
+  return { x: rect.left + e.point.x, y: rect.top + e.point.y };
+}
+
+// В обработчике marker.on('click'):
+const { x: cX, y: cY } = _getEventCoords(e);
+_showPopup(row, markerEl, cX, cY);
 // Попап с position:fixed → cX+16, cY-28
 ```
+
+**Правило:** при добавлении новых обработчиков маркеров всегда использовать `_getEventCoords(e)`, не читать `e.originalEvent.clientX` напрямую.
 
 ### 3. Контент тултипа: ветки по типу датасета (`_buildMarkerLabel`)
 
@@ -617,7 +637,58 @@ const sections = s.split(/\.\s*(?=[А-ЯA-Z])/);
 
 `_extractDistrict(text)` ищет стемы районов (label.slice(0, -2)) в строке — работает для всех падежей («советского», «академгородок», «кольцово»).
 
-Wake-word стриппинг в voice handler: `/^(сигма[!,.!]?\s*)/i` — срезает «Сигма» + один знак пунктуации + пробелы. В `_trySpecialQuery` — дополнительный strip `/^сигма[!,.:)?\s]*/i` как страховка.
+Wake-word стриппинг в voice handler: `/^(с[ие]гм[ао][!,.]?\s*)/i` — охватывает «Сигма», «Сима», «Сегма» (частые ошибки распознавания, буква «Г» иногда «съедается»). В `_trySpecialQuery` — аналогичный strip `/^с[ие]гм[ао][!,.:)?\s]*/i` как страховка.
+
+**Правило:** при расширении списка wake-word менять оба регекспа одновременно.
+
+---
+
+## Адаптивный интерфейс: десктоп / мобильный
+
+> Весь адаптив реализован через Tailwind responsive-префиксы (`sm:` = ≥ 640 px). Не использовать медиазапросы в `<style>` — только классы.
+
+### Шапка (header): принцип «flex-wrap»
+
+Брендинговая строка использует `flex flex-wrap` вместо `flex nowrap`. Два независимых блока:
+
+```html
+<!-- Левый: котик + название — всегда в первой строке -->
+<div class="flex items-center gap-3 min-w-0"> ... </div>
+
+<!-- Правый: роль + бейджи — на десктопе рядом, на мобильном переносится на строку ниже -->
+<div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 w-full sm:w-auto justify-end">
+  <!-- w-full justify-end → кнопка роли у правого края на мобильном -->
+</div>
+```
+
+`min-w-0` на flex-детях — обязательно, иначе текст вызывает overflow и разрушает layout.
+
+### Элементы с разным видом на мобильном / десктопе
+
+| Элемент | Мобильный | Десктоп |
+|---|---|---|
+| Котик | `h-14` (56 px) | `h-20 sm:h-20` (80 px) |
+| Заголовок «Сигма» | `text-2xl` | `sm:text-3xl` |
+| Подзаголовок | `text-xs` | `sm:text-sm` |
+| Кнопка «Спросить» | только `→` (`hidden sm:inline` для текста) | «Спросить →» |
+| Кнопка микрофона | `w-12` (48 px фиксированная) | `sm:w-auto sm:px-4` |
+| Значок 2GIS | 📍 (без текста, `hidden sm:inline`) | 📍 2GIS |
+| API Docs | скрыт (`hidden sm:flex`) | показан |
+
+### Выпадающее меню роли на мобильном
+
+Дропдаун позиционирован `right: 0` — открывается влево от кнопки. Чтобы кнопка была у правого края экрана на мобильном, контейнер правых кнопок получает `w-full justify-end`.
+
+Дополнительно: `max-width: calc(100vw - 16px)` — дропдаун не уходит за левый край даже на узких экранах (320 px).
+
+### PWA (добавление на домашний экран)
+
+Файлы:
+- `src/static/manifest.json` — метаданные PWA (name, icons, theme_color `#2563eb`, background `#1e3a5f`)
+- `src/static/img/favicon.svg` — **чистый векторный SVG** (без `<image href>`), котик нарисован через `polygon/ellipse/path`. SVG-фавиконы с внешними `href` не работают в браузерах из соображений безопасности.
+- `src/static/img/sigma-cat.png` — PNG 1408×768 с удалённым чёрным фоном (flood-fill, threshold=30), используется в шапке и как maskable-иконка 512×512 в манифесте.
+
+`<link rel="manifest">`, `<link rel="icon" type="image/svg+xml">`, `<link rel="apple-touch-icon">` — в `<head>` index.html.
 
 ---
 

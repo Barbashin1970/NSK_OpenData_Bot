@@ -3576,6 +3576,25 @@ function _renderMap() {
       if (_activeMarkerEl) { _activeMarkerEl.style.transform = ''; _activeMarkerEl = null; }
     }
 
+    // Извлекает координаты viewport из события маркера.
+    // На touch-устройствах (мобильных) originalEvent — TouchEvent без .clientX;
+    // тогда берём changedTouches[0]. На десктопе — обычный .clientX/.clientY.
+    // Используется только внутри обработчиков marker.on('click').
+    function _getEventCoords(e) {
+      const oe = e.originalEvent;
+      if (oe && oe.changedTouches && oe.changedTouches.length > 0) {
+        // Touch-устройство (iOS/Android)
+        return { x: oe.changedTouches[0].clientX, y: oe.changedTouches[0].clientY };
+      }
+      if (oe && oe.clientX != null) {
+        // Десктоп — MouseEvent
+        return { x: oe.clientX, y: oe.clientY };
+      }
+      // Финальный fallback: координаты из SDK (e.point — пиксели внутри canvas)
+      const rect = document.getElementById('map2gis').getBoundingClientRect();
+      return { x: rect.left + e.point.x, y: rect.top + e.point.y };
+    }
+
     // Снять старый document listener если был
     if (_mapMouseMoveHandler) {
       document.removeEventListener('click', _mapMouseMoveHandler);
@@ -3645,11 +3664,7 @@ function _renderMap() {
         _activeMarkerEl = markerEl;
         markerEl.style.transform = 'scale(1.4)';
 
-        // Берём clientX/Y из originalEvent; fallback — container + point offset
-        const cX = e.originalEvent?.clientX
-          ?? (document.getElementById('map2gis').getBoundingClientRect().left + e.point.x);
-        const cY = e.originalEvent?.clientY
-          ?? (document.getElementById('map2gis').getBoundingClientRect().top + e.point.y);
+        const { x: cX, y: cY } = _getEventCoords(e);
         _showPopup(row, markerEl, cX, cY);
       });
     });
@@ -3682,10 +3697,7 @@ function _renderMap() {
           if (_activeMarkerEl === mEl) { _closePopup(); return; }
           _activeMarkerEl = mEl;
           mEl.style.transform = 'scale(1.4)';
-          const cX = e.originalEvent?.clientX
-            ?? (document.getElementById('map2gis').getBoundingClientRect().left + e.point.x);
-          const cY = e.originalEvent?.clientY
-            ?? (document.getElementById('map2gis').getBoundingClientRect().top + e.point.y);
+          const { x: cX, y: cY } = _getEventCoords(e);
           _showPopup(mRow, mEl, cX, cY);
         });
       });
