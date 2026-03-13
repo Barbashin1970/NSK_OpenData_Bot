@@ -868,7 +868,7 @@ function _showInfoCard(icon, msg) {
 
 function _trySpecialQuery(raw) {
   // Strip «Сигма» wake-word prefix
-  const q = raw.replace(/^с[ие]гм[ао][!,.:)?\s]*/i, '').trim();
+  const q = raw.replace(/^(?:с[ие]г?м[ао]|si(?:gm?a|ma))[!,.:)?\s]*/i, '').trim();
   const ql = q.toLowerCase();
 
   // ── Роли ──────────────────────────────────────────────────────────────────
@@ -3729,8 +3729,8 @@ function toggleVoice() {
 
   _recognition.onresult = (e) => {
     let text = e.results[0][0].transcript;
-    // Срезаем wake-word «Сигма» (с любым знаком или без)
-    text = text.replace(/^(с[ие]гм[ао][!,.]?\s*)/i, '').trim();
+    // Срезаем wake-word «Сигма» / «Сима» (Г часто съедается) / «sigma»/«sima» (Яндекс.Браузер транслит)
+    text = text.replace(/^(?:с[ие]г?м[ао]|si(?:gm?a|ma))[!,.:)?\s]*/i, '').trim();
     document.getElementById('queryInput').value = text;
     resetMic();
     if (text) ask();
