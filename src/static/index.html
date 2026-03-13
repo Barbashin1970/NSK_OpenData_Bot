@@ -966,6 +966,15 @@ function _trySpecialQuery(raw) {
     return true;
   }
 
+  // ── [PUZZLE GAME] Триггер: «пятнашки», «игра», «puzzle» ──────────────────
+  if (/пятнашк|пазл|puzzle|^игр[ауы]?$/i.test(ql)) {
+    document.getElementById('queryInput').value = '';
+    document.getElementById('loadingState').className = 'hidden';
+    toggleGamePanel();
+    return true;
+  }
+  // ── [/PUZZLE GAME] ────────────────────────────────────────────────────────
+
   // ── Риски для жизни → таблица выбросов по МО НСО ─────────────────────────
   if (/риск[иа]?\s+(для\s+)?жизни|экологическ\S+\s+риск/i.test(ql)) {
     document.getElementById('queryInput').value = '';
@@ -2901,8 +2910,22 @@ function renderTopics(topics) {
     </div>
   `;
 
-  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Камеры → Медицина → Тепло → Выбросы → остальные датасеты
-  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + camerasCard + medicalCard + heatSourcesCard + emissionsCard + cards;
+  // ── [PUZZLE GAME] Карточка игры «Пятнашки» в топик-гриде ───────────────────
+  const gameCard = `
+    <div class="topic-card bg-gradient-to-br from-sky-50 to-cyan-50 border border-sky-200 rounded-2xl p-4 cursor-pointer hover:border-sky-400 hover:shadow-md"
+         onclick="toggleGamePanel()">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">🎮</span>
+        <span class="bg-sky-100 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded-full text-xs">игра</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">Пятнашки</div>
+      <div class="text-xs text-slate-500 mt-1">Классическая игра 4×4 · рекорды в браузере</div>
+    </div>
+  `;
+  // ── [/PUZZLE GAME] ─────────────────────────────────────────────────────────
+
+  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Камеры → Медицина → Тепло → Выбросы → Игра → остальные датасеты
+  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + camerasCard + medicalCard + heatSourcesCard + emissionsCard + gameCard + cards;
 }
 
 // ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────
@@ -3878,6 +3901,434 @@ function resetMic() {
   btn.textContent = '🎙';
   btn.classList.remove('bg-red-400/40', 'border-red-300/60');
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ██  PUZZLE GAME — Пятнашки 4×4                                              ██
+// ██  Код игры изолирован: все идентификаторы начинаются с _puzzle / puzzle    ██
+// ██  Рекорды хранятся ТОЛЬКО в localStorage браузера (ключ: nsk_puzzle_rec)   ██
+// ██  Не хранятся на сервере, не входят в git                                  ██
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── [PUZZLE] Константы ───────────────────────────────────────────────────────
+
+const _PUZZLE_GRID = 4;
+const _PUZZLE_SOLVED = [
+  [1,  2,  3,  4],
+  [5,  6,  7,  8],
+  [9,  10, 11, 12],
+  [13, 14, 15, null],
+];
+const _PUZZLE_LS_KEY = 'nsk_puzzle_rec'; // localStorage key для рекордов
+
+// ─── [PUZZLE] Состояние игры (изолировано от состояния приложения) ────────────
+
+let _puzzleOpen    = false;   // панель открыта?
+let _puzzleBoard   = _PUZZLE_SOLVED.map(r => [...r]);
+let _puzzleMoves   = 0;
+let _puzzleTime    = 0;
+let _puzzlePlaying = false;
+let _puzzleStarted = false;   // первый ход после перемешивания?
+let _puzzleShuffled = false;  // была ли нажата кнопка «Перемешать»?
+let _puzzleWon     = false;
+let _puzzleTimerID = null;    // ID setInterval для таймера
+let _puzzleShowRec = false;   // раздел рекордов открыт?
+
+// ─── [PUZZLE] Вспомогательные функции ────────────────────────────────────────
+
+/** Форматирует секунды → «ММ:СС» */
+function _puzzleFmtTime(s) {
+  const m = Math.floor(s / 60);
+  return String(m).padStart(2,'0') + ':' + String(s % 60).padStart(2,'0');
+}
+
+/** Находит позицию пустой ячейки (null) на доске */
+function _puzzleFindEmpty(board) {
+  for (let r = 0; r < _PUZZLE_GRID; r++)
+    for (let c = 0; c < _PUZZLE_GRID; c++)
+      if (board[r][c] === null) return [r, c];
+  return [3, 3];
+}
+
+/** Глубокая копия доски */
+function _puzzleCloneBoard(board) {
+  return board.map(r => [...r]);
+}
+
+/** Сравнивает текущую доску с эталоном победы */
+function _puzzleCheckWin(board) {
+  for (let r = 0; r < _PUZZLE_GRID; r++)
+    for (let c = 0; c < _PUZZLE_GRID; c++)
+      if (board[r][c] !== _PUZZLE_SOLVED[r][c]) return false;
+  return true;
+}
+
+// ─── [PUZZLE] Записи рекордов (localStorage, не git) ─────────────────────────
+
+function _puzzleLoadRecords() {
+  try {
+    return JSON.parse(localStorage.getItem(_PUZZLE_LS_KEY) || '[]');
+  } catch { return []; }
+}
+
+function _puzzleSaveRecord(time, moves) {
+  const recs = _puzzleLoadRecords();
+  recs.push({ time, moves, date: new Date().toLocaleDateString('ru-RU') });
+  recs.sort((a, b) => a.time - b.time);
+  recs.splice(10); // хранить только топ-10
+  try { localStorage.setItem(_PUZZLE_LS_KEY, JSON.stringify(recs)); } catch {}
+}
+
+// ─── [PUZZLE] Логика игры ──────────────────────────────────────────────────────
+
+/** Перемешивает доску 1000 случайными ходами (гарантированно разрешима) */
+function _puzzleShuffle() {
+  // Сбрасываем таймер и счётчики
+  clearInterval(_puzzleTimerID);
+  _puzzleTimerID = null;
+  _puzzleMoves   = 0;
+  _puzzleTime    = 0;
+  _puzzlePlaying = false;
+  _puzzleStarted = false;
+  _puzzleWon     = false;
+  _puzzleShuffled = true;
+
+  let board = _PUZZLE_SOLVED.map(r => [...r]);
+  for (let i = 0; i < 1000; i++) {
+    const [er, ec] = _puzzleFindEmpty(board);
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]].filter(
+      ([dr, dc]) => er+dr >= 0 && er+dr < _PUZZLE_GRID && ec+dc >= 0 && ec+dc < _PUZZLE_GRID
+    );
+    const [dr, dc] = dirs[Math.floor(Math.random() * dirs.length)];
+    board[er][ec] = board[er+dr][ec+dc];
+    board[er+dr][ec+dc] = null;
+  }
+  // Если случайно получили решённую — делаем ещё один ход
+  if (_puzzleCheckWin(board)) {
+    const [er, ec] = _puzzleFindEmpty(board);
+    if (er > 0) { board[er][ec] = board[er-1][ec]; board[er-1][ec] = null; }
+  }
+  _puzzleBoard = board;
+  _puzzleRender();
+}
+
+/** Сбрасывает игру в начальное состояние (решённая доска) */
+function _puzzleReset() {
+  clearInterval(_puzzleTimerID);
+  _puzzleTimerID = null;
+  _puzzleBoard   = _PUZZLE_SOLVED.map(r => [...r]);
+  _puzzleMoves   = 0;
+  _puzzleTime    = 0;
+  _puzzlePlaying = false;
+  _puzzleStarted = false;
+  _puzzleShuffled = false;
+  _puzzleWon     = false;
+  _puzzleRender();
+}
+
+/** Обрабатывает клик по плитке (row, col) */
+function _puzzleMoveTile(row, col) {
+  if (!_puzzleShuffled || _puzzleWon) return;
+
+  const [er, ec] = _puzzleFindEmpty(_puzzleBoard);
+  const adj = (Math.abs(row - er) === 1 && col === ec) ||
+              (Math.abs(col - ec) === 1 && row === er);
+  if (!adj) return;
+
+  // Запускаем таймер при первом ходе после перемешивания
+  if (!_puzzleStarted) {
+    _puzzleStarted = true;
+    _puzzlePlaying = true;
+    _puzzleTimerID = setInterval(() => {
+      _puzzleTime++;
+      const el = document.getElementById('puzzleTimerVal');
+      if (el) el.textContent = _puzzleFmtTime(_puzzleTime);
+    }, 1000);
+  }
+
+  // Перемещаем плитку
+  const nb = _puzzleCloneBoard(_puzzleBoard);
+  nb[er][ec] = nb[row][col];
+  nb[row][col] = null;
+  _puzzleBoard = nb;
+  _puzzleMoves++;
+
+  const movesEl = document.getElementById('puzzleMovesVal');
+  if (movesEl) movesEl.textContent = _puzzleMoves;
+
+  if (_puzzleCheckWin(_puzzleBoard)) {
+    clearInterval(_puzzleTimerID);
+    _puzzleTimerID = null;
+    _puzzlePlaying = false;
+    _puzzleWon = true;
+    _puzzleSaveRecord(_puzzleTime, _puzzleMoves);
+  }
+
+  _puzzleRenderBoard();
+  _puzzleRenderWin();
+}
+
+// ─── [PUZZLE] Рендер UI ────────────────────────────────────────────────────────
+
+/** Отрисовывает сетку 4×4 в контейнер #puzzleBoard */
+function _puzzleRenderBoard() {
+  const container = document.getElementById('puzzleBoard');
+  if (!container) return;
+
+  let html = '';
+  for (let r = 0; r < _PUZZLE_GRID; r++) {
+    for (let c = 0; c < _PUZZLE_GRID; c++) {
+      const tile = _puzzleBoard[r][c];
+      if (tile === null) {
+        // Пустая ячейка — визуальная подсказка куда можно двигать
+        html += `<div style="
+          background:#eff6ff;border:2px dashed #bfdbfe;border-radius:12px;
+          aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+        "></div>`;
+      } else {
+        const disabled = !_puzzleShuffled || _puzzleWon;
+        const cursor   = disabled ? 'default' : 'pointer';
+        const opacity  = disabled ? '0.65' : '1';
+        html += `<button onclick="_puzzleMoveTile(${r},${c})" style="
+          background:white;border:2px solid #dbeafe;border-radius:12px;
+          aspect-ratio:1;font-size:clamp(16px,4vw,22px);font-weight:700;
+          color:#1d4ed8;cursor:${cursor};opacity:${opacity};
+          box-shadow:0 2px 6px rgba(0,0,0,0.08);transition:transform .1s,box-shadow .1s;
+          display:flex;align-items:center;justify-content:center;width:100%;
+        "
+          onmouseover="if(!${disabled})this.style.transform='scale(1.06)'"
+          onmouseout="this.style.transform='scale(1)'"
+          onmousedown="if(!${disabled})this.style.boxShadow='inset 0 2px 4px rgba(0,0,0,0.1)'"
+          onmouseup="this.style.boxShadow='0 2px 6px rgba(0,0,0,0.08)'"
+        >${tile}</button>`;
+      }
+    }
+  }
+  container.innerHTML = html;
+}
+
+/** Обновляет или скрывает баннер победы */
+function _puzzleRenderWin() {
+  const banner = document.getElementById('puzzleWinBanner');
+  if (!banner) return;
+  if (_puzzleWon) {
+    banner.style.display = 'block';
+    banner.innerHTML = `
+      <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac;
+                  border-radius:14px;padding:14px 18px;margin:0 16px 4px;text-align:center">
+        <div style="font-size:28px;margin-bottom:4px">🏆</div>
+        <div style="font-weight:700;color:#166534;font-size:15px">Поздравляем!</div>
+        <div style="color:#15803d;font-size:13px;margin-top:4px">
+          Решено за <b>${_puzzleFmtTime(_puzzleTime)}</b> · ${_puzzleMoves} ходов
+        </div>
+      </div>`;
+  } else {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+  }
+}
+
+/** Рисует раздел рекордов (таблица из localStorage) */
+function _puzzleRenderRecords() {
+  const el = document.getElementById('puzzleRecordsBody');
+  if (!el) return;
+  const recs = _puzzleLoadRecords();
+  if (!recs.length) {
+    el.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:13px;padding:12px 0">Рекордов пока нет — сыграйте первую партию!</div>';
+    return;
+  }
+  el.innerHTML = recs.slice(0, 5).map((rec, i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px">
+      <span style="color:#1d4ed8;font-weight:700;width:28px">#${i+1}</span>
+      <span style="font-weight:600;color:#1e293b;flex:1">${_puzzleFmtTime(rec.time)}</span>
+      <span style="color:#64748b;width:70px;text-align:center">${rec.moves} ходов</span>
+      <span style="color:#94a3b8;width:80px;text-align:right">${rec.date}</span>
+    </div>`).join('');
+}
+
+/** Полная перерисовка панели (вызывается при shuffle/reset) */
+function _puzzleRender() {
+  _puzzleRenderBoard();
+  _puzzleRenderWin();
+
+  const movesEl = document.getElementById('puzzleMovesVal');
+  const timerEl = document.getElementById('puzzleTimerVal');
+  if (movesEl) movesEl.textContent = _puzzleMoves;
+  if (timerEl) timerEl.textContent = _puzzleFmtTime(_puzzleTime);
+
+  if (_puzzleShowRec) _puzzleRenderRecords();
+}
+
+/** Переключает блок рекордов внутри панели */
+function _puzzleToggleRecords() {
+  _puzzleShowRec = !_puzzleShowRec;
+  const block = document.getElementById('puzzleRecordsBlock');
+  const btn   = document.getElementById('puzzleRecBtn');
+  if (!block) return;
+  block.style.display = _puzzleShowRec ? 'block' : 'none';
+  if (btn) btn.style.background = _puzzleShowRec ? '#eff6ff' : 'white';
+  if (_puzzleShowRec) _puzzleRenderRecords();
+}
+
+// ─── [PUZZLE] Открытие / закрытие панели ──────────────────────────────────────
+
+/**
+ * Показывает или скрывает панель игры «Пятнашки».
+ * Панель — фиксированный оверлей поверх всего приложения (z-index: 1000).
+ * Не влияет на состояние поиска, карты или ЦИИ-панели.
+ */
+function toggleGamePanel() {
+  _puzzleOpen = !_puzzleOpen;
+
+  if (_puzzleOpen) {
+    // ── Создаём DOM-узел если его ещё нет ──
+    if (!document.getElementById('puzzleOverlay')) {
+      const overlay = document.createElement('div');
+      overlay.id = 'puzzleOverlay';
+      overlay.style.cssText = `
+        position:fixed;inset:0;z-index:1000;
+        background:rgba(0,0,0,0.55);backdrop-filter:blur(3px);
+        display:flex;align-items:center;justify-content:center;
+        padding:12px;animation:fadeIn .2s ease;
+      `;
+      // Клик по фону (не по карточке) — закрывает панель
+      overlay.addEventListener('click', e => { if (e.target === overlay) toggleGamePanel(); });
+
+      overlay.innerHTML = `
+        <div style="
+          background:white;border-radius:20px;
+          width:min(440px,100%);max-height:90vh;overflow-y:auto;
+          box-shadow:0 25px 60px rgba(0,0,0,0.4);
+          animation:fadeIn .2s ease;
+        " onclick="event.stopPropagation()">
+
+          <!-- Заголовок — синий градиент в стиле приложения -->
+          <div style="
+            background:linear-gradient(135deg,#1e3a8a,#1d4ed8);
+            border-radius:20px 20px 0 0;padding:16px 20px;
+            display:flex;align-items:center;justify-content:space-between;
+            position:sticky;top:0;z-index:1;
+          ">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:26px">🎮</span>
+              <div>
+                <div style="color:white;font-size:17px;font-weight:700;line-height:1.2">Пятнашки</div>
+                <div style="color:rgba(255,255,255,0.65);font-size:11px">Классическая игра 4×4</div>
+              </div>
+            </div>
+            <button onclick="toggleGamePanel()" style="
+              color:rgba(255,255,255,0.7);background:none;border:none;
+              font-size:22px;cursor:pointer;padding:4px 8px;border-radius:8px;
+              line-height:1;transition:background .15s;
+            "
+              onmouseover="this.style.background='rgba(255,255,255,0.15)'"
+              onmouseout="this.style.background='none'"
+            >✕</button>
+          </div>
+
+          <!-- Статистика: Ходы / Время -->
+          <div style="
+            display:flex;gap:0;border-bottom:1px solid #f1f5f9;
+            background:#f8fafc;
+          ">
+            <div style="flex:1;text-align:center;padding:12px 8px;border-right:1px solid #f1f5f9">
+              <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Ходы</div>
+              <div id="puzzleMovesVal" style="font-size:22px;font-weight:700;color:#1e293b">0</div>
+            </div>
+            <div style="flex:1;text-align:center;padding:12px 8px">
+              <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Время</div>
+              <div id="puzzleTimerVal" style="font-size:22px;font-weight:700;color:#1e293b;font-variant-numeric:tabular-nums">00:00</div>
+            </div>
+          </div>
+
+          <!-- Баннер победы (скрыт по умолчанию) -->
+          <div id="puzzleWinBanner" style="display:none"></div>
+
+          <!-- Игровое поле 4×4 -->
+          <div style="padding:16px 20px 8px">
+            <div id="puzzleBoard" style="
+              display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
+              background:linear-gradient(135deg,#eff6ff,#dbeafe);
+              border-radius:14px;padding:12px;
+            "></div>
+          </div>
+
+          <!-- Подсказка перед первым перемешиванием -->
+          <div style="text-align:center;color:#94a3b8;font-size:12px;padding:4px 20px 8px">
+            Нажмите «Перемешать» чтобы начать игру
+          </div>
+
+          <!-- Кнопки управления -->
+          <div style="display:flex;gap:8px;padding:4px 20px 16px">
+            <button onclick="_puzzleShuffle()" style="
+              flex:1;background:white;border:1.5px solid #bfdbfe;border-radius:12px;
+              padding:10px 6px;font-size:13px;font-weight:600;color:#1d4ed8;
+              cursor:pointer;transition:background .15s,border-color .15s;
+              display:flex;flex-direction:column;align-items:center;gap:4px;
+            "
+              onmouseover="this.style.background='#eff6ff';this.style.borderColor='#93c5fd'"
+              onmouseout="this.style.background='white';this.style.borderColor='#bfdbfe'"
+            >🔀 <span>Перемешать</span></button>
+
+            <button onclick="_puzzleReset()" style="
+              flex:1;background:white;border:1.5px solid #bfdbfe;border-radius:12px;
+              padding:10px 6px;font-size:13px;font-weight:600;color:#1d4ed8;
+              cursor:pointer;transition:background .15s,border-color .15s;
+              display:flex;flex-direction:column;align-items:center;gap:4px;
+            "
+              onmouseover="this.style.background='#eff6ff';this.style.borderColor='#93c5fd'"
+              onmouseout="this.style.background='white';this.style.borderColor='#bfdbfe'"
+            >↩ <span>Сбросить</span></button>
+
+            <button id="puzzleRecBtn" onclick="_puzzleToggleRecords()" style="
+              flex:1;background:white;border:1.5px solid #bfdbfe;border-radius:12px;
+              padding:10px 6px;font-size:13px;font-weight:600;color:#1d4ed8;
+              cursor:pointer;transition:background .15s,border-color .15s;
+              display:flex;flex-direction:column;align-items:center;gap:4px;
+            "
+              onmouseover="this.style.background='#eff6ff';this.style.borderColor='#93c5fd'"
+              onmouseout="this.style.background='white';this.style.borderColor='#bfdbfe'"
+            >🏆 <span>Рекорды</span></button>
+          </div>
+
+          <!-- Раздел рекордов (localStorage, скрыт по умолчанию) -->
+          <div id="puzzleRecordsBlock" style="display:none;padding:0 20px 20px">
+            <div style="
+              background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;
+            ">
+              <div style="font-weight:700;color:#1e293b;font-size:14px;margin-bottom:10px;
+                          display:flex;align-items:center;gap:6px">
+                🏆 Лучшие результаты
+                <span style="font-size:11px;color:#94a3b8;font-weight:400;margin-left:auto">
+                  сохранены в браузере
+                </span>
+              </div>
+              <div id="puzzleRecordsBody"></div>
+            </div>
+          </div>
+
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+    } else {
+      document.getElementById('puzzleOverlay').style.display = 'flex';
+    }
+
+    // Начальная отрисовка доски при открытии
+    _puzzleRender();
+
+  } else {
+    // ── Скрываем оверлей (состояние игры сохраняется в памяти) ──
+    const overlay = document.getElementById('puzzleOverlay');
+    if (overlay) overlay.style.display = 'none';
+
+    // Таймер продолжает идти если игра в процессе —
+    // при повторном открытии пользователь продолжает с того же места.
+  }
+}
+
+// ─── [/PUZZLE GAME] ───────────────────────────────────────────────────────────
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 updateRoleBtn();
