@@ -64,6 +64,7 @@ _API_DESCRIPTION = """
 | CityAir API | 15 мин | Телеметрия физических датчиков (требует `CITYAIR_API_KEY`) |
 | [2GIS Public Transport](https://dev.2gis.com/api) | real-time | Маршруты общественного транспорта (требует `TWOGIS_API_KEY`, данные не сохраняются) |
 | [OpenStreetMap Overpass API](https://overpass-api.de) | 7 дн | Стационарные камеры фиксации нарушений ПДД · лицензия ODbL |
+| [OpenStreetMap Overpass API](https://overpass-api.de) | 72 ч | Медицинские учреждения (больницы, поликлиники) · лицензия ODbL |
 
 ## Поддерживаемые темы
 
