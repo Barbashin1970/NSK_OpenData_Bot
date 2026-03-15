@@ -1,0 +1,50 @@
+# City OpenData Bot — docker-compose для деплоя на сервере мэрии
+#
+# Быстрый старт:
+#   1. Создать .env файл (см. .env.example)
+#   2. docker-compose up -d
+#   3. Проверить: curl http://localhost:8000/topics
+#
+# Обновление кода:
+#   git pull && docker-compose build --no-cache && docker-compose up -d
+#
+# Обновление данных (без пересборки):
+#   docker-compose restart bot
+
+services:
+
+  bot:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # data/ монтируется с хоста — данные сохраняются между перезапусками
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      # CITY_PROFILE можно переопределить в .env
+      - CITY_PROFILE=${CITY_PROFILE:-city_profile}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/topics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Nginx — обратный прокси с HTTPS (опционально, можно убрать если HTTPS не нужен)
+  # Раскомментировать после получения SSL-сертификата через certbot
+  #
+  # nginx:
+  #   image: nginx:alpine
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+  #     - /etc/letsencrypt:/etc/letsencrypt:ro
+  #   depends_on:
+  #     bot:
+  #       condition: service_healthy

@@ -1,0 +1,332 @@
+# =============================================================================
+# Канонические схемы датасетов — City OpenData Bot
+# =============================================================================
+# Единственный источник правды об именах полей.
+# НЕЛЬЗЯ менять имена полей без обновления кода (executor.py, renderer.py,
+# heat_sources.py, emissions.py и тестов).
+#
+# Соглашения:
+#   - Все имена: строчные, транслит, подчёркивание вместо пробела
+#   - Координаты всегда: _lat (широта), _lon (долгота)  — с подчёркиванием
+#   - Районы всегда: rayon (для CSV-тем) или district (для статических)
+#   - Единицы измерения входят в имя: _t (тонны), _kol (количество),
+#     _gcal_h (Гкал/ч), _mw (МВт), _km (км), _m (метры), _min (минуты)
+#   - Необязательные поля помечены required: false
+#
+# Типы полей:
+#   str       — строка
+#   int       — целое число
+#   float     — дробное число
+#   bool      — да/нет
+#   date      — дата (YYYY-MM-DD или DD.MM.YYYY)
+#   phone     — телефон
+#   url       — ссылка
+#   geo_lat   — широта WGS-84 (54.xxx)
+#   geo_lon   — долгота WGS-84 (82.xxx)
+#   list_str  — список строк через запятую или JSON-массив
+# =============================================================================
+
+
+# ── CSV-темы (динамические, скачиваются с opendata-порталов) ─────────────────
+# Эти поля используются в executor.py SQL-запросах и renderer.py.
+# Маппинг: city_profile.yaml → schema_mappings.<topic> → {canonical: city_col}
+
+csv_topics:
+
+  parking:
+    label: "Парковки"
+    description: "Парковочные пространства и стоянки"
+    fields:
+      nazvanie:        {label: "Название/адрес",          type: str,     required: true}
+      rayon:           {label: "Район",                   type: str,     required: true}
+      ulica:           {label: "Улица",                   type: str,     required: true}
+      dom:             {label: "Дом",                     type: str,     required: false}
+      tip:             {label: "Тип парковки",            type: str,     required: false}
+      mest_kol:        {label: "Количество мест",         type: int,     required: false}
+      mest_inv_kol:    {label: "Мест для инвалидов",      type: int,     required: false}
+      ohrana:          {label: "Охрана",                  type: str,     required: false}
+      regim:           {label: "Режим работы",            type: str,     required: false}
+      status:          {label: "Статус",                  type: str,     required: false}
+      _lat:            {label: "Широта",                  type: geo_lat, required: false}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: false}
+
+  stops:
+    label: "Остановки транспорта"
+    description: "Остановки наземного общественного транспорта"
+    fields:
+      nazvanie:        {label: "Название остановки",      type: str,     required: true}
+      rayon:           {label: "Район",                   type: str,     required: true}
+      ulica:           {label: "Улица",                   type: str,     required: false}
+      pavilon:         {label: "Павильон (есть/нет)",     type: str,     required: false}
+      marshruty:       {label: "Маршруты",                type: str,     required: false,
+                        note: "Номера через запятую или разделитель: А15, Т23, МТ7"}
+      _lat:            {label: "Широта",                  type: geo_lat, required: false}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: false}
+
+  schools:
+    label: "Школы"
+    description: "Средние общеобразовательные организации"
+    fields:
+      nazvanie:        {label: "Название",                type: str,     required: true}
+      ruk_fio:         {label: "ФИО руководителя",        type: str,     required: false}
+      rayon:           {label: "Район",                   type: str,     required: true}
+      ulica:           {label: "Улица",                   type: str,     required: true}
+      dom:             {label: "Дом",                     type: str,     required: false}
+      telefon:         {label: "Телефон",                 type: phone,   required: false}
+      regim:           {label: "Режим работы",            type: str,     required: false}
+      _lat:            {label: "Широта",                  type: geo_lat, required: false}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: false}
+
+  kindergartens:
+    label: "Детские сады"
+    description: "Организации дошкольного образования"
+    fields:
+      nazvanie:        {label: "Название",                type: str,     required: true}
+      rayon:           {label: "Район",                   type: str,     required: true}
+      ulica:           {label: "Улица",                   type: str,     required: true}
+      dom:             {label: "Дом",                     type: str,     required: false}
+      telefon:         {label: "Телефон",                 type: phone,   required: false}
+      mest_kol:        {label: "Количество мест",         type: int,     required: false}
+      regim:           {label: "Режим работы",            type: str,     required: false}
+      _lat:            {label: "Широта",                  type: geo_lat, required: false}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: false}
+
+  libraries:
+    label: "Библиотеки"
+    description: "Муниципальные библиотеки"
+    fields:
+      nazvanie:        {label: "Краткое название",        type: str,     required: true}
+      nazvanie_polnoe: {label: "Полное название",         type: str,     required: false}
+      tip:             {label: "Тип библиотеки",          type: str,     required: false,
+                        note: "детская / научная / юношеская / центральная"}
+      rayon:           {label: "Район",                   type: str,     required: true}
+      ulica:           {label: "Улица",                   type: str,     required: true}
+      dom:             {label: "Дом",                     type: str,     required: false}
+      telefon:         {label: "Телефон",                 type: phone,   required: false}
+      sayt:            {label: "Сайт",                    type: url,     required: false}
+      _lat:            {label: "Широта",                  type: geo_lat, required: false}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: false}
+
+  pharmacies:
+    label: "Аптеки"
+    description: "Аптеки и аптечные пункты"
+    fields:
+      nazvanie:        {label: "Название",                type: str,     required: true}
+      tip:             {label: "Тип",                     type: str,     required: false}
+      rayon:           {label: "Район",                   type: str,     required: true}
+      ulica:           {label: "Улица",                   type: str,     required: true}
+      dom:             {label: "Дом",                     type: str,     required: false}
+      telefon:         {label: "Телефон",                 type: phone,   required: false}
+      _lat:            {label: "Широта",                  type: geo_lat, required: false}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: false}
+
+  sport_grounds:
+    label: "Спортивные площадки"
+    description: "Открытые спортивные площадки и сооружения"
+    fields:
+      tip:             {label: "Тип площадки",            type: str,     required: true}
+      vid_sporta:      {label: "Вид спорта",              type: str,     required: false}
+      rayon:           {label: "Район",                   type: str,     required: true}
+      ulica:           {label: "Улица",                   type: str,     required: true}
+      dom:             {label: "Дом",                     type: str,     required: false}
+      telefon:         {label: "Телефон",                 type: phone,   required: false}
+      kommentariy:     {label: "Комментарий",             type: str,     required: false}
+      _lat:            {label: "Широта",                  type: geo_lat, required: false}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: false}
+
+  sport_orgs:
+    label: "Спортивные организации"
+    description: "Спортивные клубы, школы, секции"
+    fields:
+      nazvanie:        {label: "Название",                type: str,     required: true}
+      tip:             {label: "Тип организации",         type: str,     required: false}
+      vid_sporta:      {label: "Вид спорта",              type: str,     required: false}
+      rayon:           {label: "Район",                   type: str,     required: true}
+      ulica:           {label: "Улица",                   type: str,     required: true}
+      dom:             {label: "Дом",                     type: str,     required: false}
+      telefon:         {label: "Телефон",                 type: phone,   required: false}
+      _lat:            {label: "Широта",                  type: geo_lat, required: false}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: false}
+
+  culture:
+    label: "Организации культуры"
+    description: "Театры, дома культуры, дворцы культуры"
+    fields:
+      nazvanie:        {label: "Краткое название",        type: str,     required: true}
+      nazvanie_polnoe: {label: "Полное название",         type: str,     required: false}
+      rayon:           {label: "Район",                   type: str,     required: true}
+      ulica:           {label: "Улица",                   type: str,     required: true}
+      dom:             {label: "Дом",                     type: str,     required: false}
+      telefon:         {label: "Телефон",                 type: phone,   required: false}
+      sayt:            {label: "Сайт",                    type: url,     required: false}
+      _lat:            {label: "Широта",                  type: geo_lat, required: false}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: false}
+
+  construction_permits:
+    label: "Разрешения на строительство"
+    description: "Разрешения на строительство, выданные городом"
+    fields:
+      nom_razresheniya:  {label: "Номер разрешения",      type: str,     required: true}
+      data_razresheniya: {label: "Дата выдачи",           type: date,    required: true}
+      zastrojshchik:     {label: "Застройщик",            type: str,     required: true}
+      nazvanie_obekta:   {label: "Название объекта",      type: str,     required: true}
+      adres:             {label: "Адрес объекта",         type: str,     required: true}
+      kadastr_nom:       {label: "Кадастровый номер",     type: str,     required: false}
+
+  construction_commissioned:
+    label: "Ввод в эксплуатацию"
+    description: "Разрешения на ввод объектов в эксплуатацию"
+    fields:
+      nom_razresheniya:  {label: "Номер разрешения",      type: str,     required: true}
+      data_razresheniya: {label: "Дата выдачи",           type: date,    required: true}
+      zastrojshchik:     {label: "Застройщик",            type: str,     required: true}
+      nazvanie_obekta:   {label: "Название объекта",      type: str,     required: true}
+      rayon:             {label: "Район",                  type: str,     required: false}
+      adres_obekta:      {label: "Адрес объекта",         type: str,     required: true}
+      kadastr_nom:       {label: "Кадастровый номер",     type: str,     required: false}
+
+
+# ── Статические датасеты (JSON/GeoJSON, вносятся вручную или загружаются) ─────
+
+static_datasets:
+
+  emissions:
+    label: "Выбросы загрязняющих веществ"
+    description: "Форма 2-ТП Воздух — выбросы по муниципальным образованиям"
+    source: "Росприроднадзор (rpn.gov.ru) — форма 2-ТП Воздух"
+    format: json
+    json_root: "municipalities"   # массив объектов находится по этому ключу
+    fields:
+      id:              {label: "ID муниципалитета",       type: str,     required: true}
+      name:            {label: "Полное название МО",      type: str,     required: true}
+      short:           {label: "Краткое название",        type: str,     required: false}
+      type:            {label: "Тип МО",                  type: str,     required: false,
+                        note: "город / район / округ"}
+      vsego_t:         {label: "Всего выбросов, тонн",    type: float,   required: true}
+      tverdye_t:       {label: "Твёрдые вещества, тонн",  type: float,   required: false}
+      so2_t:           {label: "Диоксид серы, тонн",      type: float,   required: false}
+      co_t:            {label: "Оксид углерода, тонн",    type: float,   required: false}
+      nox_t:           {label: "Оксиды азота, тонн",      type: float,   required: false}
+      los_t:           {label: "ЛОС, тонн",               type: float,   required: false}
+      prochie_t:       {label: "Прочие, тонн",            type: float,   required: false}
+      main_sources:    {label: "Основные источники",       type: str,     required: false}
+      data_status:     {label: "Статус данных",           type: str,     required: false,
+                        note: "report (отчёт) / estimate (оценка) / no_data"}
+      _lat:            {label: "Широта центра МО",        type: geo_lat, required: true}
+      _lon:            {label: "Долгота центра МО",       type: geo_lon, required: true}
+
+  heat_sources:
+    label: "Тепловые источники"
+    description: "ТЭЦ и котельные — объекты теплоснабжения города"
+    source: "Данные оператора теплоснабжения (СГК, ТГК и др.)"
+    format: geojson
+    fields:
+      id:                    {label: "Идентификатор",          type: str,   required: true}
+      short_name:            {label: "Краткое название",        type: str,   required: true}
+      type:                  {label: "Тип объекта",            type: str,   required: true,
+                              note: "ТЭЦ / котельная / мини-ТЭЦ"}
+      fuel:                  {label: "Вид топлива",            type: str,   required: true,
+                              note: "газ / уголь / мазут / смешанное"}
+      district:              {label: "Район",                  type: str,   required: true}
+      thermal_gcal_h:        {label: "Тепловая мощность, Гкал/ч", type: float, required: true}
+      electric_mw:           {label: "Электрическая мощность, МВт", type: float, required: false,
+                              note: "0 если только теплоснабжение"}
+      operator_group:        {label: "Группа оператора",       type: str,   required: true,
+                              note: "СГК / ТГК-1 / ТЭСС / муниципальная и др."}
+      digitalization_status: {label: "Статус цифровизации",    type: str,   required: false,
+                              note: "пилот / в работе / не охвачен"}
+      # Координаты берутся из geometry.coordinates GeoJSON (lon, lat)
+
+  metro_station:
+    label: "Станции метро"
+    description: "Станции метрополитена"
+    format: json
+    json_root: "stations"
+    fields:
+      name:            {label: "Название станции",        type: str,     required: true}
+      line:            {label: "Номер линии",             type: str,     required: true,
+                        note: "Ключ из секции lines: '1', '2', ..."}
+      district:        {label: "Район города",            type: str,     required: true}
+      address:         {label: "Адрес входа",             type: str,     required: false}
+      interchange_with:{label: "Пересадки",               type: list_str, required: false,
+                        note: "[[номер_линии, название_станции], ...]"}
+      note:            {label: "Примечание",              type: str,     required: false}
+      passengers_day:  {label: "Пассажиров в сутки",      type: int,     required: false}
+      _lat:            {label: "Широта",                  type: geo_lat, required: true}
+      _lon:            {label: "Долгота",                 type: geo_lon, required: true}
+
+  metro_line:
+    label: "Линии метро"
+    description: "Описание линий метрополитена (секция lines в metro.json)"
+    format: json
+    json_root: "lines"   # объект, ключи = номера линий
+    fields:
+      name:            {label: "Название линии",          type: str,     required: true}
+      color:           {label: "Цвет (HEX)",              type: str,     required: true,
+                        note: "#2563eb — синяя, #dc2626 — красная"}
+      color_name:      {label: "Название цвета",          type: str,     required: false}
+      stations:        {label: "Количество станций",      type: int,     required: true}
+      termini:         {label: "Конечные станции",        type: list_str, required: true}
+
+  airport:
+    label: "Аэропорт"
+    description: "Информация об аэропорте города"
+    format: json
+    fields:
+      name:                    {label: "Полное название",          type: str,   required: true}
+      short_name:              {label: "Краткое название",         type: str,   required: false}
+      iata:                    {label: "Код IATA (3 буквы)",       type: str,   required: true}
+      icao:                    {label: "Код ICAO (4 буквы)",       type: str,   required: false}
+      _lat:                    {label: "Широта",                   type: geo_lat, required: true}
+      _lon:                    {label: "Долгота",                  type: geo_lon, required: true}
+      distance_from_center_km: {label: "Расстояние от центра, км", type: float, required: false}
+      passengers_year:         {label: "Пассажиров в год",         type: int,   required: false}
+      flights_per_day:         {label: "Рейсов в сутки",           type: int,   required: false}
+      operator:                {label: "Оператор аэропорта",       type: str,   required: false}
+      url:                     {label: "Сайт аэропорта",           type: url,   required: false}
+      opened_year:             {label: "Год открытия",             type: int,   required: false}
+      runways:                 {label: "Количество ВПП",           type: int,   required: false}
+      runway_length_m:         {label: "Длина основной ВПП, м",    type: int,   required: false}
+      # terminals и transport — вложенные массивы, задаются в JSON вручную
+
+  airport_terminal:
+    label: "Терминал аэропорта"
+    description: "Один элемент массива terminals в airport.json"
+    fields:
+      id:              {label: "ID терминала (A, B, ...)",  type: str,   required: true}
+      name:            {label: "Название терминала",        type: str,   required: true}
+      type:            {label: "Тип (внутренние/международные)", type: str, required: true}
+      airlines:        {label: "Авиакомпании",              type: list_str, required: false}
+      note:            {label: "Примечание",                type: str,   required: false}
+
+  airport_transport:
+    label: "Транспорт до аэропорта"
+    description: "Один элемент массива transport в airport.json"
+    fields:
+      type:            {label: "Тип транспорта",            type: str,   required: true}
+      routes:          {label: "Маршруты (номера)",         type: list_str, required: false}
+      duration_min:    {label: "Время в пути, мин",         type: int,   required: true}
+      note:            {label: "Примечание",                type: str,   required: false}
+
+
+# ── Конфигурационные структуры (не датасеты, но нуждаются в единой схеме) ────
+
+config_structures:
+
+  ecology_station:
+    label: "Станция мониторинга"
+    description: "Элемент ecology_stations в city_profile.yaml"
+    fields:
+      station_id:      {label: "Уникальный ID (ASCII)",     type: str,     required: true,
+                        note: "Пример: omsk_central — city_id + название"}
+      district:        {label: "Район (из districts)",      type: str,     required: true}
+      address:         {label: "Адрес/описание точки",      type: str,     required: true}
+      lat:             {label: "Широта",                    type: geo_lat, required: true}
+      lon:             {label: "Долгота",                   type: geo_lon, required: true}
+
+  district_coord:
+    label: "Координата центра района"
+    description: "Элемент district_coords в city_profile.yaml"
+    fields:
+      lat:             {label: "Широта центра района",      type: geo_lat, required: true}
+      lon:             {label: "Долгота центра района",     type: geo_lon, required: true}
