@@ -19,6 +19,7 @@ try:
 except ImportError:
     raise ImportError("Установите fastapi: pip install fastapi uvicorn")
 
+from .city_config import get_city_name, get_districts
 from .registry import load_registry
 from .router import route, best_topic
 from .planner import make_plan, INFO_PATTERNS, DISTRICTS_PATTERNS
@@ -51,8 +52,14 @@ def _get_twogis_key() -> str | None:
         return env_key
     return _load_api_keys().get("twogis_key", "").strip() or None
 
-_API_DESCRIPTION = """
-Естественно-языковой интерфейс к открытым данным мэрии Новосибирска.
+def _build_api_description() -> str:
+    city_gen  = get_city_name(case="genitive")       # Новосибирска
+    districts = get_districts()
+    main_districts = [k for k in districts if "район" in k]
+    district_line = " · ".join(k.replace(" район", "") for k in main_districts)
+    district_count = len(main_districts)
+    return f"""
+Естественно-языковой интерфейс к открытым данным мэрии {city_gen}.
 
 ## Источники данных
 
@@ -106,16 +113,17 @@ _API_DESCRIPTION = """
 | «стройк», «застройщик», «новостройк» | `CONSTRUCTION_ACTIVE` | Активные стройки (разрешения − ввод в эксплуатацию) |
 | «ввод в эксплуатацию», «введено» | `CONSTRUCTION_COMMISSIONED` | Объекты, введённые в эксплуатацию |
 
-## Районы Новосибирска и прилегающие территории
+## Районы {city_gen} и прилегающие территории
 
-Дзержинский · Железнодорожный · Заельцовский · Калининский · Кировский ·
-Ленинский · Октябрьский · Первомайский · Советский · Центральный
+{district_line}
 
 Также поддерживается: **Кольцово** (наукоград, отдельная точка мониторинга погоды и качества воздуха).
 Запросы к открытым данным города (школы, парковки и т.д.) для Кольцово не применимы —
-наукоград находится вне 10 административных районов Новосибирска.
+наукоград находится вне {district_count} административных районов {city_gen}.
 
 """
+
+_API_DESCRIPTION = _build_api_description()
 
 _TAGS_METADATA = [
     {
@@ -132,7 +140,7 @@ _TAGS_METADATA = [
     {
         "name": "Экология",
         "description": (
-            "Качество воздуха (PM2.5, PM10, NO2, AQI) и метеорология по 10 районам Новосибирска. "
+            f"Качество воздуха (PM2.5, PM10, NO2, AQI) и метеорология по {len([k for k in get_districts() if 'район' in k])} районам {get_city_name(case='genitive')}. "
             "Источники: Open-Meteo (бесплатно) + CityAir (опционально). TTL = 15 мин."
         ),
     },
@@ -147,7 +155,7 @@ _TAGS_METADATA = [
     {
         "name": "Камеры",
         "description": (
-            "Стационарные камеры фиксации нарушений ПДД в Новосибирске. "
+            f"Стационарные камеры фиксации нарушений ПДД в {get_city_name(case='prepositional')}. "
             "Источник: OpenStreetMap (Overpass API, тег `highway=speed_camera`). "
             "Координаты предзагружены из OSM — геокодирование не требуется. "
             "Лицензия данных: ODbL (openstreetmap.org/copyright). TTL = 7 дней."
@@ -1374,7 +1382,7 @@ def get_ask(
         return {
             "query": q,
             "topic": "metro",
-            "topic_name": "Новосибирский метрополитен",
+            "topic_name": f"{get_city_name()} метрополитен",
             "confidence": route_result.confidence,
             "operation": result.get("operation", plan.operation),
             "district": plan.district,
@@ -2019,7 +2027,7 @@ def get_transit_districts() -> dict:
 )
 def get_geocode(
     q: str = Query(..., description="Адрес для геокодирования. Например: `ул. Красный проспект, 25`"),
-    city: str = Query("Новосибирск", description="Город (префикс к запросу)"),
+    city: str = Query(get_city_name(), description="Город (префикс к запросу)"),
 ) -> dict:
     """
     Конвертирует адресную строку в координаты через 2GIS Geocoder API.
