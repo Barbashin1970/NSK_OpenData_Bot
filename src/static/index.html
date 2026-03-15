@@ -118,8 +118,10 @@
       <!-- Left: cat + title -->
       <div class="flex items-center gap-3 min-w-0">
         <img src="/static/img/sigma-cat.png"
-             class="h-14 sm:h-20 w-auto object-contain flex-shrink-0"
+             class="h-14 sm:h-20 w-auto object-contain flex-shrink-0 cursor-pointer active:scale-95 transition-transform"
              alt="Сигма"
+             title="Что умеет Сигма?"
+             onclick="setQuery('что ты умеешь');ask()"
              style="filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))">
         <div class="min-w-0">
           <h1 class="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">Сигма</h1>
@@ -188,7 +190,7 @@
 </div>
 
 <!-- ═══════════════════ MAIN ═══════════════════ -->
-<main class="max-w-4xl mx-auto px-4 py-7 space-y-7">
+<main class="max-w-4xl mx-auto px-4 pt-4 pb-7 space-y-5">
 
   <!-- Loading indicator -->
   <div id="loadingState" class="hidden items-center gap-3 text-slate-500 text-sm">
@@ -2752,7 +2754,7 @@ function renderInfo(_data) {
   return `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <!-- Шапка-приветствие -->
-      <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4 text-white">
+      <div class="bg-gradient-to-br from-blue-900 via-blue-700 to-indigo-700 px-5 py-4 text-white">
         <div class="flex items-start gap-3">
           <img src="/static/img/sigma-cat.png" class="h-16 w-auto flex-shrink-0 object-contain drop-shadow-md" alt="Сима">
           <div class="min-w-0">
