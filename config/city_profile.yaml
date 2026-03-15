@@ -280,13 +280,19 @@ static_datasets:
     # Обязательные поля properties: id, short_name, type, fuel, operator_group,
     #   district, thermal_gcal_h, electric_mw (0 если нет), digitalization_status
 
-  # ── Файлы переедут сюда в Фазе 3 рефакторинга ──
   metro:
-    enabled: false                              # пока данные в metro_data.py
-    file: null
-    note: "Phase 3: перенести из src/metro_data.py в data/cities/novosibirsk/metro.json"
+    enabled: true
+    file: "data/cities/novosibirsk/metro.json"
+    lines_count: 2
+    stations_count: 13
+    opened_year: 1985
+    # Для другого города: создать data/cities/<city_id>/metro.json
+    # Формат: {"info":{...}, "lines":{...}, "stations":[{name,line,_lon,_lat,district,...}]}
 
   airport:
-    enabled: false                              # пока данные в airport_data.py
-    file: null
-    note: "Phase 3: перенести из src/airport_data.py в data/cities/novosibirsk/airport.json"
+    enabled: true
+    file: "data/cities/novosibirsk/airport.json"
+    iata: "OVB"
+    name: "Толмачёво"
+    # Для другого города: создать data/cities/<city_id>/airport.json
+    # Формат: {name,iata,icao,_lon,_lat,terminals:[...],transport:[...]}

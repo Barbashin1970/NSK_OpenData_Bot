@@ -318,3 +318,13 @@ def get_emissions_meta_from_profile() -> dict:
 def get_heat_sources_path() -> Path | None:
     """Путь к GeoJSON-файлу тепловых источников или None."""
     return get_dataset_path("heat_sources")
+
+
+def get_metro_path() -> Path | None:
+    """Путь к JSON-файлу данных метро или None."""
+    return get_dataset_path("metro")
+
+
+def get_airport_path() -> Path | None:
+    """Путь к JSON-файлу данных аэропорта или None."""
+    return get_dataset_path("airport")
