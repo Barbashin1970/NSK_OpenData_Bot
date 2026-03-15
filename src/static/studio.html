@@ -37,12 +37,12 @@
 <!-- ── Шапка ──────────────────────────────────────────────────────────────── -->
 <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
   <div class="flex items-center gap-3">
-    <a href="/" class="text-slate-400 hover:text-slate-600 text-sm">← Главная</a>
+    <a href="/docs" class="text-slate-400 hover:text-slate-600 text-sm">← API docs</a>
     <span class="text-slate-300">|</span>
     <span class="font-bold text-slate-800">Data Studio</span>
     <span class="text-xs text-slate-400 hidden sm:inline">управление городскими данными</span>
   </div>
-  <a href="/docs" target="_blank" class="text-xs text-slate-400 hover:text-blue-600">API docs</a>
+  <a href="/" class="text-xs text-slate-400 hover:text-blue-600">← Главная</a>
 </header>
 
 <!-- ── Табы ───────────────────────────────────────────────────────────────── -->
@@ -271,51 +271,120 @@ async function loadProfiles() {
   }
 }
 
+// Labels and descriptions for known datasets
+const DS_META = {
+  emissions:    { icon:'🏭', label:'Выбросы (2-ТП Воздух)', hint:'Источники загрязнения воздуха по муниципалитетам' },
+  heat_sources: { icon:'🔥', label:'Тепловые источники',     hint:'ТЭЦ и котельные — объекты теплоснабжения' },
+  metro:        { icon:'🚇', label:'Метро',                  hint:'Станции и линии метрополитена' },
+  airport:      { icon:'✈️', label:'Аэропорт',               hint:'Аэропорт, терминалы, транспорт' },
+};
+
 function renderProfiles(profiles) {
   const grid = document.getElementById('profiles-grid');
   if (!profiles.length) {
     grid.innerHTML = '<div class="text-slate-400 text-sm col-span-2 py-8 text-center">Профили не найдены</div>';
     return;
   }
-  grid.innerHTML = profiles.map(p => {
+
+  grid.innerHTML = profiles.map((p, idx) => {
     if (p.error) return `
       <div class="bg-red-50 border border-red-200 rounded-xl p-4">
         <div class="font-mono text-sm text-red-600">${esc(p.profile_file)}</div>
         <div class="text-xs text-red-500 mt-1">${esc(p.error)}</div>
       </div>`;
 
-    const dsHtml = (p.static_datasets || []).map(ds => {
-      let cls, label;
-      if (!ds.enabled)       { cls='badge-off';  label='отключён'; }
-      else if (ds.file_exists){ cls='badge-ok';   label='✓ файл есть'; }
-      else                    { cls='badge-miss'; label='файл отсутствует'; }
-      return `<div class="flex items-center justify-between py-1">
-        <span class="text-xs text-slate-600 font-mono">${esc(ds.name)}</span>
-        <span class="badge ${cls}">${label}</span>
-      </div>`;
-    }).join('');
-
     const feat = p.features || {};
     const featureBadges = [
-      feat.has_metro  ? '<span class="badge" style="background:#ede9fe;color:#5b21b6">М метро</span>' : '',
-      feat.has_airport? `<span class="badge" style="background:#dbeafe;color:#1e40af">✈ ${esc(feat.airport_iata||'')}</span>` : '',
+      feat.has_metro   ? '<span class="badge" style="background:#ede9fe;color:#5b21b6">М метро</span>' : '',
+      feat.has_airport ? `<span class="badge" style="background:#dbeafe;color:#1e40af">✈ ${esc(feat.airport_iata||'')}</span>` : '',
     ].filter(Boolean).join(' ');
 
+    // Summary: how many datasets enabled / have files
+    const ds = p.static_datasets || [];
+    const dsEnabled  = ds.filter(d => d.enabled).length;
+    const dsComplete = ds.filter(d => d.enabled && d.file_exists).length;
+    let completionBadge = '';
+    if (ds.length === 0) completionBadge = '';
+    else if (dsComplete === dsEnabled && dsEnabled > 0)
+      completionBadge = `<span class="badge badge-ok">${dsComplete}/${ds.length} датасетов</span>`;
+    else if (dsEnabled === 0)
+      completionBadge = `<span class="badge badge-off">данных нет</span>`;
+    else
+      completionBadge = `<span class="badge badge-warn">${dsComplete}/${ds.length} датасетов</span>`;
+
+    // Expanded dataset rows
+    const dsRows = ds.map(d => {
+      const m = DS_META[d.name] || {icon:'📄', label: d.name, hint:''};
+      let status, statusCls;
+      if (!d.enabled)        { status='отключён';          statusCls='badge-off'; }
+      else if (d.file_exists){ status='✓ файл есть';       statusCls='badge-ok'; }
+      else                   { status='файл отсутствует';  statusCls='badge-miss'; }
+      const importBtn = d.enabled && !d.file_exists
+        ? `<button onclick="_quickImport('${esc(p.city_id)}','${esc(d.name)}')"
+             class="text-xs text-blue-600 hover:underline ml-2">Загрузить</button>`
+        : '';
+      return `<tr class="hover:bg-slate-50">
+        <td class="px-3 py-1.5 text-sm">${m.icon}</td>
+        <td class="px-2 py-1.5">
+          <div class="text-sm font-medium text-slate-700">${esc(m.label)}</div>
+          <div class="text-xs text-slate-400">${esc(m.hint)}</div>
+        </td>
+        <td class="px-2 py-1.5"><span class="badge ${statusCls}">${status}</span>${importBtn}</td>
+      </tr>`;
+    }).join('');
+
+    // What's possible section
+    const capabilities = [];
+    if (feat.has_metro) capabilities.push('🚇 Маршруты метро, схема линий');
+    if (feat.has_airport) capabilities.push('✈️ Информация об аэропорте и рейсах');
+    if (ds.find(d => d.name==='emissions' && d.enabled)) capabilities.push('🏭 Карта выбросов загрязняющих веществ');
+    if (ds.find(d => d.name==='heat_sources' && d.enabled)) capabilities.push('🔥 Тепловые источники на карте');
+    const capHtml = capabilities.length
+      ? capabilities.map(c => `<li class="text-xs text-slate-500">${esc(c)}</li>`).join('')
+      : '<li class="text-xs text-slate-400 italic">Функции зависят от подключённых датасетов</li>';
+
     return `
-    <div class="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-sm transition">
-      <div class="flex items-start justify-between mb-3">
-        <div>
-          <div class="font-bold text-slate-800 text-base">${esc(p.city_name)}</div>
-          <div class="text-xs text-slate-400 font-mono">${esc(p.city_id)} · ${esc(p.timezone)}</div>
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-sm transition" id="card-${idx}">
+      <!-- Card header — always visible, clickable -->
+      <div class="p-5 cursor-pointer select-none" onclick="toggleCard(${idx})">
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="font-bold text-slate-800 text-base">${esc(p.city_name)}</div>
+            <div class="text-xs text-slate-400 font-mono mt-0.5">${esc(p.city_id)} · UTC${p.utc_offset >= 0 ? '+' : ''}${p.utc_offset}</div>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap justify-end">
+            ${featureBadges}
+            ${completionBadge}
+            <span class="text-slate-300 text-sm card-arrow-${idx}">▶</span>
+          </div>
         </div>
-        <div class="flex gap-1 flex-wrap justify-end">${featureBadges}</div>
+        <div class="flex gap-4 mt-2 text-xs text-slate-500">
+          <span>${p.districts_count} районов</span>
+          ${p.center ? `<span>📍 ${p.center.lat?.toFixed(3)}, ${p.center.lon?.toFixed(3)}</span>` : ''}
+        </div>
       </div>
-      <div class="text-xs text-slate-500 mb-3">
-        ${p.districts_count} районов
-        ${p.center ? `· ${p.center.lat?.toFixed(4)}, ${p.center.lon?.toFixed(4)}` : ''}
+
+      <!-- Expanded details -->
+      <div id="card-body-${idx}" class="hidden border-t border-slate-100">
+        ${ds.length ? `
+        <div class="px-5 pt-3 pb-1">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Статические датасеты</div>
+          <table class="w-full"><tbody>${dsRows}</tbody></table>
+        </div>` : ''}
+
+        <div class="px-5 py-3 bg-slate-50 border-t border-slate-100">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Доступные функции</div>
+          <ul class="space-y-0.5">${capHtml}</ul>
+        </div>
+
+        <div class="px-5 py-3 border-t border-slate-100 flex gap-3 items-center">
+          <button onclick="_quickImport('${esc(p.city_id)}', '')"
+            class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
+            Импортировать данные
+          </button>
+          <span class="text-xs text-slate-300 font-mono">${esc(p.profile_file)}</span>
+        </div>
       </div>
-      ${dsHtml ? `<div class="border-t border-slate-100 pt-2 mt-2">${dsHtml}</div>` : ''}
-      <div class="text-xs text-slate-300 mt-3 font-mono">${esc(p.profile_file)}</div>
     </div>`;
   }).join('');
 
@@ -324,6 +393,29 @@ function renderProfiles(profiles) {
   sel.innerHTML = profiles.filter(p => !p.error).map(p =>
     `<option value="${esc(p.city_id)}">${esc(p.city_name)} (${esc(p.city_id)})</option>`
   ).join('');
+}
+
+function toggleCard(idx) {
+  const body  = document.getElementById('card-body-' + idx);
+  const arrow = document.querySelector('.card-arrow-' + idx);
+  if (!body) return;
+  const open = !body.classList.contains('hidden');
+  body.classList.toggle('hidden', open);
+  if (arrow) arrow.textContent = open ? '▶' : '▼';
+}
+
+function _quickImport(cityId, dsType) {
+  // Switch to Import tab with pre-filled values
+  document.querySelector('[data-tab="import"]').click();
+  if (cityId) {
+    const sel = document.getElementById('sel-city');
+    for (const opt of sel.options) if (opt.value === cityId) { opt.selected = true; break; }
+  }
+  if (dsType) {
+    const sel = document.getElementById('sel-dataset');
+    for (const opt of sel.options) if (opt.value === dsType) { opt.selected = true; break; }
+  }
+  window.scrollTo(0, 0);
 }
 
 function showNewProfileTemplate() {

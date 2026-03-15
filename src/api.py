@@ -494,6 +494,8 @@ _NAV_BAR_HTML = """
   <span class="title">NSK OpenData Bot</span>
   <span class="sub">API Документация</span>
   <a href="/news-editor" class="back" target="_blank" style="background:rgba(167,139,250,.15);border-color:rgba(167,139,250,.4);color:#c4b5fd;">📰 Редактор новостей</a>
+  <a href="/studio" class="back" style="background:rgba(34,197,94,.15);border-color:rgba(34,197,94,.4);color:#86efac;">🏙 Data Studio</a>
+  <button class="back" onclick="NSKDev.changePassword()" style="background:rgba(251,191,36,.15);border-color:rgba(251,191,36,.3);color:#fde68a;">🔑 Пароль</button>
   <button id="nsk-test-toggle" onclick="NSKTests.toggle()">
     <span class="dot" id="nsk-dot"></span> Тестирование
   </button>
@@ -811,6 +813,63 @@ const NSKTests = (() => {
   }
 
   return { toggle, close, run, updateAll };
+})();
+
+// ── Dev password modal ────────────────────────────────────────────────────
+const NSKDev = (() => {
+  function _modal(html) {
+    let el = document.getElementById('nsk-dev-modal');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'nsk-dev-modal';
+      el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = html;
+    el.style.display = 'flex';
+    el.addEventListener('click', e => { if(e.target===el) el.style.display='none'; });
+  }
+  function _close() {
+    const el = document.getElementById('nsk-dev-modal');
+    if (el) el.style.display = 'none';
+  }
+  async function changePassword() {
+    _modal(`<div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:28px 32px;width:360px;color:#e2e8f0;font-family:system-ui,sans-serif;">
+      <div style="font-weight:700;font-size:15px;margin-bottom:16px;">🔑 Изменить пароль разработчика</div>
+      <label style="font-size:12px;color:#94a3b8;">Текущий пароль</label>
+      <input id="dp-old" type="password" placeholder="Текущий пароль"
+        style="display:block;width:100%;margin:4px 0 12px;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"/>
+      <label style="font-size:12px;color:#94a3b8;">Новый пароль</label>
+      <input id="dp-new" type="password" placeholder="Новый пароль"
+        style="display:block;width:100%;margin:4px 0 20px;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:13px;box-sizing:border-box;"/>
+      <div style="display:flex;gap:10px;">
+        <button onclick="NSKDev._submitChange()" style="flex:1;padding:9px;background:#2563eb;border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer;font-size:13px;">Изменить</button>
+        <button onclick="NSKDev._close()" style="padding:9px 16px;background:#334155;border:none;border-radius:8px;color:#94a3b8;cursor:pointer;font-size:13px;">Отмена</button>
+      </div>
+      <div id="dp-msg" style="margin-top:10px;font-size:12px;min-height:16px;"></div>
+    </div>`);
+    setTimeout(() => document.getElementById('dp-old')?.focus(), 50);
+  }
+  async function _submitChange() {
+    const oldP = document.getElementById('dp-old')?.value || '';
+    const newP = document.getElementById('dp-new')?.value || '';
+    const msg  = document.getElementById('dp-msg');
+    if (!oldP || !newP) { msg.style.color='#f87171'; msg.textContent='Заполните оба поля.'; return; }
+    if (newP.length < 6) { msg.style.color='#f87171'; msg.textContent='Новый пароль слишком короткий (мин. 6 символов).'; return; }
+    msg.style.color='#94a3b8'; msg.textContent='Проверяю…';
+    const r = await fetch('/dev-password', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({old_password: oldP, new_password: newP})
+    });
+    const d = await r.json();
+    if (d.success) {
+      msg.style.color='#4ade80'; msg.textContent='Пароль успешно изменён.';
+      setTimeout(_close, 1500);
+    } else {
+      msg.style.color='#f87171'; msg.textContent = d.detail || 'Неверный пароль.';
+    }
+  }
+  return { changePassword, _submitChange, _close };
 })();
 </script>
 """
@@ -2989,6 +3048,46 @@ def news_editor_page():
         return HTMLResponse("<h1>news-editor.html not found</h1>")
     content = html_file.read_text(encoding="utf-8")
     return HTMLResponse(content, headers={"Cache-Control": "no-store"})
+
+
+# ── Dev password ──────────────────────────────────────────────────────────────
+
+import hashlib as _hashlib
+
+_DEV_DEFAULT_HASH = _hashlib.sha256(b"sigma2024").hexdigest()
+
+
+def _hash_pwd(pwd: str) -> str:
+    return _hashlib.sha256(pwd.encode("utf-8")).hexdigest()
+
+
+def _get_dev_hash() -> str:
+    return _load_api_keys().get("dev_password_hash", _DEV_DEFAULT_HASH)
+
+
+def _check_dev_pwd(pwd: str) -> bool:
+    return _hash_pwd(pwd) == _get_dev_hash()
+
+
+@app.get("/dev-auth", include_in_schema=False)
+def dev_auth(password: str = Query(...)):
+    """Проверить пароль разработчика. Используется UI перед открытием /docs."""
+    return {"valid": _check_dev_pwd(password)}
+
+
+@app.post("/dev-password", include_in_schema=False)
+async def dev_password_change(body: dict):
+    """Изменить пароль разработчика. Тело: {old_password, new_password}."""
+    old_pwd = body.get("old_password", "")
+    new_pwd = body.get("new_password", "")
+    if not _check_dev_pwd(old_pwd):
+        return JSONResponse({"success": False, "detail": "Неверный текущий пароль"}, status_code=403)
+    if len(new_pwd) < 6:
+        return JSONResponse({"success": False, "detail": "Новый пароль слишком короткий"}, status_code=400)
+    keys = _load_api_keys()
+    keys["dev_password_hash"] = _hash_pwd(new_pwd)
+    _save_api_keys(keys)
+    return {"success": True}
 
 
 # ── Data Studio ───────────────────────────────────────────────────────────────

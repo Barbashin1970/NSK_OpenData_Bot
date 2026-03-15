@@ -248,8 +248,7 @@ static_datasets:
                         note: "Ключ из секции lines: '1', '2', ..."}
       district:        {label: "Район города",            type: str,     required: true}
       address:         {label: "Адрес входа",             type: str,     required: false}
-      interchange_with:{label: "Пересадки",               type: list_str, required: false,
-                        note: "[[номер_линии, название_станции], ...]"}
+      interchange_with: {label: "Пересадки",  type: list_str, required: false, note: "список [[номер_линии, название_станции], ...]"}
       note:            {label: "Примечание",              type: str,     required: false}
       passengers_day:  {label: "Пассажиров в сутки",      type: int,     required: false}
       _lat:            {label: "Широта",                  type: geo_lat, required: true}

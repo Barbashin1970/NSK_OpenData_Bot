@@ -142,16 +142,6 @@
         <div id="mapglBadge" class="hidden flex-shrink-0 flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs rounded-xl font-medium" title="2GIS API ключ загружен · карты и геокодирование доступны">
           📍<span class="hidden sm:inline"> 2GIS</span>
         </div>
-        <!-- API Docs — hidden on mobile -->
-        <a href="/docs" target="_blank"
-           class="hidden sm:flex flex-shrink-0 items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-xl border border-white/20 transition-all whitespace-nowrap"
-           title="Открыть документацию REST API (Swagger UI)">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
-          </svg>
-          API Docs
-        </a>
       </div>
     </div>
 
@@ -231,7 +221,7 @@
     <p>Данные: <a href="http://opendata.novo-sibirsk.ru" target="_blank" class="hover:text-blue-500 transition-colors">opendata.novo-sibirsk.ru</a> · Отключения: <a href="http://051.novo-sibirsk.ru" target="_blank" class="hover:text-blue-500 transition-colors">051.novo-sibirsk.ru</a></p>
     <p>
       Сигма · ЦИИ НГУ ·
-      <a href="/docs" target="_blank" class="hover:text-blue-500 transition-colors">API Docs ↗</a> · 
+      <a href="#" onclick="_openDevDocs(event)" class="hover:text-blue-500 transition-colors">API Docs 🔒</a> ·
       <a href="https://github.com/Barbashin1970/NSK_OpenData_Bot" target="_blank" class="hover:text-blue-500 transition-colors">Инструкция (GitHub) ↗</a> · 
       <span id="footerTime"></span>
     </p>
@@ -4391,6 +4381,62 @@ if (currentRole !== 'citizen') {
   }
   setTimeout(updateTime, 30000);
 })();
+
+// ── API Docs — password modal ─────────────────────────────────────────────
+async function _openDevDocs(e) {
+  e.preventDefault();
+  // Если уже авторизован в этой сессии — сразу открываем
+  if (sessionStorage.getItem('dev_auth_ok') === '1') {
+    window.open('/docs', '_blank');
+    return;
+  }
+  // Показываем модальное окно
+  let overlay = document.getElementById('_dev-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = '_dev-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;';
+    overlay.addEventListener('click', ev => { if(ev.target===overlay) overlay.style.display='none'; });
+    document.body.appendChild(overlay);
+  }
+  overlay.style.display = 'flex';
+  overlay.innerHTML = `
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:14px;padding:28px 32px;width:320px;color:#e2e8f0;font-family:system-ui,sans-serif;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+      <div style="font-weight:700;font-size:16px;margin-bottom:6px;">🔒 API Документация</div>
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:16px;">Введите пароль разработчика для доступа</div>
+      <input id="_dev-pwd-input" type="password" placeholder="Пароль"
+        style="display:block;width:100%;padding:10px 12px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:14px;box-sizing:border-box;margin-bottom:12px;"
+        onkeydown="if(event.key==='Enter') _submitDevAuth()"/>
+      <div style="display:flex;gap:10px;">
+        <button onclick="_submitDevAuth()" style="flex:1;padding:10px;background:#2563eb;border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer;font-size:14px;">Войти</button>
+        <button onclick="document.getElementById('_dev-overlay').style.display='none'" style="padding:10px 14px;background:#334155;border:none;border-radius:8px;color:#94a3b8;cursor:pointer;font-size:14px;">✕</button>
+      </div>
+      <div id="_dev-msg" style="margin-top:10px;font-size:12px;min-height:16px;text-align:center;"></div>
+    </div>`;
+  setTimeout(() => document.getElementById('_dev-pwd-input')?.focus(), 50);
+}
+
+async function _submitDevAuth() {
+  const pwd  = document.getElementById('_dev-pwd-input')?.value || '';
+  const msg  = document.getElementById('_dev-msg');
+  if (!pwd) { msg.style.color='#f87171'; msg.textContent='Введите пароль'; return; }
+  msg.style.color='#94a3b8'; msg.textContent='Проверяю…';
+  try {
+    const r = await fetch('/dev-auth?password=' + encodeURIComponent(pwd));
+    const d = await r.json();
+    if (d.valid) {
+      sessionStorage.setItem('dev_auth_ok', '1');
+      document.getElementById('_dev-overlay').style.display = 'none';
+      window.open('/docs', '_blank');
+    } else {
+      msg.style.color='#f87171'; msg.textContent='Неверный пароль';
+      document.getElementById('_dev-pwd-input').value = '';
+      document.getElementById('_dev-pwd-input').focus();
+    }
+  } catch(err) {
+    msg.style.color='#f87171'; msg.textContent='Ошибка сети';
+  }
+}
 
 </script>
 </body>
