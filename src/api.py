@@ -604,7 +604,7 @@ const NSKTests = (() => {
         });
       } else if (d.type === 'start') {
         total = d.total;
-        addLine('Собрано тестов: ' + total, 'info');
+        addLine('Собрано тестов: ' + total + ' (часть может быть пропущена для профилей без данных)', 'info');
       } else if (d.type === 'progress') {
         if (d.status === 'passed') {
           passed++;
@@ -643,11 +643,12 @@ const NSKTests = (() => {
             ? 'linear-gradient(90deg,#dc2626,#ef4444)'
             : 'linear-gradient(90deg,#16a34a,#4ade80)';
           if (d.failed === 0 && d.returncode === 0) {
+            const skipNote = d.skipped > 0 ? ' · ' + d.skipped + ' пропущено' : '';
             result().textContent = '✓ Все тесты прошли (' + d.passed + ')';
             result().className = 'ok';
             dot().className = 'dot ok';
             addLine('', '');
-            addLine('Все ' + d.passed + ' тестов прошли успешно.', 'passed');
+            addLine('Все ' + d.passed + ' тестов прошли успешно.' + (d.skipped ? ' Пропущено: ' + d.skipped + ' (нет данных для этого профиля города).' : ''), 'passed');
           } else {
             result().textContent = '✗ Упало: ' + d.failed;
             result().className = 'fail';
@@ -1005,6 +1006,7 @@ def run_tests():
         done = 0
         passed = 0
         failed = 0
+        skipped = 0
         failed_lines: list[str] = []
 
         for raw_line in proc.stdout:
@@ -1035,13 +1037,16 @@ def run_tests():
                 yield _sse({"type": "progress", "done": done, "total": total,
                             "pct": pct, "status": status, "short": short, "line": line})
             else:
-                # Финальная сводка pytest: "N passed, M failed, K warnings in X.XXs"
+                # Финальная сводка pytest: "N passed, M skipped, K failed, ... in X.XXs"
                 m_fin = _re.search(r"\b(\d+)\s+passed.*\bin\s+[\d.]+s", line)
                 if m_fin:
                     passed = int(m_fin.group(1))
                     mf = _re.search(r"\b(\d+)\s+failed", line)
+                    ms = _re.search(r"\b(\d+)\s+skipped", line)
                     if mf:
                         failed = int(mf.group(1))
+                    if ms:
+                        skipped = int(ms.group(1))
                     if not total:
                         total = passed + (int(mf.group(1)) if mf else 0)
                 yield _sse({"type": "log", "line": line})
@@ -1051,7 +1056,8 @@ def run_tests():
             "type": "done",
             "passed": passed,
             "failed": failed,
-            "total": total,
+            "skipped": skipped,
+            "total": passed + failed,   # только выполненные, без skipped
             "returncode": proc.returncode,
             "failed_lines": failed_lines,
         })
