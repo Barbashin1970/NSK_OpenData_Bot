@@ -169,7 +169,7 @@ def test_plan_sub_district_power_outages():
     ("активные стройки",                            "CONSTRUCTION_ACTIVE",       None),
     ("строящиеся объекты в Кировском районе",       "CONSTRUCTION_ACTIVE",       None),
     ("незавершённое строительство",                 "CONSTRUCTION_ACTIVE",       None),
-    ("разрешения на строительство",                 "CONSTRUCTION_ACTIVE",       None),
+    ("разрешения на строительство",                 "CONSTRUCTION_PERMITS",      None),
     ("сколько активных строек",                     "CONSTRUCTION_COUNT",        "active"),
     ("количество строек в Калининском",             "CONSTRUCTION_COUNT",        "active"),
     ("стройки по районам",                          "CONSTRUCTION_GROUP",        "active"),
