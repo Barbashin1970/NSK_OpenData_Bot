@@ -23,6 +23,7 @@ from typing import Any
 
 import requests
 
+from .city_config import get_district_coords
 from .constants import TIMEOUT
 
 log = logging.getLogger(__name__)
@@ -30,20 +31,8 @@ log = logging.getLogger(__name__)
 _ROUTING_URL  = "https://routing.api.2gis.com/public_transport/3.0.0/"
 _CATALOG_URL  = "https://catalog.api.2gis.com/3.0/items"
 
-# Координаты центров районов Новосибирска (lng, lat)
-DISTRICT_COORDS: dict[str, tuple[float, float]] = {
-    "Центральный район":      (82.9090, 54.9884),
-    "Советский район":        (83.1091, 54.8441),
-    "Дзержинский район":      (82.9650, 54.9823),
-    "Железнодорожный район":  (82.8860, 54.9954),
-    "Заельцовский район":     (82.9550, 54.9893),
-    "Калининский район":      (82.8880, 55.0190),
-    "Кировский район":        (82.8190, 54.9600),
-    "Ленинский район":        (82.8800, 54.9460),
-    "Октябрьский район":      (82.8190, 54.9940),
-    "Первомайский район":     (82.8710, 54.8780),
-    "Кольцово":               (83.1818, 54.9394),
-}
+# Координаты центров районов (lng, lat) — из city_profile.yaml
+DISTRICT_COORDS: dict[str, tuple[float, float]] = get_district_coords()
 
 
 def _get_api_key() -> str | None:

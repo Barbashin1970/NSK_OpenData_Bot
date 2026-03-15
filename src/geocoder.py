@@ -17,11 +17,13 @@ from pathlib import Path
 import duckdb
 import requests
 
+from .city_config import get_city_name
+
 log = logging.getLogger(__name__)
 
 _DB_PATH = Path(__file__).parent.parent / "data" / "cache.db"
 _GEOCODE_URL = "https://catalog.api.2gis.com/3.0/items/geocode"
-_DEFAULT_CITY = "Новосибирск"
+_DEFAULT_CITY = get_city_name()  # из city_profile.yaml
 _REQUEST_TIMEOUT = 8
 
 
