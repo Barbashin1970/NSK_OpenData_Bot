@@ -2991,6 +2991,247 @@ def news_editor_page():
     return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
 
+# ── Data Studio ───────────────────────────────────────────────────────────────
+
+_CONFIG_DIR = Path(__file__).parent.parent / "config"
+_DATA_DIR   = Path(__file__).parent.parent / "data"
+
+
+@app.get("/studio", include_in_schema=False)
+def studio_page():
+    """Data Studio — визуальный интерфейс управления городскими данными."""
+    html_file = _STATIC / "studio.html"
+    if not html_file.exists():
+        return HTMLResponse("<h1>studio.html не найден</h1>", status_code=404)
+    content = html_file.read_text(encoding="utf-8")
+    return HTMLResponse(content, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/studio/api/profiles", include_in_schema=False)
+def studio_profiles():
+    """Список всех city_profile*.yaml с информацией о датасетах."""
+    import yaml as _yaml
+
+    profiles = []
+    for yaml_path in sorted(_CONFIG_DIR.glob("city_profile*.yaml")):
+        try:
+            with open(yaml_path, encoding="utf-8") as f:
+                data = _yaml.safe_load(f)
+            city = data.get("city", {})
+            static_ds = data.get("static_datasets", {})
+
+            datasets_status = []
+            for ds_name, ds_cfg in static_ds.items():
+                enabled = ds_cfg.get("enabled", False)
+                file_rel = ds_cfg.get("file", "")
+                file_exists = False
+                if enabled and file_rel:
+                    file_exists = (Path(__file__).parent.parent / file_rel).exists()
+                datasets_status.append({
+                    "name": ds_name,
+                    "enabled": enabled,
+                    "file": file_rel,
+                    "file_exists": file_exists,
+                })
+
+            profiles.append({
+                "profile_file": yaml_path.name,
+                "city_id": city.get("id", ""),
+                "city_name": city.get("name", ""),
+                "city_name_genitive": city.get("name_genitive", ""),
+                "timezone": city.get("timezone", ""),
+                "utc_offset": city.get("utc_offset", 0),
+                "center": city.get("center", {}),
+                "districts_count": len(data.get("districts", {})),
+                "features": data.get("features", {}),
+                "static_datasets": datasets_status,
+            })
+        except Exception as exc:
+            profiles.append({"profile_file": yaml_path.name, "error": str(exc)})
+
+    return {"profiles": profiles}
+
+
+@app.get("/studio/api/schemas", include_in_schema=False)
+def studio_schemas():
+    """Канонические схемы из canonical_schemas.yaml."""
+    import yaml as _yaml
+
+    schemas_path = _CONFIG_DIR / "canonical_schemas.yaml"
+    if not schemas_path.exists():
+        return {"error": "canonical_schemas.yaml не найден"}
+    with open(schemas_path, encoding="utf-8") as f:
+        schemas = _yaml.safe_load(f)
+    return schemas
+
+
+@app.post("/studio/api/preview", include_in_schema=False)
+async def studio_preview(file: UploadFile = File(...)):
+    """Загрузить CSV/JSON → вернуть {columns, sample[5], format}."""
+    import csv as _csv
+    import tempfile as _tmp
+    import os as _os
+
+    content = await file.read()
+    filename = file.filename or "upload"
+    suffix = Path(filename).suffix.lower()
+
+    with _tmp.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        if suffix in (".json", ".geojson"):
+            raw = json.loads(content)
+            if isinstance(raw, list):
+                source_rows = raw
+            elif isinstance(raw, dict):
+                # GeoJSON FeatureCollection
+                if "features" in raw:
+                    source_rows = [
+                        {
+                            **f.get("properties", {}),
+                            "_lon": (f.get("geometry") or {}).get("coordinates", [None, None])[0],
+                            "_lat": (f.get("geometry") or {}).get("coordinates", [None, None])[1],
+                        }
+                        for f in raw["features"]
+                    ]
+                else:
+                    # Ищем первый list-значение
+                    source_rows = []
+                    for v in raw.values():
+                        if isinstance(v, list) and v:
+                            source_rows = v
+                            break
+                    if not source_rows:
+                        source_rows = [raw]
+            else:
+                source_rows = [raw]
+
+            sample = source_rows[:5]
+            columns = list(sample[0].keys()) if sample else []
+
+        else:
+            # CSV: сначала DuckDB, fallback stdlib
+            try:
+                import duckdb as _ddb
+                con = _ddb.connect()
+                df = con.execute(
+                    f"SELECT * FROM read_csv_auto('{tmp_path}') LIMIT 5"
+                ).fetchdf()
+                columns = list(df.columns)
+                sample = df.to_dict(orient="records")
+                con.close()
+            except Exception:
+                text = content.decode("utf-8-sig", errors="replace")
+                reader = _csv.DictReader(text.splitlines())
+                columns = list(reader.fieldnames or [])
+                sample = [row for row, _ in zip(reader, range(5))]
+
+        return {
+            "filename": filename,
+            "format": suffix.lstrip(".") or "csv",
+            "columns": columns,
+            "sample": sample,
+        }
+    finally:
+        _os.unlink(tmp_path)
+
+
+@app.post("/studio/api/import", include_in_schema=False)
+async def studio_import(
+    city_id: str = Form(...),
+    dataset_type: str = Form(...),
+    mapping: str = Form(...),   # JSON: {"canonical_field": "source_column"}
+    file: UploadFile = File(...),
+):
+    """Загрузить файл + маппинг → сохранить в data/cities/<city_id>/<dataset_type>.json."""
+    import csv as _csv
+    import tempfile as _tmp
+    import os as _os
+
+    # Валидация city_id / dataset_type: только безопасные символы
+    if not _re.match(r'^[\w\-]+$', city_id) or not _re.match(r'^[\w\-]+$', dataset_type):
+        raise HTTPException(status_code=400, detail="Недопустимые символы в city_id или dataset_type")
+
+    content = await file.read()
+    filename = file.filename or "upload"
+    suffix = Path(filename).suffix.lower()
+    col_map: dict = json.loads(mapping)
+
+    with _tmp.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        # Читаем исходные данные
+        if suffix in (".json", ".geojson"):
+            raw = json.loads(content)
+            if isinstance(raw, list):
+                source_rows = raw
+            elif isinstance(raw, dict):
+                if "features" in raw:
+                    source_rows = [
+                        {
+                            **f.get("properties", {}),
+                            "_lon": (f.get("geometry") or {}).get("coordinates", [None, None])[0],
+                            "_lat": (f.get("geometry") or {}).get("coordinates", [None, None])[1],
+                        }
+                        for f in raw["features"]
+                    ]
+                else:
+                    source_rows = []
+                    for v in raw.values():
+                        if isinstance(v, list) and v:
+                            source_rows = v
+                            break
+                    if not source_rows:
+                        source_rows = [raw]
+            else:
+                source_rows = [raw]
+        else:
+            try:
+                import duckdb as _ddb
+                con = _ddb.connect()
+                df = con.execute(
+                    f"SELECT * FROM read_csv_auto('{tmp_path}')"
+                ).fetchdf()
+                source_rows = df.to_dict(orient="records")
+                con.close()
+            except Exception:
+                text = content.decode("utf-8-sig", errors="replace")
+                source_rows = list(_csv.DictReader(text.splitlines()))
+
+        # Применяем маппинг
+        mapped_rows = []
+        for row in source_rows:
+            mapped = {}
+            for canonical, source_col in col_map.items():
+                if source_col and source_col in row:
+                    mapped[canonical] = row[source_col]
+            if mapped:
+                mapped_rows.append(mapped)
+
+        # Сохраняем
+        out_dir = _DATA_DIR / "cities" / city_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_file = out_dir / f"{dataset_type}.json"
+        out_file.write_text(
+            json.dumps({"rows": mapped_rows}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        return {
+            "success": True,
+            "city_id": city_id,
+            "dataset_type": dataset_type,
+            "rows_imported": len(mapped_rows),
+            "saved_to": str(out_file.relative_to(Path(__file__).parent.parent)),
+        }
+    finally:
+        _os.unlink(tmp_path)
+
+
 # ── Статические файлы (tailwind.css, иконки и т.д.) ─────────────────────────
 if _STATIC.exists():
     app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")

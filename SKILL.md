@@ -702,3 +702,161 @@ log = logging.getLogger(__name__)
 log.info("UNKNOWN_QUERY: %s", q)      # перед return {"operation": "UNKNOWN"}
 ```
 Railway Dashboard → Logs tab → фильтр `UNKNOWN_QUERY`. Без персистентного диска, данные живут пока жив деплой.
+
+---
+
+## Мульти-город архитектура
+
+> **Принцип:** `config/city_profile.yaml` — единственный источник городского знания. Все Python-модули читают город только через `src/city_config.py`. Прямое чтение YAML в других модулях запрещено.
+
+### Переключение города
+
+```bash
+CITY_PROFILE=city_profile_omsk bot serve       # Linux/macOS
+$env:CITY_PROFILE="city_profile_omsk"; bot serve  # Windows PowerShell
+```
+
+| Env | Файл | Поведение |
+|---|---|---|
+| не задан | `config/city_profile.yaml` | Новосибирск (дефолт) |
+| `city_profile_omsk` | `config/city_profile_omsk.yaml` | Омск |
+| абсолютный путь | `/etc/mybot/omsk.yaml` | произвольный путь |
+
+### Ключевые функции city_config.py
+
+| Функция | Возвращает |
+|---|---|
+| `get_city_id()` | `"novosibirsk"` |
+| `get_city_name(case)` | `"Новосибирск"` / `"Новосибирска"` / `"Новосибирске"` |
+| `get_districts()` | `{"Советский район": ["советск"], ...}` |
+| `get_district_coords()` | `{"Советский район": (83.1091, 54.8441), ...}` |
+| `get_sub_districts_compiled()` | список tuple `(re.Pattern, "Район", "Подрайон")` |
+| `get_ecology_stations()` | список `{station_id, district, lat, lon, ...}` |
+| `get_dataset_path(name)` | `Path` к файлу данных или `None` если `enabled: false` |
+| `get_metro_path()` | `Path` к `metro.json` или `None` |
+| `get_airport_path()` | `Path` к `airport.json` или `None` |
+
+**lru_cache:** профиль загружается **один раз**. При тестах со сменой профиля: `get_city_profile.cache_clear()`.
+
+### Graceful degradation
+
+Если датасет `enabled: false` в `city_profile.yaml`:
+- `get_dataset_path(name)` → `None`
+- загрузчик бросает `FileNotFoundError` с понятным сообщением
+- бот возвращает ответ «данные недоступны для этого города» (не 500)
+
+### Структура city_profile.yaml
+
+```
+city:             id, name, name_genitive, name_prepositional, slug, timezone, utc_offset, center, bbox
+districts:        канон. название → [стемы]
+sub_districts:    [{name, parent, patterns, examples}]
+district_coords:  канон. название → {lon, lat}
+city_stopwords:   слова-исключения для геокодера
+ecology_stations: [{station_id, district, address, lat, lon}]
+features:         has_metro, has_airport, airport_iata, power_outages_url, ...
+opendata_base_url
+static_datasets:  emissions, heat_sources, metro, airport → {enabled, file, ...}
+```
+
+---
+
+## Статические датасеты (JSON/GeoJSON)
+
+Загружаются один раз через `lru_cache`. Путь из `city_profile.yaml → static_datasets.<name>.file`.
+
+| Датасет | Файл | Формат | Загрузчик |
+|---|---|---|---|
+| `emissions` | `data/nsk_emissions_2tp.json` | JSON → `{"municipalities":[...]}` | `src/emissions.py` |
+| `heat_sources` | `data/nsk_heat_sources_v1.geojson` | GeoJSON FeatureCollection | `src/heat_sources.py` |
+| `metro` | `data/cities/novosibirsk/metro.json` | JSON → `{"info":{}, "lines":{}, "stations":[...]}` | `src/metro_data.py` |
+| `airport` | `data/cities/novosibirsk/airport.json` | JSON → `{name, iata, terminals:[], transport:[]}` | `src/airport_data.py` |
+
+### Добавить датасет для нового города
+
+1. Создать файл в `data/cities/<city_id>/` (структуру смотреть в `config/canonical_schemas.yaml`)
+2. В `city_profile_<id>.yaml` → `static_datasets.<name>: {enabled: true, file: "data/cities/<city_id>/..."}`
+3. Перезапустить — `lru_cache` сбросится автоматически
+
+---
+
+## Канонические схемы (canonical_schemas.yaml)
+
+`config/canonical_schemas.yaml` — единственный источник правды об именах полей.
+
+**Правило: имена полей нельзя менять** без обновления кода в `executor.py`, `renderer.py`, `heat_sources.py`, `emissions.py` и тестов.
+
+| Соглашение | Пример |
+|---|---|
+| Строчные, транслит, подчёркивание | `vid_sporta`, `nazvanie_polnoe` |
+| Координаты всегда с `_` | `_lat`, `_lon` |
+| Единицы в имени | `vsego_t` (тонны), `thermal_gcal_h` (Гкал/ч), `mest_kol` (количество) |
+| Район в CSV-темах | `rayon` |
+| Район в статических | `district` |
+
+| Секция | Что содержит |
+|---|---|
+| `csv_topics` | 10 тем opendata: parking, stops, schools, ... (поля для executor.py SQL) |
+| `static_datasets` | emissions, heat_sources, metro_station, metro_line, airport, terminal, transport |
+| `config_structures` | ecology_station, district_coord (для city_profile.yaml) |
+
+Просмотр: `GET /studio/api/schemas`.
+
+---
+
+## Docker-деплой (сервер мэрии)
+
+| Файл | Назначение |
+|---|---|
+| `Dockerfile` | python:3.11-slim, `pip install -e .`, `bot serve --host 0.0.0.0` |
+| `docker-compose.yml` | bot + (опц.) nginx; `data/` как Volume; healthcheck на `/topics` |
+| `deploy/nginx.conf` | HTTP→HTTPS redirect, proxy → localhost:8000, SSL через certbot |
+| `.env.example` | шаблон: `CITY_PROFILE`, `TWOGIS_API_KEY`, `CITYAIR_API_KEY` |
+
+```bash
+git clone <repo> /opt/city-bot && cd /opt/city-bot
+cp .env.example .env && nano .env
+docker-compose up -d
+curl http://localhost:8000/topics
+```
+
+**Обновление данных:** `docker-compose restart bot` (без пересборки образа).
+**Обновление кода:** `git pull && docker-compose build --no-cache && docker-compose up -d`.
+
+| | Минимум | Рекомендуется |
+|---|---|---|
+| CPU | 1 ядро | 2 ядра |
+| RAM | 512 МБ | 2 ГБ |
+| Диск | 10 ГБ | 50 ГБ |
+| ОС | Ubuntu 20.04 | Ubuntu 22.04 LTS |
+
+---
+
+## Data Studio (/studio)
+
+Визуальный интерфейс управления городскими данными. Для аналитиков мэрии.
+Открыть: `http://127.0.0.1:8000/studio`
+
+| Вкладка | Что делает |
+|---|---|
+| **Города** | Список всех `city_profile*.yaml`, статус датасетов (включён / файл есть / отсутствует) |
+| **Импорт данных** | Загрузить CSV/JSON → предпросмотр → маппинг колонок → сохранить |
+| **Справочник схем** | Канонические схемы из `canonical_schemas.yaml` |
+
+### Studio API (внутренние, не в Swagger)
+
+| Метод | Путь | Описание |
+|---|---|---|
+| `GET` | `/studio` | HTML-страница Studio |
+| `GET` | `/studio/api/profiles` | Все city profiles + статус датасетов |
+| `GET` | `/studio/api/schemas` | Canonical schemas (YAML → JSON) |
+| `POST` | `/studio/api/preview` | Загрузить файл → `{columns, sample[5]}` |
+| `POST` | `/studio/api/import` | Загрузить + маппинг → сохранить в `data/cities/<city_id>/` |
+
+### Импорт CSV: flow
+
+1. Выбрать город (`city_id`) и тип датасета
+2. Загрузить CSV/JSON → предпросмотр 5 строк + список колонок
+3. Сопоставить каждое каноническое поле с колонкой источника
+4. Нажать «Импортировать» → сохраняется в `data/cities/<city_id>/<dataset_type>.json`
+5. В `city_profile_<id>.yaml` вручную установить `enabled: true, file: ...`

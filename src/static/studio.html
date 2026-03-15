@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Data Studio — City OpenData Bot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .tab-btn { transition: all .15s; }
+    .tab-btn.active { border-bottom: 2px solid #2563eb; color: #2563eb; font-weight: 600; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    .badge-ok    { background:#dcfce7; color:#166534; }
+    .badge-warn  { background:#fef9c3; color:#854d0e; }
+    .badge-miss  { background:#fee2e2; color:#991b1b; }
+    .badge-off   { background:#f1f5f9; color:#64748b; }
+    .badge { display:inline-block; padding:1px 8px; border-radius:9999px; font-size:.75rem; font-weight:500; }
+    .field-row:nth-child(even) { background:#f8fafc; }
+    .step-num { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.85rem; font-weight:700; flex-shrink:0; }
+    .step-active .step-num   { background:#2563eb; color:#fff; }
+    .step-done .step-num     { background:#16a34a; color:#fff; }
+    .step-pending .step-num  { background:#e2e8f0; color:#94a3b8; }
+    .step-content.hidden-step { display:none; }
+    table.preview-table { border-collapse:collapse; width:100%; font-size:.8rem; }
+    table.preview-table th { background:#f1f5f9; padding:4px 8px; text-align:left; border:1px solid #e2e8f0; }
+    table.preview-table td { padding:4px 8px; border:1px solid #e2e8f0; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .schema-field-req  { color:#dc2626; font-size:.7rem; }
+    .schema-field-opt  { color:#94a3b8; font-size:.7rem; }
+    .accordion-body { display:none; }
+    .accordion-body.open { display:block; }
+    .mapping-row { display:grid; grid-template-columns:1fr 24px 1fr; align-items:center; gap:8px; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<!-- ── Шапка ──────────────────────────────────────────────────────────────── -->
+<header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-slate-400 hover:text-slate-600 text-sm">← Главная</a>
+    <span class="text-slate-300">|</span>
+    <span class="font-bold text-slate-800">Data Studio</span>
+    <span class="text-xs text-slate-400 hidden sm:inline">управление городскими данными</span>
+  </div>
+  <a href="/docs" target="_blank" class="text-xs text-slate-400 hover:text-blue-600">API docs</a>
+</header>
+
+<!-- ── Табы ───────────────────────────────────────────────────────────────── -->
+<div class="bg-white border-b border-slate-200 px-6">
+  <nav class="flex gap-0">
+    <button class="tab-btn active px-5 py-3 text-sm text-slate-600 border-b-2" data-tab="profiles">
+      🏙 Города
+    </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="import">
+      📥 Импорт данных
+    </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="schemas">
+      📋 Справочник схем
+    </button>
+  </nav>
+</div>
+
+<!-- ── Контент ────────────────────────────────────────────────────────────── -->
+<main class="max-w-6xl mx-auto px-4 py-6">
+
+  <!-- ══ Вкладка: Города ════════════════════════════════════════════════════ -->
+  <div id="tab-profiles" class="tab-pane active">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold text-slate-800">Городские профили</h2>
+      <button id="btn-new-profile"
+              onclick="showNewProfileTemplate()"
+              class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+        + Новый профиль
+      </button>
+    </div>
+
+    <!-- Новый профиль — шаблон -->
+    <div id="new-profile-block" class="hidden mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
+      <h3 class="font-semibold text-blue-800 mb-2">Как создать профиль нового города</h3>
+      <ol class="text-sm text-blue-700 space-y-1 list-decimal list-inside mb-3">
+        <li>Скопируйте существующий профиль как шаблон:</li>
+      </ol>
+      <pre class="bg-white border border-blue-200 rounded p-3 text-xs text-slate-700 overflow-auto mb-3">cp config/city_profile_omsk.yaml config/city_profile_<span class="font-bold">kemerovo</span>.yaml</pre>
+      <ol start="2" class="text-sm text-blue-700 space-y-1 list-decimal list-inside mb-3">
+        <li>Отредактируйте поля <code>city:</code> — id, name, center, bbox, districts</li>
+        <li>Запустите с новым профилем:</li>
+      </ol>
+      <pre class="bg-white border border-blue-200 rounded p-3 text-xs text-slate-700 overflow-auto mb-3">CITY_PROFILE=city_profile_kemerovo bot serve</pre>
+      <ol start="4" class="text-sm text-blue-700 list-decimal list-inside">
+        <li>Обновите страницу — новый профиль появится в списке выше</li>
+      </ol>
+      <button onclick="document.getElementById('new-profile-block').classList.add('hidden')"
+              class="mt-3 text-xs text-blue-600 hover:underline">Закрыть</button>
+    </div>
+
+    <!-- Карточки профилей -->
+    <div id="profiles-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="text-slate-400 text-sm col-span-2 py-8 text-center">Загрузка профилей…</div>
+    </div>
+  </div>
+
+  <!-- ══ Вкладка: Импорт ════════════════════════════════════════════════════ -->
+  <div id="tab-import" class="tab-pane">
+    <h2 class="text-lg font-semibold text-slate-800 mb-4">Импорт данных</h2>
+
+    <!-- Прогресс шагов -->
+    <div class="flex items-center gap-2 mb-6 flex-wrap">
+      <div class="step-item step-active flex items-center gap-2" data-step="1">
+        <div class="step-num">1</div>
+        <span class="text-sm font-medium">Выбор источника</span>
+      </div>
+      <div class="w-8 h-px bg-slate-300"></div>
+      <div class="step-item step-pending flex items-center gap-2" data-step="2">
+        <div class="step-num">2</div>
+        <span class="text-sm text-slate-400">Загрузка файла</span>
+      </div>
+      <div class="w-8 h-px bg-slate-300"></div>
+      <div class="step-item step-pending flex items-center gap-2" data-step="3">
+        <div class="step-num">3</div>
+        <span class="text-sm text-slate-400">Маппинг колонок</span>
+      </div>
+      <div class="w-8 h-px bg-slate-300"></div>
+      <div class="step-item step-pending flex items-center gap-2" data-step="4">
+        <div class="step-num">4</div>
+        <span class="text-sm text-slate-400">Результат</span>
+      </div>
+    </div>
+
+    <!-- Шаг 1: Выбор города и типа датасета -->
+    <div id="step-1" class="step-content bg-white rounded-xl border border-slate-200 p-6 mb-4">
+      <h3 class="font-semibold text-slate-700 mb-4">Шаг 1 — Выберите город и тип данных</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">Город</label>
+          <select id="sel-city" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">Загрузка…</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-600 mb-1">Тип датасета</label>
+          <select id="sel-dataset" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="emissions">emissions — выбросы (2-ТП Воздух)</option>
+            <option value="heat_sources">heat_sources — тепловые источники</option>
+            <option value="metro">metro — метро (станции)</option>
+            <option value="airport">airport — аэропорт</option>
+            <option value="schools">schools — школы (CSV)</option>
+            <option value="kindergartens">kindergartens — детсады (CSV)</option>
+            <option value="pharmacies">pharmacies — аптеки (CSV)</option>
+            <option value="stops">stops — остановки (CSV)</option>
+            <option value="parking">parking — парковки (CSV)</option>
+            <option value="custom">custom — произвольный датасет</option>
+          </select>
+        </div>
+      </div>
+      <button onclick="goToStep2()"
+              class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2 rounded-lg">
+        Далее →
+      </button>
+    </div>
+
+    <!-- Шаг 2: Загрузка файла -->
+    <div id="step-2" class="step-content hidden-step bg-white rounded-xl border border-slate-200 p-6 mb-4">
+      <h3 class="font-semibold text-slate-700 mb-4">Шаг 2 — Загрузите файл данных</h3>
+      <p class="text-sm text-slate-500 mb-4">
+        Поддерживаемые форматы: <strong>CSV</strong> (любая кодировка), <strong>JSON</strong>, <strong>GeoJSON</strong>.
+      </p>
+      <div id="drop-zone"
+           class="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition"
+           onclick="document.getElementById('file-input').click()">
+        <div class="text-3xl mb-2">📂</div>
+        <div class="text-slate-500 text-sm">Нажмите или перетащите файл сюда</div>
+        <div class="text-slate-400 text-xs mt-1">.csv · .json · .geojson</div>
+      </div>
+      <input id="file-input" type="file" accept=".csv,.json,.geojson" class="hidden" onchange="onFileSelected(this)"/>
+
+      <div id="preview-area" class="hidden mt-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-medium text-slate-700">Предпросмотр файла</span>
+          <span id="preview-meta" class="text-xs text-slate-400"></span>
+        </div>
+        <div class="overflow-x-auto rounded-lg border border-slate-200">
+          <table class="preview-table"><thead id="preview-head"></thead><tbody id="preview-body"></tbody></table>
+        </div>
+        <div class="mt-4 flex gap-3">
+          <button onclick="goToStep1()" class="text-sm text-slate-500 hover:text-slate-700">← Назад</button>
+          <button onclick="goToStep3()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2 rounded-lg">
+            Настроить маппинг →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Шаг 3: Маппинг колонок -->
+    <div id="step-3" class="step-content hidden-step bg-white rounded-xl border border-slate-200 p-6 mb-4">
+      <h3 class="font-semibold text-slate-700 mb-1">Шаг 3 — Сопоставьте поля</h3>
+      <p class="text-sm text-slate-500 mb-4">
+        Слева — канонические поля схемы. Справа — выберите соответствующую колонку из вашего файла.
+      </p>
+
+      <div class="grid grid-cols-3 text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 px-1">
+        <span>Каноническое поле</span>
+        <span></span>
+        <span>Колонка файла</span>
+      </div>
+      <div id="mapping-fields" class="space-y-1"></div>
+
+      <div class="mt-6 flex gap-3">
+        <button onclick="goToStep2()" class="text-sm text-slate-500 hover:text-slate-700">← Назад</button>
+        <button onclick="runImport()"
+                class="bg-green-600 hover:bg-green-700 text-white text-sm px-5 py-2 rounded-lg font-semibold">
+          Импортировать
+        </button>
+      </div>
+    </div>
+
+    <!-- Шаг 4: Результат -->
+    <div id="step-4" class="step-content hidden-step bg-white rounded-xl border border-slate-200 p-6 mb-4">
+      <div id="import-result"></div>
+    </div>
+  </div>
+
+  <!-- ══ Вкладка: Справочник схем ═══════════════════════════════════════════ -->
+  <div id="tab-schemas" class="tab-pane">
+    <h2 class="text-lg font-semibold text-slate-800 mb-4">Справочник канонических схем</h2>
+    <p class="text-sm text-slate-500 mb-5">
+      Исходник: <code class="bg-slate-100 px-1 rounded">config/canonical_schemas.yaml</code>.
+      Имена полей <strong>нельзя менять</strong> без обновления кода.
+    </p>
+    <div id="schemas-container" class="space-y-3">
+      <div class="text-slate-400 text-sm py-8 text-center">Загрузка схем…</div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ─────────────────────────── СКРИПТ ──────────────────────────────────── -->
+<script>
+// ── Состояние импорта ──────────────────────────────────────────────────────
+const STATE = {
+  cityId: '',
+  datasetType: '',
+  fileColumns: [],
+  fileName: '',
+  fileData: null,   // FileList
+};
+
+// ── Таб-навигация ──────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+
+    if (tab === 'profiles') loadProfiles();
+    if (tab === 'schemas') loadSchemas();
+  });
+});
+
+// ── Вкладка «Города» ──────────────────────────────────────────────────────
+async function loadProfiles() {
+  const grid = document.getElementById('profiles-grid');
+  grid.innerHTML = '<div class="text-slate-400 text-sm col-span-2 py-8 text-center">Загрузка…</div>';
+  try {
+    const resp = await fetch('/studio/api/profiles');
+    const data = await resp.json();
+    renderProfiles(data.profiles || []);
+  } catch(e) {
+    grid.innerHTML = `<div class="text-red-500 text-sm col-span-2 py-4 text-center">Ошибка загрузки: ${e.message}</div>`;
+  }
+}
+
+function renderProfiles(profiles) {
+  const grid = document.getElementById('profiles-grid');
+  if (!profiles.length) {
+    grid.innerHTML = '<div class="text-slate-400 text-sm col-span-2 py-8 text-center">Профили не найдены</div>';
+    return;
+  }
+  grid.innerHTML = profiles.map(p => {
+    if (p.error) return `
+      <div class="bg-red-50 border border-red-200 rounded-xl p-4">
+        <div class="font-mono text-sm text-red-600">${esc(p.profile_file)}</div>
+        <div class="text-xs text-red-500 mt-1">${esc(p.error)}</div>
+      </div>`;
+
+    const dsHtml = (p.static_datasets || []).map(ds => {
+      let cls, label;
+      if (!ds.enabled)       { cls='badge-off';  label='отключён'; }
+      else if (ds.file_exists){ cls='badge-ok';   label='✓ файл есть'; }
+      else                    { cls='badge-miss'; label='файл отсутствует'; }
+      return `<div class="flex items-center justify-between py-1">
+        <span class="text-xs text-slate-600 font-mono">${esc(ds.name)}</span>
+        <span class="badge ${cls}">${label}</span>
+      </div>`;
+    }).join('');
+
+    const feat = p.features || {};
+    const featureBadges = [
+      feat.has_metro  ? '<span class="badge" style="background:#ede9fe;color:#5b21b6">М метро</span>' : '',
+      feat.has_airport? `<span class="badge" style="background:#dbeafe;color:#1e40af">✈ ${esc(feat.airport_iata||'')}</span>` : '',
+    ].filter(Boolean).join(' ');
+
+    return `
+    <div class="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-sm transition">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <div class="font-bold text-slate-800 text-base">${esc(p.city_name)}</div>
+          <div class="text-xs text-slate-400 font-mono">${esc(p.city_id)} · ${esc(p.timezone)}</div>
+        </div>
+        <div class="flex gap-1 flex-wrap justify-end">${featureBadges}</div>
+      </div>
+      <div class="text-xs text-slate-500 mb-3">
+        ${p.districts_count} районов
+        ${p.center ? `· ${p.center.lat?.toFixed(4)}, ${p.center.lon?.toFixed(4)}` : ''}
+      </div>
+      ${dsHtml ? `<div class="border-t border-slate-100 pt-2 mt-2">${dsHtml}</div>` : ''}
+      <div class="text-xs text-slate-300 mt-3 font-mono">${esc(p.profile_file)}</div>
+    </div>`;
+  }).join('');
+
+  // Заполним селект городов на вкладке Импорт
+  const sel = document.getElementById('sel-city');
+  sel.innerHTML = profiles.filter(p => !p.error).map(p =>
+    `<option value="${esc(p.city_id)}">${esc(p.city_name)} (${esc(p.city_id)})</option>`
+  ).join('');
+}
+
+function showNewProfileTemplate() {
+  document.getElementById('new-profile-block').classList.remove('hidden');
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Вкладка «Импорт» — шаги ───────────────────────────────────────────────
+function setStep(n) {
+  for (let i=1; i<=4; i++) {
+    const el = document.getElementById('step-' + i);
+    if (i === n) el.classList.remove('hidden-step');
+    else el.classList.add('hidden-step');
+
+    // Обновляем индикаторы
+    document.querySelectorAll('.step-item').forEach(item => {
+      const s = parseInt(item.dataset.step);
+      item.classList.remove('step-active','step-done','step-pending');
+      if (s < n)      item.classList.add('step-done');
+      else if (s === n) item.classList.add('step-active');
+      else            item.classList.add('step-pending');
+    });
+  }
+}
+
+function goToStep1() { setStep(1); }
+
+function goToStep2() {
+  const cityEl = document.getElementById('sel-city');
+  const dsEl   = document.getElementById('sel-dataset');
+  STATE.cityId      = cityEl.value;
+  STATE.datasetType = dsEl.value;
+  if (!STATE.cityId) { alert('Выберите город'); return; }
+  setStep(2);
+}
+
+function goToStep3() {
+  if (!STATE.fileColumns.length) { alert('Сначала загрузите файл'); return; }
+  renderMappingFields();
+  setStep(3);
+}
+
+function goToStep4() { setStep(4); }
+
+// ── Файл: drag & drop + input ─────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('bg-blue-50','border-blue-400'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('bg-blue-50','border-blue-400'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('bg-blue-50','border-blue-400');
+  const f = e.dataTransfer.files[0];
+  if (f) uploadPreview(f);
+});
+
+async function onFileSelected(input) {
+  const f = input.files[0];
+  if (f) await uploadPreview(f);
+}
+
+async function uploadPreview(file) {
+  STATE.fileData = file;
+  const fd = new FormData();
+  fd.append('file', file);
+
+  const zone = document.getElementById('drop-zone');
+  zone.innerHTML = '<div class="text-slate-400 text-sm">Анализ файла…</div>';
+
+  try {
+    const resp = await fetch('/studio/api/preview', { method: 'POST', body: fd });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    STATE.fileColumns = data.columns || [];
+    STATE.fileName    = data.filename || file.name;
+
+    // Восстановим drop-zone
+    zone.innerHTML = `<div class="text-3xl mb-2">📂</div>
+      <div class="text-slate-500 text-sm">Нажмите или перетащите файл сюда</div>
+      <div class="text-slate-400 text-xs mt-1">.csv · .json · .geojson</div>`;
+
+    renderPreview(data);
+  } catch(e) {
+    zone.innerHTML = `<div class="text-red-500 text-sm">Ошибка: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderPreview(data) {
+  const area = document.getElementById('preview-area');
+  area.classList.remove('hidden');
+  document.getElementById('preview-meta').textContent =
+    `${esc(data.filename)} · ${esc(data.format)} · ${data.columns.length} колонок`;
+
+  const head = document.getElementById('preview-head');
+  const body = document.getElementById('preview-body');
+
+  head.innerHTML = '<tr>' + data.columns.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>';
+  body.innerHTML = (data.sample || []).map(row =>
+    '<tr>' + data.columns.map(c => `<td title="${esc(String(row[c]??''))}">${esc(String(row[c]??''))}</td>`).join('') + '</tr>'
+  ).join('');
+}
+
+// ── Маппинг полей ─────────────────────────────────────────────────────────
+let _schemasCache = null;
+
+async function getSchemas() {
+  if (_schemasCache) return _schemasCache;
+  const resp = await fetch('/studio/api/schemas');
+  _schemasCache = await resp.json();
+  return _schemasCache;
+}
+
+async function renderMappingFields() {
+  const container = document.getElementById('mapping-fields');
+  container.innerHTML = '<div class="text-slate-400 text-sm py-4 text-center">Загрузка схемы…</div>';
+
+  const schemas = await getSchemas();
+  const dsType  = STATE.datasetType;
+
+  // Находим схему: сначала в csv_topics, потом в static_datasets
+  let schemaFields = null;
+  const csvTopics = schemas.csv_topics || {};
+  const staticDs  = schemas.static_datasets || {};
+
+  if (csvTopics[dsType])      schemaFields = csvTopics[dsType].fields;
+  else if (staticDs[dsType])  schemaFields = staticDs[dsType].fields;
+
+  const opts = ['<option value="">— пропустить —</option>',
+    ...STATE.fileColumns.map(c => `<option value="${esc(c)}">${esc(c)}</option>`)
+  ].join('');
+
+  if (!schemaFields) {
+    // custom — показываем все колонки файла как есть
+    container.innerHTML = `<div class="text-amber-600 text-sm p-3 bg-amber-50 rounded-lg mb-3">
+      Схема для <strong>${esc(dsType)}</strong> не найдена. Все колонки файла будут сохранены без маппинга.
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = Object.entries(schemaFields).map(([fieldName, fieldDef]) => {
+    const req = fieldDef.required ? '<span class="schema-field-req">*</span>' : '<span class="schema-field-opt">opt</span>';
+    const label = fieldDef.label || fieldName;
+    const type  = fieldDef.type  || '';
+
+    // Автоподбор: ищем колонку с похожим именем
+    const autoMatch = STATE.fileColumns.find(c =>
+      c.toLowerCase() === fieldName.toLowerCase() ||
+      c.toLowerCase().includes(fieldName.toLowerCase()) ||
+      fieldName.toLowerCase().includes(c.toLowerCase())
+    ) || '';
+
+    return `
+    <div class="mapping-row field-row py-1 px-1 rounded">
+      <div class="flex flex-col">
+        <span class="text-sm font-mono font-medium text-slate-700">${esc(fieldName)} ${req}</span>
+        <span class="text-xs text-slate-400">${esc(label)} · ${esc(type)}</span>
+        ${fieldDef.note ? `<span class="text-xs text-slate-300 italic">${esc(fieldDef.note)}</span>` : ''}
+      </div>
+      <div class="text-slate-300 text-center">→</div>
+      <select name="map_${esc(fieldName)}" class="border border-slate-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+        ${opts.replace(`value="${esc(autoMatch)}"`, `value="${esc(autoMatch)}" selected`)}
+      </select>
+    </div>`;
+  }).join('');
+}
+
+// ── Импорт ────────────────────────────────────────────────────────────────
+async function runImport() {
+  if (!STATE.fileData) { alert('Файл не загружен'); return; }
+
+  // Собираем маппинг из селектов
+  const mapping = {};
+  document.querySelectorAll('#mapping-fields select').forEach(sel => {
+    const fieldName = sel.name.replace('map_', '');
+    if (sel.value) mapping[fieldName] = sel.value;
+  });
+
+  const fd = new FormData();
+  fd.append('city_id',      STATE.cityId);
+  fd.append('dataset_type', STATE.datasetType);
+  fd.append('mapping',      JSON.stringify(mapping));
+  fd.append('file',         STATE.fileData);
+
+  goToStep4();
+  const result = document.getElementById('import-result');
+  result.innerHTML = '<div class="text-slate-400 text-sm py-4 text-center">Импорт…</div>';
+
+  try {
+    const resp = await fetch('/studio/api/import', { method: 'POST', body: fd });
+    const data = await resp.json();
+
+    if (data.success) {
+      result.innerHTML = `
+        <div class="flex items-start gap-3 text-green-700 mb-4">
+          <span class="text-3xl">✅</span>
+          <div>
+            <div class="font-bold text-lg">Импорт завершён</div>
+            <div class="text-sm text-green-600">${data.rows_imported} строк · ${esc(data.saved_to)}</div>
+          </div>
+        </div>
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
+          <strong>Следующий шаг:</strong> добавьте путь к файлу в <code>city_profile_${esc(data.city_id)}.yaml</code>:
+          <pre class="bg-white rounded p-2 mt-2 text-xs border border-amber-200 overflow-auto">static_datasets:
+  ${esc(data.dataset_type)}:
+    enabled: true
+    file: "${esc(data.saved_to)}"</pre>
+        </div>
+        <div class="mt-4 flex gap-3">
+          <button onclick="resetImport()" class="text-sm text-blue-600 hover:underline">Импортировать ещё</button>
+        </div>`;
+    } else {
+      result.innerHTML = `<div class="text-red-500 text-sm">Ошибка: ${esc(JSON.stringify(data))}</div>`;
+    }
+  } catch(e) {
+    result.innerHTML = `<div class="text-red-500 text-sm">Ошибка: ${esc(e.message)}</div>`;
+  }
+}
+
+function resetImport() {
+  STATE.cityId = '';
+  STATE.datasetType = '';
+  STATE.fileColumns = [];
+  STATE.fileName = '';
+  STATE.fileData = null;
+  document.getElementById('preview-area').classList.add('hidden');
+  document.getElementById('file-input').value = '';
+  setStep(1);
+}
+
+// ── Вкладка «Справочник схем» ─────────────────────────────────────────────
+async function loadSchemas() {
+  const container = document.getElementById('schemas-container');
+  container.innerHTML = '<div class="text-slate-400 text-sm py-8 text-center">Загрузка…</div>';
+  try {
+    const schemas = await getSchemas();
+    renderSchemas(schemas, container);
+  } catch(e) {
+    container.innerHTML = `<div class="text-red-500 text-sm py-4 text-center">Ошибка: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderSchemas(schemas, container) {
+  const sections = [
+    { key: 'csv_topics',    title: 'CSV-темы (opendata)' },
+    { key: 'static_datasets', title: 'Статические датасеты (JSON/GeoJSON)' },
+    { key: 'config_structures', title: 'Конфигурационные структуры' },
+  ];
+
+  container.innerHTML = sections.map(sec => {
+    const group = schemas[sec.key] || {};
+    const items = Object.entries(group).map(([topicKey, topicDef]) => {
+      const fields = topicDef.fields || {};
+      const fieldsHtml = Object.entries(fields).map(([fname, fdef]) => {
+        const req = fdef.required
+          ? '<span class="schema-field-req font-semibold">обяз.</span>'
+          : '<span class="schema-field-opt">необяз.</span>';
+        return `<tr class="field-row">
+          <td class="px-3 py-1 font-mono text-xs text-blue-700">${esc(fname)}</td>
+          <td class="px-3 py-1 text-xs text-slate-500">${esc(fdef.label||'')}</td>
+          <td class="px-3 py-1 text-xs text-slate-400">${esc(fdef.type||'')}</td>
+          <td class="px-3 py-1 text-xs">${req}</td>
+          <td class="px-3 py-1 text-xs text-slate-300 italic">${esc(fdef.note||'')}</td>
+        </tr>`;
+      }).join('');
+
+      const desc = topicDef.description || topicDef.label || '';
+      const format = topicDef.format ? `<span class="badge badge-off">${esc(topicDef.format)}</span>` : '';
+
+      return `
+      <div class="accordion-item border border-slate-200 rounded-lg overflow-hidden mb-2">
+        <button class="accordion-toggle w-full flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 text-left"
+                onclick="toggleAccordion(this)">
+          <div class="flex items-center gap-2">
+            <span class="font-mono font-semibold text-sm text-slate-800">${esc(topicKey)}</span>
+            ${format}
+            <span class="text-xs text-slate-400">${esc(desc)}</span>
+          </div>
+          <span class="text-slate-400 text-sm accordion-arrow">▶</span>
+        </button>
+        <div class="accordion-body border-t border-slate-100">
+          ${topicDef.source ? `<div class="px-4 py-2 text-xs text-slate-500 bg-slate-50">Источник: ${esc(topicDef.source)}</div>` : ''}
+          ${topicDef.json_root ? `<div class="px-4 py-1 text-xs text-slate-400 bg-slate-50 font-mono">json_root: "${esc(topicDef.json_root)}"</div>` : ''}
+          <div class="overflow-x-auto">
+            <table class="preview-table">
+              <thead><tr>
+                <th>Поле (канон.)</th><th>Описание</th><th>Тип</th><th>Статус</th><th>Примечание</th>
+              </tr></thead>
+              <tbody>${fieldsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `
+    <div class="mb-6">
+      <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">${esc(sec.title)}</h3>
+      ${items || '<div class="text-slate-300 text-sm">Нет записей</div>'}
+    </div>`;
+  }).join('');
+}
+
+function toggleAccordion(btn) {
+  const body  = btn.nextElementSibling;
+  const arrow = btn.querySelector('.accordion-arrow');
+  body.classList.toggle('open');
+  arrow.textContent = body.classList.contains('open') ? '▼' : '▶';
+}
+
+// ── Инициализация ─────────────────────────────────────────────────────────
+loadProfiles();
+</script>
+</body>
+</html>
