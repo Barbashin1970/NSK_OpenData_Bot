@@ -174,7 +174,7 @@ _TAGS_METADATA = [
 app = FastAPI(
     title="NSK OpenData Bot",
     description=_API_DESCRIPTION,
-    version="1.0.5",
+    version="1.1.0",
     openapi_tags=_TAGS_METADATA,
     contact={"name": "ЦИИ НГУ"},
     docs_url=None,   # кастомный /docs ниже
@@ -499,7 +499,7 @@ _NAV_BAR_HTML = """
   <button id="nsk-test-toggle" onclick="NSKTests.toggle()">
     <span class="dot" id="nsk-dot"></span> Тестирование
   </button>
-  <span class="badge">v1.0.5</span>
+  <span class="badge">v1.1.0</span>
 </div>
 
 <div id="nsk-panel">

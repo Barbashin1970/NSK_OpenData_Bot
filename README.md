@@ -1,4 +1,4 @@
-# NSK OpenData Bot · v1.0.5
+# NSK OpenData Bot · v1.1.0
 
 
 CLI-агент и веб-интерфейс для работы с открытыми данными и системами жизнеобеспечения Новосибирска.
@@ -376,7 +376,7 @@ GET /traffic-index
 
 ---
 
-## 🏗️ Строительство в Новосибирске (новое в v1.0.5)
+## 🏗️ Строительство в Новосибирске (v1.0.5)
 
 Бот умеет работать с двумя официальными реестрами строительных объектов мэрии Новосибирска:
 
@@ -420,6 +420,123 @@ bot construction active --district "Калининский"
 ### Обновление данных
 
 Данные хранятся в DuckDB, TTL = 24 часа. Обновление: `bot construction update` или автоматически при `bot update --all`.
+
+---
+
+## 🌆 Мульти-город (новое в v1.1.0)
+
+Начиная с версии 1.1.0 бот поддерживает **несколько городов** без изменения кода. Каждый город описывается отдельным YAML-профилем.
+
+### Как переключить город
+
+```bash
+# Запуск для Омска (если есть city_profile_omsk.yaml)
+CITY_PROFILE=city_profile_omsk bot serve
+
+# Запуск для Новосибирска (по умолчанию)
+bot serve
+```
+
+### Структура профиля города
+
+Файл `config/city_profile.yaml` — единственный источник знания о городе:
+
+```yaml
+city:
+  id: "novosibirsk"
+  name: "Новосибирск"
+  center: {lat: 54.9885, lon: 82.9207}
+  bbox: {lat_min: 54.70, lat_max: 55.25, lon_min: 82.60, lon_max: 83.40}
+
+features:
+  has_metro: true
+  has_airport: true
+  airport_iata: "OVB"
+
+static_datasets:
+  metro:
+    enabled: true
+    file: "data/cities/novosibirsk/metro.json"
+  airport:
+    enabled: true
+    file: "data/cities/novosibirsk/airport.json"
+```
+
+Для нового города: создайте `config/city_profile_<id>.yaml`, добавьте файлы данных в `data/cities/<id>/`, запустите с `CITY_PROFILE=city_profile_<id>`.
+
+### Статические датасеты (git-tracked)
+
+| Датасет | Файл | Описание |
+|---|---|---|
+| Метро | `data/cities/novosibirsk/metro.json` | Линии, станции, схема |
+| Аэропорт | `data/cities/novosibirsk/airport.json` | Терминалы, транспорт до города |
+| Источники тепла | `data/nsk_heat_sources_v1.geojson` | ТЭЦ и котельные (СГК + УЭВ СО РАН) |
+| Выбросы 2-ТП | `data/nsk_emissions_2tp.json` | 34 МО НСО, 2024, Росприроднадзор |
+
+Датасеты хранятся в git (не скачиваются по TTL), загружаются с `lru_cache` при первом запросе.
+
+---
+
+## 🏙 Data Studio (новое в v1.1.0)
+
+**Data Studio** — встроенный инструмент администратора для управления данными бота.
+
+Открыть: `http://127.0.0.1:8000/studio` (или кнопка «🏙 Data Studio» на странице API Docs).
+
+### Вкладки Studio
+
+| Вкладка | Что делает |
+|---|---|
+| 🏙 Города | Карточки всех городов с активными датасетами; раскрываются по клику |
+| 📥 Импорт данных | 4-шаговый мастер: выбор города/типа → загрузка файла → маппинг колонок → сохранение |
+| 📋 Справочник схем | Канонические схемы всех датасетов (из `config/canonical_schemas.yaml`) |
+
+### Импорт данных для нового города
+
+1. Перейдите на вкладку «📥 Импорт данных»
+2. Выберите город и тип датасета (metro / airport / emissions / heat_sources)
+3. Загрузите JSON/GeoJSON-файл — Studio покажет превью колонок и первые 5 строк
+4. Сопоставьте колонки файла с каноническими именами схемы
+5. Нажмите «Импортировать» — файл сохранится в `data/cities/<city_id>/`
+
+### API эндпоинты Studio
+
+```
+GET  /studio                     — интерфейс Studio (HTML)
+GET  /studio/api/profiles        — список профилей городов + статус датасетов
+GET  /studio/api/schemas         — канонические схемы (JSON)
+POST /studio/api/preview         — превью загружаемого файла (multipart)
+POST /studio/api/import          — импорт с маппингом колонок (multipart)
+```
+
+---
+
+## 🔐 Пароль администратора для API Docs (новое в v1.1.0)
+
+Кнопка **«API Docs»** в подвале главной страницы защищена паролем разработчика.
+
+- **Пароль по умолчанию:** `sigma2024`
+- Пароль хранится как SHA-256 хеш в `data/api_keys.json`
+- После успешного входа сессия сохраняется в браузере (sessionStorage)
+
+### Смена пароля
+
+**Через интерфейс:** на странице API Docs нажмите кнопку **«🔑 Пароль»** в верхнем меню — введите текущий и новый пароль.
+
+**Через API:**
+```bash
+curl -X POST "http://127.0.0.1:8000/dev-password" \
+  -H "Content-Type: application/json" \
+  -d '{"old_password": "sigma2024", "new_password": "MyNewPass"}'
+```
+
+**Проверка текущего пароля:**
+```bash
+curl "http://127.0.0.1:8000/dev-auth?password=sigma2024"
+# → {"valid": true}
+```
+
+> Для получения доступа к API Docs как администратор обратитесь к разработчику за паролем.
 
 ---
 
@@ -747,12 +864,13 @@ git push
 ```
 nsk-opendata-bot/
 ├── src/
-│   ├── api.py              # FastAPI HTTP API + веб-интерфейс
+│   ├── api.py              # FastAPI HTTP API + веб-интерфейс + /studio backend
 │   ├── cli.py              # CLI команды (bot ask, bot serve, ...)
 │   ├── router.py           # Маршрутизация русских запросов
 │   ├── planner.py          # Планировщик операций (COUNT/GROUP/FILTER/TOP_N/ECO_*)
 │   ├── executor.py         # Выполнение SQL-запросов к DuckDB
 │   ├── renderer.py         # Рендеринг в терминале (rich)
+│   ├── city_config.py      # Единственный доступ к city_profile.yaml (lru_cache)
 │   ├── power_scraper.py    # Парсер отключений ЖКХ
 │   ├── power_cache.py      # Кэш отключений
 │   ├── ecology_fetcher.py  # Загрузка данных с Open-Meteo
@@ -761,14 +879,25 @@ nsk-opendata-bot/
 │   ├── transport_api.py    # 2GIS pass-through (без хранения, лицензия 2ГИС)
 │   ├── cameras_fetcher.py  # Загрузка камер ПДД из OSM Overpass API
 │   ├── cameras_cache.py    # DuckDB кэш камер (TTL 7 дней)
+│   ├── heat_sources.py     # Статический датасет: источники тепла (GeoJSON)
+│   ├── emissions.py        # Статический датасет: выбросы 2-ТП (JSON)
 │   ├── fetcher.py          # Загрузка CSV с opendata
 │   ├── cache.py            # DuckDB кэш
 │   ├── constants.py        # Централизованные константы
 │   └── static/
-│       └── index.html      # Веб-интерфейс
+│       ├── index.html      # Веб-интерфейс
+│       └── studio.html     # Data Studio (управление данными)
 ├── config/
-│   └── datasets.yaml       # Реестр наборов данных
-├── tests/                  # 199+ тестов
+│   ├── city_profile.yaml        # Профиль города (Новосибирск)
+│   ├── city_profile_omsk.yaml   # Профиль города (Омск — в разработке)
+│   ├── canonical_schemas.yaml   # Канонические схемы датасетов
+│   └── datasets.yaml            # Реестр CSV-наборов данных
+├── data/
+│   └── cities/
+│       └── novosibirsk/
+│           ├── metro.json       # Схема метро (2 линии, 13 станций)
+│           └── airport.json     # Аэропорт Толмачёво (терминалы, транспорт)
+├── tests/                  # 300+ тестов
 ├── startbot.command        # Лаунчер для macOS (двойной клик в Finder)
 ├── startwindows.bat        # Лаунчер для Windows (двойной клик в Проводнике)
 ├── pyproject.toml
