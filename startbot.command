@@ -14,16 +14,6 @@ with open('pyproject.toml', 'rb') as f:
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "")
 COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null || echo "")
 
-# ── Проверяем, не запущен ли уже сервер ──────────────────────────────────────
-if curl -s http://127.0.0.1:8000/topics > /dev/null 2>&1; then
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  NSK OpenData Bot  v${VERSION}"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "✓ Бот уже запущен — открываю браузер..."
-    open http://127.0.0.1:8000
-    exit 0
-fi
-
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  NSK OpenData Bot  v${VERSION}"
 echo "  Открытые данные мэрии Новосибирска"
@@ -32,6 +22,15 @@ if [ -n "$COMMIT" ]; then
 fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
+
+# ── Останавливаем старый сервер если запущен (чтобы не было старого кода) ────
+if curl -s http://127.0.0.1:8000/topics > /dev/null 2>&1; then
+    echo "⏹  Останавливаю старый сервер..."
+    kill $(lsof -ti:8000) 2>/dev/null
+    sleep 1
+    echo "  Готово."
+    echo ""
+fi
 
 # ── Переустанавливаем пакет (editable) чтобы всегда использовать свежий код ──
 echo "↓ Обновляю установку (editable mode)..."
@@ -63,6 +62,7 @@ echo "  Закройте это окно — сервер остановится
 echo "  Ctrl+C — остановить сервер вручную."
 echo ""
 
-open http://127.0.0.1:8000
+# Открываем браузер с timestamp чтобы гарантированно обойти навигационный кэш
+open "http://127.0.0.1:8000?_=$(date +%s)"
 
 wait $SERVER_PID

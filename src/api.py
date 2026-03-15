@@ -12,7 +12,7 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 try:
-    from fastapi import FastAPI, Query, UploadFile, File, Form, Header, HTTPException
+    from fastapi import FastAPI, Query, UploadFile, File, Form, Header, HTTPException, Request
     from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse, FileResponse
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.staticfiles import StaticFiles
@@ -179,6 +179,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _no_cache_static(request: Request, call_next):
+    """Запрещаем браузеру кэшировать статику — всегда свежий JS/CSS при разработке."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 _ENV_FILE = Path(__file__).parent.parent / ".env"
