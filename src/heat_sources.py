@@ -5,11 +5,10 @@
 import json
 import logging
 from functools import lru_cache
-from pathlib import Path
+
+from .city_config import get_heat_sources_path
 
 log = logging.getLogger(__name__)
-
-_GEOJSON_PATH = Path(__file__).parent.parent / "data" / "nsk_heat_sources_v1.geojson"
 
 # Поля, которые возвращаем в таблицу (без _lat/_lon — они в rows для карты, но не в columns)
 TABLE_COLUMNS = [
@@ -29,7 +28,10 @@ TABLE_COLUMNS = [
 @lru_cache(maxsize=1)
 def load_heat_sources() -> list[dict]:
     """Загружает GeoJSON, возвращает список объектов с полями properties + _lat/_lon."""
-    with open(_GEOJSON_PATH, encoding="utf-8") as f:
+    path = get_heat_sources_path()
+    if path is None:
+        raise FileNotFoundError("Данные тепловых источников недоступны для этого города (heat_sources не настроен в city_profile)")
+    with open(path, encoding="utf-8") as f:
         fc = json.load(f)
 
     sources = []

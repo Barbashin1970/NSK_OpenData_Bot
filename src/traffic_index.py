@@ -16,9 +16,11 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from .city_config import get_utc_offset
+
 log = logging.getLogger(__name__)
 
-_NSK_UTC_OFFSET = 7  # UTC+7
+_NSK_UTC_OFFSET = get_utc_offset()
 
 # ── База официальных нерабочих дней 2025–2027 ────────────────────────────────
 # Источники: Производственный календарь РФ, Постановления Правительства

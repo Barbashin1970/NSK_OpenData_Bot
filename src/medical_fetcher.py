@@ -11,6 +11,8 @@ from typing import Any
 
 import requests
 
+from .city_config import get_bbox_overpass
+
 log = logging.getLogger(__name__)
 
 _OVERPASS_MIRRORS = [
@@ -19,7 +21,7 @@ _OVERPASS_MIRRORS = [
     "https://z.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 ]
-_NSK_BBOX = "(54.70,82.60,55.25,83.40)"
+_NSK_BBOX = get_bbox_overpass()
 _REQUEST_TIMEOUT = 60
 
 # node + way, out center — для областей (больничный комплекс) берём центроид

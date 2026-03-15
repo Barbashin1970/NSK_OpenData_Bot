@@ -13,6 +13,8 @@ from typing import Any
 
 import requests
 
+from .city_config import get_bbox_overpass
+
 log = logging.getLogger(__name__)
 
 # Публичные зеркала Overpass API — пробуем по порядку при ошибке
@@ -22,7 +24,7 @@ _OVERPASS_MIRRORS = [
     "https://z.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 ]
-_NSK_BBOX = "(54.70,82.60,55.25,83.40)"  # Новосибирск
+_NSK_BBOX = get_bbox_overpass()
 _REQUEST_TIMEOUT = 45
 
 _OVERPASS_QUERY = f"""

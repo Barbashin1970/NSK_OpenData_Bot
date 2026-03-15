@@ -19,11 +19,11 @@ from typing import Any
 import requests
 
 from .constants import (
-    NSK_ECOLOGY_STATIONS,
     ECOLOGY_LOG_MAX_BYTES,
     LOGS_DIR,
     SCRAPER_TIMEOUT,
 )
+from .city_config import get_ecology_stations, get_timezone
 
 # ── Логирование с ротацией 10 МБ (ТЗ §6) ─────────────────────────────────────
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -83,7 +83,7 @@ def _fetch_openmeteo_air_quality(station: dict) -> dict | None:
         "latitude":  station["latitude"],
         "longitude": station["longitude"],
         "current":   "pm10,pm2_5,european_aqi,nitrogen_dioxide",
-        "timezone":  "Asia/Novosibirsk",
+        "timezone":  get_timezone(),
     })
     if not data or "current" not in data:
         return None
@@ -104,7 +104,7 @@ def _fetch_openmeteo_weather(station: dict) -> dict | None:
         "longitude":       station["longitude"],
         "current":         "temperature_2m,wind_speed_10m,wind_direction_10m,relative_humidity_2m,surface_pressure",
         "wind_speed_unit": "ms",
-        "timezone":        "Asia/Novosibirsk",
+        "timezone":        get_timezone(),
     })
     if not data or "current" not in data:
         return None
@@ -168,7 +168,7 @@ def _fetch_openmeteo_forecast(station: dict) -> list[dict] | None:
         "daily":           "temperature_2m_max,temperature_2m_min,wind_speed_10m_max,"
                            "precipitation_sum,weathercode",
         "wind_speed_unit": "ms",
-        "timezone":        "Asia/Novosibirsk",
+        "timezone":        get_timezone(),
         "forecast_days":   7,
     })
     if not data or "daily" not in data:
@@ -204,7 +204,7 @@ def fetch_all_forecast() -> list[dict[str, Any]]:
     fetched_at = datetime.now(timezone.utc).isoformat()
     records: list[dict] = []
 
-    for station in NSK_ECOLOGY_STATIONS:
+    for station in get_ecology_stations():
         sid = station["station_id"]
         daily = _fetch_openmeteo_forecast(station)
         if not daily:
@@ -219,7 +219,7 @@ def fetch_all_forecast() -> list[dict[str, Any]]:
                 "fetched_at":   fetched_at,
             })
 
-    log.info(f"Forecast ETL: собрано {len(records)} записей ({len(NSK_ECOLOGY_STATIONS)} станций × 7 дней)")
+    log.info(f"Forecast ETL: собрано {len(records)} записей ({len(get_ecology_stations())} станций × 7 дней)")
     return records
 
 
@@ -237,7 +237,7 @@ def fetch_all_ecology() -> list[dict[str, Any]]:
     measured_at = datetime.now(timezone.utc).astimezone().isoformat()
     records: list[dict] = []
 
-    for station in NSK_ECOLOGY_STATIONS:
+    for station in get_ecology_stations():
         sid = station["station_id"]
 
         # Extract
@@ -279,5 +279,5 @@ def fetch_all_ecology() -> list[dict[str, Any]]:
             "source":           aq.get("source", "open-meteo"),
         })
 
-    log.info(f"Ecology ETL: собрано {len(records)} записей из {len(NSK_ECOLOGY_STATIONS)} станций")
+    log.info(f"Ecology ETL: собрано {len(records)} записей из {len(get_ecology_stations())} станций")
     return records

@@ -6,11 +6,10 @@
 import json
 import logging
 from functools import lru_cache
-from pathlib import Path
+
+from .city_config import get_emissions_path
 
 log = logging.getLogger(__name__)
-
-_JSON_PATH = Path(__file__).parent.parent / "data" / "nsk_emissions_2tp.json"
 
 # Колонки для таблицы (без _lat/_lon — они в rows для карты, но не в таблице)
 TABLE_COLUMNS = [
@@ -28,7 +27,10 @@ TABLE_COLUMNS = [
 @lru_cache(maxsize=1)
 def load_emissions() -> list[dict]:
     """Загружает JSON, возвращает список записей с полями + _lat/_lon."""
-    with open(_JSON_PATH, encoding="utf-8") as f:
+    path = get_emissions_path()
+    if path is None:
+        raise FileNotFoundError("Данные выбросов недоступны для этого города (emissions не настроен в city_profile)")
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
     records = []
@@ -48,7 +50,10 @@ def load_emissions() -> list[dict]:
 
 
 def get_emissions_meta() -> dict:
-    with open(_JSON_PATH, encoding="utf-8") as f:
+    path = get_emissions_path()
+    if path is None:
+        return {}
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
     return {
         "year": data.get("year"),

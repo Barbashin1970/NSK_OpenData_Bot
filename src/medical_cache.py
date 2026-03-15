@@ -11,7 +11,7 @@ from typing import Any
 
 import duckdb
 
-from .constants import NSK_ECOLOGY_STATIONS
+from .city_config import get_bbox_dict, get_ecology_stations
 
 log = logging.getLogger(__name__)
 
@@ -19,19 +19,17 @@ _DB_PATH = Path(__file__).parent.parent / "data" / "cache.db"
 _TABLE = "medical_facilities"
 _TTL_HOURS = 72
 
-_NSK_LAT_MIN, _NSK_LAT_MAX = 54.70, 55.15
-_NSK_LON_MIN, _NSK_LON_MAX = 82.65, 83.35
-
 
 def _classify_district(lat: float | None, lon: float | None) -> str:
     """Определяет район города по координатам (ближайший центроид станции мониторинга)."""
     if lat is None or lon is None:
         return "Прочие"
-    if not (_NSK_LAT_MIN <= lat <= _NSK_LAT_MAX and _NSK_LON_MIN <= lon <= _NSK_LON_MAX):
+    bb = get_bbox_dict()
+    if not (bb["lat_min"] <= lat <= bb["lat_max"] and bb["lon_min"] <= lon <= bb["lon_max"]):
         return "Прочие"
     best_dist = float("inf")
     best_district = "Прочие"
-    for st in NSK_ECOLOGY_STATIONS:
+    for st in get_ecology_stations():
         d = (lat - st["latitude"]) ** 2 + (lon - st["longitude"]) ** 2
         if d < best_dist:
             best_dist = d
