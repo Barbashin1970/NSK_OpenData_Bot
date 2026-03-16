@@ -28,29 +28,16 @@ DEFAULT_TTL_HOURS = 24
 POWER_TTL_MINUTES  = 30
 POWER_HISTORY_DAYS = 7
 POWER_FUTURE_DAYS  = 7
-NSK_051_URL  = "http://051.novo-sibirsk.ru/sitepages/off.aspx"
-NSK_051_BASE = "http://051.novo-sibirsk.ru"
+# URL источника берётся из city_profile.yaml → features.power_outages_url / power_outages_base
+# Используйте city_config.get_feature("power_outages_url") в power_scraper.py
 
 # ── Кэш — экология и метеорология ────────────────────────────────────────────
 ECOLOGY_TTL_MINUTES   = 15   # Open-Meteo обновляется ~каждые 15 мин
 ECOLOGY_HISTORY_DAYS  = 30   # хранить историю измерений 30 дней
 ECOLOGY_LOG_MAX_BYTES = 10 * 1024 * 1024  # 10 МБ — ротация лога
 
-# Фиксированные точки мониторинга — по одной на каждый район Новосибирска
-# Координаты соответствуют географическим центрам районов (используются Open-Meteo + CityAir)
-NSK_ECOLOGY_STATIONS: list[dict] = [
-    {"station_id": "nsk_central",   "district": "Центральный район",     "address": "Центр Новосибирска",    "latitude": 54.9884, "longitude": 82.9090},
-    {"station_id": "nsk_soviet",    "district": "Советский район",       "address": "Академгородок",         "latitude": 54.8441, "longitude": 83.1091},
-    {"station_id": "nsk_dzerzh",    "district": "Дзержинский район",     "address": "Дзержинский р-н",       "latitude": 54.9823, "longitude": 82.9650},
-    {"station_id": "nsk_zhd",       "district": "Железнодорожный район", "address": "Железнодорожный р-н",   "latitude": 54.9954, "longitude": 82.8860},
-    {"station_id": "nsk_zaelc",     "district": "Заельцовский район",    "address": "Заельцовский р-н",      "latitude": 54.9893, "longitude": 82.9550},
-    {"station_id": "nsk_kalinin",   "district": "Калининский район",     "address": "Калининский р-н",       "latitude": 55.0190, "longitude": 82.8880},
-    {"station_id": "nsk_kirov",     "district": "Кировский район",       "address": "Кировский р-н",         "latitude": 54.9600, "longitude": 82.8190},
-    {"station_id": "nsk_leninsky",  "district": "Ленинский район",       "address": "Ленинский р-н",         "latitude": 54.9460, "longitude": 82.8800},
-    {"station_id": "nsk_october",   "district": "Октябрьский район",     "address": "Октябрьский р-н",       "latitude": 54.9940, "longitude": 82.8190},
-    {"station_id": "nsk_pervomay",  "district": "Первомайский район",    "address": "Первомайский р-н",      "latitude": 54.8780, "longitude": 82.8710},
-    {"station_id": "nsk_koltsovo",  "district": "Кольцово",              "address": "Наукоград Кольцово",    "latitude": 54.9394, "longitude": 83.1818},
-]
+# Станции мониторинга перенесены в city_profile.yaml → ecology_stations
+# Используйте city_config.get_ecology_stations() вместо этого списка
 
 # ── Scraper headers (Browser UA для 051) ─────────────────────────────────────
 SCRAPER_HEADERS = {

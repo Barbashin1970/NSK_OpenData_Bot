@@ -23,7 +23,7 @@ from typing import Any
 
 import requests
 
-from .city_config import get_district_coords
+from .city_config import get_district_coords, get_city_slug as _get_city_slug
 from .constants import TIMEOUT
 
 log = logging.getLogger(__name__)
@@ -211,7 +211,7 @@ def transit_route(
         "destination_stops":   destination_stops,
         "hint": (
             "Для точного пошагового маршрута откройте 2ГИС: "
-            f"https://2gis.ru/novosibirsk/routeSearch/rsType/publictransport/"
+            f"https://2gis.ru/{_get_city_slug()}/routeSearch/rsType/publictransport/"
             f"from/{from_point[0]},{from_point[1]}/to/{to_point[0]},{to_point[1]}"
         ),
         "source": "2GIS Catalog API (real-time, данные не сохраняются)",

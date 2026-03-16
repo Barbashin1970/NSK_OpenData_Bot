@@ -1,0 +1,120 @@
+# =============================================================================
+# Профиль города — Тюмень
+# =============================================================================
+# Для запуска: CITY_PROFILE=city_profile_tyumen bot serve
+# =============================================================================
+
+city:
+  id: "tyumen"
+  name: "Тюмень"
+  name_genitive: "Тюмени"
+  name_prepositional: "Тюмени"
+  slug: "tyumen"
+  timezone: "Asia/Yekaterinburg"
+  utc_offset: 5
+
+  center:
+    lat: 57.1531
+    lon: 65.5343
+
+  bbox:
+    lat_min: 56.95
+    lat_max: 57.35
+    lon_min: 65.25
+    lon_max: 65.85
+
+# ── Административные районы ───────────────────────────────────────────────────
+districts:
+  "Калининский округ":      ["калининск"]
+  "Ленинский округ":        ["ленинск"]
+  "Центральный округ":      ["централь", "центр"]
+
+sub_districts: []
+
+district_coords:
+  "Калининский округ":      {lon: 65.5748, lat: 57.1751}
+  "Ленинский округ":        {lon: 65.4910, lat: 57.1231}
+  "Центральный округ":      {lon: 65.5343, lat: 57.1531}
+
+city_stopwords:
+  - "тюмень"
+  - "тюмени"
+
+# ── Возможности города ────────────────────────────────────────────────────────
+features:
+  has_metro: false
+
+  has_airport: true
+  airport_iata: "TJM"
+  airport_icao: "USTR"
+  airport_name: "Аэропорт Рощино"
+  airport_keywords_primary:
+    - "аэропорт"
+    - "рощин"
+    - "авиарейс"
+    - "вылет"
+    - "прилёт"
+    - "прилет"
+    - "самолёт"
+    - "самолет"
+    - "tjm"
+  airport_keywords_full:
+    - "аэропорт"
+    - "рощин"
+    - "авиарейс"
+    - "вылет"
+    - "прилёт"
+    - "прилет"
+    - "самолёт"
+    - "самолет"
+    - "tjm"
+    - "аэровокзал"
+
+  power_outages_url: ""
+  power_outages_base: ""
+
+# ── Станции экологического мониторинга ───────────────────────────────────────
+ecology_stations:
+  - station_id: "tyu_central"
+    district: "Центральный округ"
+    address: "Центр Тюмени"
+    lat: 57.1531
+    lon: 65.5343
+
+  - station_id: "tyu_kalinin"
+    district: "Калининский округ"
+    address: "Калининский округ"
+    lat: 57.1751
+    lon: 65.5748
+
+  - station_id: "tyu_leninsky"
+    district: "Ленинский округ"
+    address: "Ленинский округ"
+    lat: 57.1231
+    lon: 65.4910
+
+# ── Открытые данные ───────────────────────────────────────────────────────────
+opendata_base_url: "https://data.tyumen-city.ru"
+knowledge_base: ""
+
+# ── Статические датасеты ──────────────────────────────────────────────────────
+static_datasets:
+
+  emissions:
+    enabled: false
+    file: ""
+    note: "Скачать 2-ТП Воздух по Тюменской области с rpn.gov.ru"
+
+  heat_sources:
+    enabled: false
+    file: ""
+    note: "Данные о тепловых источниках Тюмени ещё не добавлены"
+
+  metro:
+    enabled: false
+    note: "Метро в Тюмени отсутствует"
+
+  airport:
+    enabled: false
+    file: ""
+    note: "Создать data/cities/tyumen/airport.json"

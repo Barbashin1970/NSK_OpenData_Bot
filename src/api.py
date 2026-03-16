@@ -19,7 +19,10 @@ try:
 except ImportError:
     raise ImportError("Установите fastapi: pip install fastapi uvicorn")
 
-from .city_config import get_city_name, get_districts
+from .city_config import (
+    get_city_name, get_city_id, get_city_slug, get_districts,
+    get_feature, get_opendata_base_url,
+)
 from .registry import load_registry
 from .router import route, best_topic
 from .planner import make_plan, INFO_PATTERNS, DISTRICTS_PATTERNS
@@ -1461,7 +1464,7 @@ def get_ask(
         return {
             "query": q,
             "topic": "airport",
-            "topic_name": "Аэропорт Толмачёво (OVB)",
+            "topic_name": f"{get_feature('airport_name', 'Аэропорт')} ({get_feature('airport_iata', '')})",
             "confidence": route_result.confidence,
             "operation": result.get("operation", plan.operation),
             **result,
@@ -1601,10 +1604,11 @@ def get_ask(
             hint = None
             if from_coords and to_coords:
                 hint = (
-                    f"https://2gis.ru/novosibirsk/routeSearch/rsType/publictransport/"
+                    f"https://2gis.ru/{get_city_slug()}/routeSearch/rsType/publictransport/"
                     f"from/{from_coords[0]},{from_coords[1]}/to/{to_coords[0]},{to_coords[1]}"
                 )
 
+            _opendata_url = get_opendata_base_url() or "opendata"
             return {
                 "query": q, "topic": "transit", "topic_name": route_result.name,
                 "confidence": round(route_result.confidence, 3),
@@ -1615,11 +1619,11 @@ def get_ask(
                 "metro_route": _metro_route_hint(from_district, to_district),
                 "hint": hint,
                 "notice": (
-                    "⚠️ Данные о маршрутах взяты из открытых данных мэрии Новосибирска "
-                    "(opendata.novo-sibirsk.ru) и могут быть неполными или устаревшими. "
+                    f"⚠️ Данные о маршрутах взяты из открытых данных {get_city_name('genitive')} "
+                    f"({_opendata_url}) и могут быть неполными или устаревшими. "
                     "Для построения точного маршрута воспользуйтесь приложением 2ГИС или Яндекс.Транспорт."
                 ),
-                "source": "opendata.novo-sibirsk.ru · остановки наземного транспорта (TTL 24ч)",
+                "source": f"{_opendata_url} · остановки наземного транспорта (TTL 24ч)",
             }
         except Exception as e:
             log.error(f"Ошибка /ask transit: {e}")
@@ -2005,10 +2009,11 @@ def get_transit(
         hint = None
         if from_coords and to_coords:
             hint = (
-                f"https://2gis.ru/novosibirsk/routeSearch/rsType/publictransport/"
+                f"https://2gis.ru/{get_city_slug()}/routeSearch/rsType/publictransport/"
                 f"from/{from_coords[0]},{from_coords[1]}/to/{to_coords[0]},{to_coords[1]}"
             )
 
+        _od = get_opendata_base_url() or "opendata"
         return {
             "from": from_district,
             "to": to_district,
@@ -2016,11 +2021,11 @@ def get_transit(
             "connections": connections,
             "hint": hint,
             "notice": (
-                "⚠️ Данные о маршрутах взяты из открытых данных мэрии Новосибирска "
-                "(opendata.novo-sibirsk.ru) и могут быть неполными или устаревшими. "
+                f"⚠️ Данные о маршрутах взяты из открытых данных {get_city_name('genitive')} "
+                f"({_od}) и могут быть неполными или устаревшими. "
                 "Для построения точного маршрута воспользуйтесь приложением 2ГИС или Яндекс.Транспорт."
             ),
-            "source": "opendata.novo-sibirsk.ru · остановки наземного транспорта (TTL 24ч)",
+            "source": f"{_od} · остановки наземного транспорта (TTL 24ч)",
         }
     except Exception as e:
         log.error(f"Ошибка /transit: {e}")
@@ -2858,7 +2863,7 @@ def post_power_update() -> dict:
         "active_houses": meta.get("active_houses", 0),
         "planned_houses": meta.get("planned_houses", 0),
         "last_scraped": meta.get("last_scraped", ""),
-        "source": "051.novo-sibirsk.ru",
+        "source": get_feature("power_outages_url", ""),
     }
 
 
@@ -3073,6 +3078,38 @@ def _get_dev_hash() -> str:
 
 def _check_dev_pwd(pwd: str) -> bool:
     return _hash_pwd(pwd) == _get_dev_hash()
+
+
+@app.get("/api/city-config", include_in_schema=False)
+def city_config_endpoint():
+    """Возвращает публичные параметры активного города для фронтенда и Studio.
+
+    Используется index.html (подстановка URL в footer/карточках) и studio.html.
+    """
+    from .city_config import get_city_profile, get_ecology_stations as _eco_st
+    profile = get_city_profile()
+    features = profile.get("features", {})
+    datasets = profile.get("static_datasets", {})
+    return {
+        "city_id":    get_city_id(),
+        "city_name":  get_city_name(),
+        "city_name_genitive": get_city_name("genitive"),
+        "city_name_prepositional": get_city_name("prepositional"),
+        "city_slug":  get_city_slug(),
+        "opendata_url": get_opendata_base_url(),
+        "power_outages_url":  features.get("power_outages_url", ""),
+        "power_outages_base": features.get("power_outages_base", ""),
+        "has_metro":   bool(features.get("has_metro")),
+        "metro_name":  features.get("metro_name", ""),
+        "has_airport": bool(features.get("has_airport")),
+        "airport_name": features.get("airport_name", ""),
+        "airport_iata": features.get("airport_iata", ""),
+        "ecology_stations_count": len(_eco_st()),
+        "static_datasets": {
+            k: {"enabled": bool(v.get("enabled")), "note": v.get("note", "")}
+            for k, v in datasets.items()
+        },
+    }
 
 
 @app.get("/dev-auth", include_in_schema=False)

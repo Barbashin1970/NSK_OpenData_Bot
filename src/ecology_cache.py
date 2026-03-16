@@ -15,8 +15,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .cache import _get_conn
+from .city_config import get_ecology_stations as _get_ecology_stations
 from .constants import (
-    NSK_ECOLOGY_STATIONS,
     ECOLOGY_HISTORY_DAYS,
     ECOLOGY_TTL_MINUTES,
     DATA_DIR,
@@ -186,11 +186,11 @@ def _save_daily_archive(conn) -> None:
 def upsert_stations(stations: list[dict] | None = None) -> None:
     """Синхронизирует справочник станций (dim_stations).
 
-    По умолчанию использует NSK_ECOLOGY_STATIONS из constants.py.
+    По умолчанию использует станции из city_profile.yaml через city_config.
     source = 'open-meteo' если станция виртуальная (по координатам района).
     """
     if stations is None:
-        stations = NSK_ECOLOGY_STATIONS
+        stations = _get_ecology_stations()
 
     init_ecology_tables()
     conn = _get_conn()
@@ -579,16 +579,15 @@ def seed_history_placeholder(
     Returns:
         Количество вставленных строк.
     """
-    from .constants import NSK_ECOLOGY_STATIONS
-
     init_ecology_tables()
     conn = _get_conn()
     inserted = 0
+    _stations = _get_ecology_stations()
     try:
         today = datetime.now(timezone.utc).date()
         for i in range(1, days + 1):          # не трогаем сегодня — будет реальное
             day_str = str(today - timedelta(days=i))
-            for st in NSK_ECOLOGY_STATIONS:
+            for st in _stations:
                 try:
                     conn.execute(
                         """
@@ -615,7 +614,7 @@ def seed_history_placeholder(
                 except Exception as e:
                     log.debug(f"seed_history_placeholder skip {day_str}/{st['district']}: {e}")
         log.info("seed_history_placeholder: вставлено %d строк (%d дней × %d станций)",
-                 inserted, days, len(NSK_ECOLOGY_STATIONS))
+                 inserted, days, len(_stations))
         return inserted
     finally:
         conn.close()

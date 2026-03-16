@@ -22,7 +22,8 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-from .constants import NSK_051_URL, NSK_051_BASE, SCRAPER_HEADERS, SCRAPER_TIMEOUT
+from .city_config import get_feature as _get_city_feature
+from .constants import SCRAPER_HEADERS, SCRAPER_TIMEOUT
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ def scrape_summary() -> list[dict[str, Any]]:
     }
     """
     try:
-        resp = requests.get(NSK_051_URL, headers=SCRAPER_HEADERS, timeout=SCRAPER_TIMEOUT)
+        resp = requests.get(_get_city_feature("power_outages_url", ""), headers=SCRAPER_HEADERS, timeout=SCRAPER_TIMEOUT)
         resp.raise_for_status()
     except Exception as e:
         log.error(f"Ошибка получения 051.novo-sibirsk.ru: {e}")
@@ -96,7 +97,7 @@ def scrape_summary() -> list[dict[str, Any]]:
                 "district_href": "",
                 "houses": 0,
                 "scraped_at": scraped_at,
-                "source_url": NSK_051_URL,
+                "source_url": _get_city_feature("power_outages_url", ""),
             })
             continue
 
@@ -130,7 +131,7 @@ def scrape_summary() -> list[dict[str, Any]]:
                     "district_href": district_href,
                     "houses": houses,
                     "scraped_at": scraped_at,
-                    "source_url": NSK_051_URL,
+                    "source_url": _get_city_feature("power_outages_url", ""),
                 })
 
     log.info(f"Получено {len(records)} записей с 051.novo-sibirsk.ru")
@@ -149,7 +150,7 @@ def fetch_outages_detail(
         reason, scraped_at
     }
     """
-    url = f"{NSK_051_BASE}{district_href}" if district_href.startswith("/") else district_href
+    url = f"{_get_city_feature("power_outages_base", "")}{district_href}" if district_href.startswith("/") else district_href
     try:
         resp = requests.get(url, headers=SCRAPER_HEADERS, timeout=SCRAPER_TIMEOUT)
         resp.raise_for_status()

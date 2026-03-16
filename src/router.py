@@ -8,7 +8,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .city_config import get_districts, get_sub_districts_compiled, get_sub_districts_info
+from .city_config import (
+    get_districts, get_sub_districts_compiled, get_sub_districts_info,
+    get_feature as _get_feature, get_city_name as _get_city_name,
+)
 from .registry import load_registry
 
 # Районы и подрайоны загружаются из city_profile.yaml через city_config.py.
@@ -604,7 +607,7 @@ def _route_metro(q: str) -> "RouteResult | None":
     return RouteResult(
         topic="metro",
         confidence=confidence,
-        name="Новосибирский метрополитен",
+        name=_get_feature("metro_name", "Метрополитен"),
         matched_keywords=matched,
     )
 
@@ -653,7 +656,7 @@ def _route_airport(q: str) -> "RouteResult | None":
     return RouteResult(
         topic="airport",
         confidence=confidence,
-        name="Аэропорт Толмачёво",
+        name=_get_feature("airport_name", "Аэропорт"),
         matched_keywords=matched,
     )
 
@@ -705,7 +708,7 @@ def _route_medical(q: str) -> "RouteResult | None":
     return RouteResult(
         topic="medical",
         confidence=confidence,
-        name="Медицинские учреждения Новосибирска",
+        name=f"Медицинские учреждения {_get_city_name('genitive')}",
         matched_keywords=[kw for kw in _MEDICAL_KEYWORDS if _normalize(kw) in q],
     )
 

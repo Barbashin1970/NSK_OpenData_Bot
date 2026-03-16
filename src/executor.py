@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .cache import query, table_name
+from .city_config import get_city_name as _get_city_name
 from .planner import Plan
 from .registry import get_dataset
 
@@ -492,7 +493,7 @@ def _enrich_metro_coords(stations: list[dict]) -> list[dict]:
     enriched = []
     for s in stations:
         name = s.get("name", "")
-        cache_key = _address_key(f"Новосибирск, метро {name}")
+        cache_key = _address_key(f"{_get_city_name()}, метро {name}")
         cached = _get_cached(cache_key)
         if cached and cached.get("lat") and cached.get("lon"):
             s = {**s, "_lat": cached["lat"], "_lon": cached["lon"]}
