@@ -94,7 +94,7 @@ ecology_stations:
     lon: 65.4910
 
 # ── Открытые данные ───────────────────────────────────────────────────────────
-opendata_base_url: "https://data.tyumen-city.ru"
+opendata_base_url: "https://www.tyumen-city.ru"
 knowledge_base: ""
 
 # ── Статические датасеты ──────────────────────────────────────────────────────

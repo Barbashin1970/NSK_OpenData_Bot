@@ -108,7 +108,7 @@ ecology_stations:
     lon: 135.0230
 
 # ── Открытые данные ───────────────────────────────────────────────────────────
-opendata_base_url: "https://opendata.khabarovsk.ru"
+opendata_base_url: "http://www.khabarovsk.ru"
 knowledge_base: ""
 
 # ── Статические датасеты ──────────────────────────────────────────────────────

@@ -108,7 +108,7 @@ ecology_stations:
     lon: 104.2580
 
 # ── Открытые данные ───────────────────────────────────────────────────────────
-opendata_base_url: "https://data.irk.ru"
+opendata_base_url: "https://irkutsk.ru/opendata"
 knowledge_base: ""
 
 # ── Статические датасеты ──────────────────────────────────────────────────────

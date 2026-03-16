@@ -110,7 +110,7 @@ ecology_stations:
     lon: 131.9230
 
 # ── Открытые данные ───────────────────────────────────────────────────────────
-opendata_base_url: "https://opendata.primorsky.ru"
+opendata_base_url: "https://www.vlc.ru"
 knowledge_base: ""
 
 # ── Статические датасеты ──────────────────────────────────────────────────────
