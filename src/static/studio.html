@@ -54,6 +54,9 @@
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="import">
       📥 Импорт данных
     </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="sources">
+      🔗 Онлайн источники
+    </button>
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="schemas">
       📋 Справочник схем
     </button>
@@ -219,6 +222,34 @@
     </div>
   </div>
 
+  <!-- ══ Вкладка: Онлайн источники ════════════════════════════════════════ -->
+  <div id="tab-sources" class="tab-pane">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold text-slate-800">Онлайн источники данных</h2>
+    </div>
+    <p class="text-sm text-slate-500 mb-5">
+      Настройте URL для каждого города. Изменения сохраняются прямо в
+      <code class="bg-slate-100 px-1 rounded">config/city_profile_*.yaml</code> —
+      перезапуск сервера не требуется для следующего парсинга.
+    </p>
+
+    <!-- Выбор города -->
+    <div class="bg-white rounded-xl border border-slate-200 p-5 mb-5">
+      <label class="block text-sm font-medium text-slate-600 mb-2">Выберите город</label>
+      <div class="flex gap-3 items-center">
+        <select id="src-city-sel"
+                class="flex-1 max-w-xs border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                onchange="loadSources()">
+          <option value="">— выберите город —</option>
+        </select>
+        <span id="src-loading" class="text-sm text-slate-400 hidden">Загрузка…</span>
+      </div>
+    </div>
+
+    <!-- Карточки источников -->
+    <div id="sources-cards" class="space-y-3"></div>
+  </div>
+
   <!-- ══ Вкладка: Справочник схем ═══════════════════════════════════════════ -->
   <div id="tab-schemas" class="tab-pane">
     <h2 class="text-lg font-semibold text-slate-800 mb-4">Справочник канонических схем</h2>
@@ -254,7 +285,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-' + tab).classList.add('active');
 
     if (tab === 'profiles') loadProfiles();
-    if (tab === 'schemas') loadSchemas();
+    if (tab === 'sources')  initSourcesTab();
+    if (tab === 'schemas')  loadSchemas();
   });
 });
 
@@ -388,11 +420,21 @@ function renderProfiles(profiles) {
     </div>`;
   }).join('');
 
-  // Заполним селект городов на вкладке Импорт
+  // Заполним селекты городов на вкладках Импорт и Онлайн источники
   const sel = document.getElementById('sel-city');
   sel.innerHTML = profiles.filter(p => !p.error).map(p =>
     `<option value="${esc(p.city_id)}">${esc(p.city_name)} (${esc(p.city_id)})</option>`
   ).join('');
+
+  const srcSel = document.getElementById('src-city-sel');
+  if (srcSel.options.length <= 1) {
+    profiles.filter(p => !p.error).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.city_id;
+      opt.textContent = `${p.city_name} (${p.city_id})`;
+      srcSel.appendChild(opt);
+    });
+  }
 }
 
 function toggleCard(idx) {
@@ -726,6 +768,167 @@ function toggleAccordion(btn) {
   const arrow = btn.querySelector('.accordion-arrow');
   body.classList.toggle('open');
   arrow.textContent = body.classList.contains('open') ? '▼' : '▶';
+}
+
+// ── Вкладка «Онлайн источники» ────────────────────────────────────────────
+// Заполняем селект когда вкладка активируется
+async function initSourcesTab() {
+  const sel = document.getElementById('src-city-sel');
+  if (sel.options.length > 1) return; // уже заполнен
+  try {
+    const resp = await fetch('/studio/api/profiles');
+    const data = await resp.json();
+    (data.profiles || []).filter(p => !p.error).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.city_id;
+      opt.textContent = `${p.city_name} (${p.city_id})`;
+      sel.appendChild(opt);
+    });
+  } catch(e) {
+    document.getElementById('sources-cards').innerHTML =
+      `<div class="text-red-500 text-sm">Ошибка загрузки городов: ${esc(e.message)}</div>`;
+  }
+}
+
+async function loadSources() {
+  const cityId = document.getElementById('src-city-sel').value;
+  const cards  = document.getElementById('sources-cards');
+  if (!cityId) { cards.innerHTML = ''; return; }
+
+  const loading = document.getElementById('src-loading');
+  loading.classList.remove('hidden');
+  cards.innerHTML = '';
+
+  try {
+    const resp = await fetch(`/studio/api/profile-sources?city_id=${encodeURIComponent(cityId)}`);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    loading.classList.add('hidden');
+    renderSourceCards(data);
+  } catch(e) {
+    loading.classList.add('hidden');
+    cards.innerHTML = `<div class="text-red-500 text-sm">Ошибка: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderSourceCards(data) {
+  const cards = document.getElementById('sources-cards');
+  cards.innerHTML = data.sources.map((src, i) => `
+    <div class="bg-white border border-slate-200 rounded-xl p-5" id="src-card-${i}">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <div class="font-semibold text-slate-700 text-sm">${esc(src.label)}</div>
+          <div class="text-xs text-slate-400 mt-0.5">${esc(src.hint)}</div>
+        </div>
+        <span id="src-badge-${i}" class="badge badge-off ml-3 flex-shrink-0">не проверен</span>
+      </div>
+      <div class="flex gap-2">
+        <input id="src-input-${i}"
+               type="url"
+               value="${esc(src.value)}"
+               placeholder="https://…"
+               class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"/>
+        <button onclick="testSource(${i}, '${esc(data.city_id)}', '${esc(src.key)}')"
+                class="text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg flex-shrink-0 font-medium transition">
+          Проверить
+        </button>
+        <button onclick="saveSource(${i}, '${esc(data.city_id)}', '${esc(src.key)}')"
+                class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex-shrink-0 font-medium transition">
+          Сохранить
+        </button>
+      </div>
+      <div id="src-msg-${i}" class="mt-2 text-xs hidden"></div>
+    </div>
+  `).join('');
+}
+
+async function testSource(idx, cityId, key) {
+  const input = document.getElementById('src-input-' + idx);
+  const badge = document.getElementById('src-badge-' + idx);
+  const msg   = document.getElementById('src-msg-' + idx);
+  const url   = input.value.trim();
+
+  if (!url) {
+    badge.className = 'badge badge-off ml-3 flex-shrink-0';
+    badge.textContent = 'пусто';
+    return;
+  }
+
+  badge.className = 'badge badge-warn ml-3 flex-shrink-0';
+  badge.textContent = '⏳ проверяю…';
+  msg.classList.add('hidden');
+
+  try {
+    const resp = await fetch('/studio/api/test-endpoint', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url}),
+    });
+    const data = await resp.json();
+
+    if (data.ok) {
+      badge.className = 'badge badge-ok ml-3 flex-shrink-0';
+      badge.textContent = `✓ ${data.status_code} · ${data.latency_ms} мс`;
+    } else {
+      badge.className = 'badge badge-miss ml-3 flex-shrink-0';
+      badge.textContent = data.status_code ? `✗ ${data.status_code}` : '✗ ошибка';
+      if (data.error) {
+        msg.className = 'mt-2 text-xs text-red-500';
+        msg.textContent = data.error;
+        msg.classList.remove('hidden');
+      }
+    }
+  } catch(e) {
+    badge.className = 'badge badge-miss ml-3 flex-shrink-0';
+    badge.textContent = '✗ сетевая ошибка';
+  }
+}
+
+async function saveSource(idx, cityId, key) {
+  const input = document.getElementById('src-input-' + idx);
+  const msg   = document.getElementById('src-msg-' + idx);
+  const btn   = document.querySelector(`#src-card-${idx} button:last-child`);
+  const value = input.value.trim();
+
+  btn.disabled = true;
+  btn.textContent = 'Сохранение…';
+  msg.classList.add('hidden');
+
+  try {
+    const resp = await fetch('/studio/api/save-online-source', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({city_id: cityId, key, value}),
+    });
+    const data = await resp.json();
+
+    if (data.ok) {
+      msg.className = 'mt-2 text-xs text-green-600';
+      msg.textContent = `✓ Сохранено в ${data.profile_file}`;
+      msg.classList.remove('hidden');
+      btn.textContent = '✓ Сохранено';
+      btn.classList.remove('bg-blue-600','hover:bg-blue-700');
+      btn.classList.add('bg-green-600','hover:bg-green-700');
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'Сохранить';
+        btn.classList.add('bg-blue-600','hover:bg-blue-700');
+        btn.classList.remove('bg-green-600','hover:bg-green-700');
+      }, 2500);
+    } else {
+      msg.className = 'mt-2 text-xs text-red-500';
+      msg.textContent = data.error || 'Ошибка сохранения';
+      msg.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Сохранить';
+    }
+  } catch(e) {
+    msg.className = 'mt-2 text-xs text-red-500';
+    msg.textContent = `Ошибка: ${e.message}`;
+    msg.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Сохранить';
+  }
 }
 
 // ── Инициализация ─────────────────────────────────────────────────────────

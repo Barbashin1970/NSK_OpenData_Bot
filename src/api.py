@@ -3280,6 +3280,166 @@ async def studio_preview(file: UploadFile = File(...)):
         _os.unlink(tmp_path)
 
 
+@app.get("/studio/api/profile-sources", include_in_schema=False)
+def studio_profile_sources(city_id: str = Query(...)):
+    """Возвращает конфиг онлайн-источников для конкретного профиля города.
+
+    Используется вкладкой «Онлайн источники» в Studio.
+    """
+    import yaml as _yaml
+
+    # Ищем YAML по city_id
+    yaml_path = None
+    for p in _CONFIG_DIR.glob("city_profile*.yaml"):
+        try:
+            d = _yaml.safe_load(p.read_text("utf-8"))
+            if d.get("city", {}).get("id") == city_id:
+                yaml_path = p
+                break
+        except Exception:
+            continue
+
+    if not yaml_path:
+        raise HTTPException(status_code=404, detail=f"Профиль '{city_id}' не найден")
+
+    with open(yaml_path, encoding="utf-8") as f:
+        data = _yaml.safe_load(f)
+
+    features = data.get("features", {})
+    return {
+        "city_id": city_id,
+        "profile_file": yaml_path.name,
+        "sources": [
+            {
+                "key":   "opendata_base_url",
+                "label": "Портал открытых данных",
+                "hint":  "Базовый URL городского opendata-портала (используется в ссылках и API docs)",
+                "value": data.get("opendata_base_url", ""),
+                "yaml_path": "top-level",
+            },
+            {
+                "key":   "knowledge_base",
+                "label": "База знаний",
+                "hint":  "URL базы знаний / справочника (опционально)",
+                "value": data.get("knowledge_base", ""),
+                "yaml_path": "top-level",
+            },
+            {
+                "key":   "power_outages_url",
+                "label": "Отключения ЖКХ — страница",
+                "hint":  "Полный URL страницы со списком отключений (аналог 051.novo-sibirsk.ru/sitepages/off.aspx)",
+                "value": features.get("power_outages_url", ""),
+                "yaml_path": "features",
+            },
+            {
+                "key":   "power_outages_base",
+                "label": "Отключения ЖКХ — базовый URL",
+                "hint":  "Корневой URL сайта ЖКХ для построения относительных ссылок (аналог http://051.novo-sibirsk.ru)",
+                "value": features.get("power_outages_base", ""),
+                "yaml_path": "features",
+            },
+        ],
+    }
+
+
+@app.post("/studio/api/test-endpoint", include_in_schema=False)
+async def studio_test_endpoint(request: Request):
+    """Проверяет доступность URL — HTTP HEAD или GET с таймаутом 6 с.
+
+    Body: {"url": "https://..."}
+    Returns: {"ok": bool, "status_code": int|null, "latency_ms": int, "error": str|null}
+    """
+    import time as _time
+
+    body = await request.json()
+    url: str = (body.get("url") or "").strip()
+
+    if not url:
+        raise HTTPException(status_code=400, detail="url обязателен")
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Разрешены только http:// и https:// URL")
+
+    import requests as _req
+
+    t0 = _time.monotonic()
+    try:
+        resp = _req.head(url, timeout=6, allow_redirects=True, headers={"User-Agent": "CityBot-Studio/1.1"})
+        # Некоторые серверы не поддерживают HEAD — пробуем GET с stream
+        if resp.status_code in (405, 501):
+            resp = _req.get(url, timeout=6, stream=True, headers={"User-Agent": "CityBot-Studio/1.1"})
+            resp.close()
+        latency = int((_time.monotonic() - t0) * 1000)
+        return {
+            "ok": resp.status_code < 400,
+            "status_code": resp.status_code,
+            "latency_ms": latency,
+            "error": None,
+        }
+    except _req.exceptions.Timeout:
+        return {"ok": False, "status_code": None, "latency_ms": 6000, "error": "Таймаут (>6 с)"}
+    except _req.exceptions.ConnectionError as e:
+        return {"ok": False, "status_code": None, "latency_ms": int((_time.monotonic()-t0)*1000), "error": f"Ошибка соединения: {e}"}
+    except Exception as e:
+        return {"ok": False, "status_code": None, "latency_ms": 0, "error": str(e)}
+
+
+@app.post("/studio/api/save-online-source", include_in_schema=False)
+async def studio_save_online_source(request: Request):
+    """Сохраняет значение онлайн-источника в city_profile*.yaml, сохраняя комментарии.
+
+    Body: {"city_id": "omsk", "key": "opendata_base_url", "value": "https://..."}
+    Поддерживаемые ключи: opendata_base_url, knowledge_base, power_outages_url, power_outages_base.
+    """
+    import yaml as _yaml
+    import re as _re2
+
+    body = await request.json()
+    city_id: str = (body.get("city_id") or "").strip()
+    key: str = (body.get("key") or "").strip()
+    value: str = (body.get("value") or "").strip()
+
+    ALLOWED_KEYS = {"opendata_base_url", "knowledge_base", "power_outages_url", "power_outages_base"}
+    if not city_id or not _re.match(r'^[\w\-]+$', city_id):
+        raise HTTPException(status_code=400, detail="Недопустимый city_id")
+    if key not in ALLOWED_KEYS:
+        raise HTTPException(status_code=400, detail=f"Ключ '{key}' не поддерживается. Допустимые: {sorted(ALLOWED_KEYS)}")
+
+    # Ищем профиль
+    yaml_path = None
+    for p in _CONFIG_DIR.glob("city_profile*.yaml"):
+        try:
+            d = _yaml.safe_load(p.read_text("utf-8"))
+            if d.get("city", {}).get("id") == city_id:
+                yaml_path = p
+                break
+        except Exception:
+            continue
+
+    if not yaml_path:
+        raise HTTPException(status_code=404, detail=f"Профиль '{city_id}' не найден")
+
+    content = yaml_path.read_text("utf-8")
+    escaped_value = value.replace('"', '\\"')
+
+    if key in ("opendata_base_url", "knowledge_base"):
+        # Поле верхнего уровня: ^key: "..." или ^key: ''
+        pattern = rf'^({_re.escape(key)}:\s*).*'
+        replacement = rf'\g<1>"{escaped_value}"'
+        new_content = _re2.sub(pattern, replacement, content, flags=_re2.MULTILINE)
+    else:
+        # Поле внутри features (отступ 2 пробела)
+        pattern = rf'^(  {_re.escape(key)}:\s*).*'
+        replacement = rf'\g<1>"{escaped_value}"'
+        new_content = _re2.sub(pattern, replacement, content, flags=_re2.MULTILINE)
+
+    if new_content == content:
+        # Поле не найдено — добавляем (для features-полей, если их нет)
+        return {"ok": False, "error": f"Поле '{key}' не найдено в {yaml_path.name}. Добавьте его вручную."}
+
+    yaml_path.write_text(new_content, encoding="utf-8")
+    return {"ok": True, "profile_file": yaml_path.name, "key": key, "value": value}
+
+
 @app.post("/studio/api/import", include_in_schema=False)
 async def studio_import(
     city_id: str = Form(...),
