@@ -3360,20 +3360,33 @@ async def studio_test_endpoint(request: Request):
         raise HTTPException(status_code=400, detail="Разрешены только http:// и https:// URL")
 
     import requests as _req
+    import urllib3 as _urllib3
+    _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
 
+    _hdrs = {"User-Agent": "CityBot-Studio/1.1"}
     t0 = _time.monotonic()
+    ssl_warning = None
     try:
-        resp = _req.head(url, timeout=6, allow_redirects=True, headers={"User-Agent": "CityBot-Studio/1.1"})
+        try:
+            resp = _req.head(url, timeout=6, allow_redirects=True, headers=_hdrs, verify=True)
+        except _req.exceptions.SSLError:
+            # Российские госсайты часто используют нестандартные сертификаты
+            resp = _req.head(url, timeout=6, allow_redirects=True, headers=_hdrs, verify=False)
+            ssl_warning = "SSL-сертификат сайта не прошёл проверку — сайт доступен, но сертификат ненадёжен"
         # Некоторые серверы не поддерживают HEAD — пробуем GET с stream
         if resp.status_code in (405, 501):
-            resp = _req.get(url, timeout=6, stream=True, headers={"User-Agent": "CityBot-Studio/1.1"})
+            try:
+                resp = _req.get(url, timeout=6, stream=True, headers=_hdrs, verify=True)
+            except _req.exceptions.SSLError:
+                resp = _req.get(url, timeout=6, stream=True, headers=_hdrs, verify=False)
+                ssl_warning = ssl_warning or "SSL-сертификат не прошёл проверку"
             resp.close()
         latency = int((_time.monotonic() - t0) * 1000)
         return {
             "ok": resp.status_code < 400,
             "status_code": resp.status_code,
             "latency_ms": latency,
-            "error": None,
+            "error": ssl_warning,
         }
     except _req.exceptions.Timeout:
         return {"ok": False, "status_code": None, "latency_ms": 6000, "error": "Таймаут (>6 с)"}

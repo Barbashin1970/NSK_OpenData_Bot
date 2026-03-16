@@ -853,6 +853,14 @@ async function testSource(idx, cityId, key) {
     badge.textContent = 'пусто';
     return;
   }
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    badge.className = 'badge badge-off ml-3 flex-shrink-0';
+    badge.textContent = 'локальный путь';
+    msg.className = 'mt-2 text-xs text-slate-400';
+    msg.textContent = 'Это локальный файл или относительный путь — URL для проверки не нужен.';
+    msg.classList.remove('hidden');
+    return;
+  }
 
   badge.className = 'badge badge-warn ml-3 flex-shrink-0';
   badge.textContent = '⏳ проверяю…';
@@ -867,8 +875,17 @@ async function testSource(idx, cityId, key) {
     const data = await resp.json();
 
     if (data.ok) {
-      badge.className = 'badge badge-ok ml-3 flex-shrink-0';
-      badge.textContent = `✓ ${data.status_code} · ${data.latency_ms} мс`;
+      // SSL-предупреждение: доступен, но сертификат ненадёжен → жёлтый
+      if (data.error) {
+        badge.className = 'badge badge-warn ml-3 flex-shrink-0';
+        badge.textContent = `⚠ ${data.status_code} · ${data.latency_ms} мс`;
+        msg.className = 'mt-2 text-xs text-amber-600';
+        msg.textContent = data.error;
+        msg.classList.remove('hidden');
+      } else {
+        badge.className = 'badge badge-ok ml-3 flex-shrink-0';
+        badge.textContent = `✓ ${data.status_code} · ${data.latency_ms} мс`;
+      }
     } else {
       badge.className = 'badge badge-miss ml-3 flex-shrink-0';
       badge.textContent = data.status_code ? `✗ ${data.status_code}` : '✗ ошибка';

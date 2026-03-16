@@ -128,7 +128,7 @@ def test_ecology_plan_sub_district():
 def ecology_db_with_data():
     """Инициализирует таблицы и вставляет тестовые данные."""
     from src.ecology_cache import init_ecology_tables, upsert_stations, upsert_measurements
-    from src.constants import NSK_ECOLOGY_STATIONS
+    from src.city_config import get_ecology_stations as _gest; NSK_ECOLOGY_STATIONS = _gest()
 
     init_ecology_tables()
     upsert_stations(NSK_ECOLOGY_STATIONS)
@@ -165,19 +165,19 @@ def test_ecology_init_tables():
 def test_ecology_upsert_stations():
     """Станции вставляются в dim_stations без ошибок."""
     from src.ecology_cache import upsert_stations
-    from src.constants import NSK_ECOLOGY_STATIONS
+    from src.city_config import get_ecology_stations as _gest; NSK_ECOLOGY_STATIONS = _gest()
     upsert_stations(NSK_ECOLOGY_STATIONS)
 
 
 def test_ecology_stations_count():
-    """Все 11 точек мониторинга присутствуют в справочнике (10 районов + Кольцово)."""
-    from src.constants import NSK_ECOLOGY_STATIONS
-    assert len(NSK_ECOLOGY_STATIONS) == 11
+    """Все точки мониторинга присутствуют в справочнике (определяется city_profile.yaml)."""
+    from src.city_config import get_ecology_stations as _gest; NSK_ECOLOGY_STATIONS = _gest()
+    assert len(NSK_ECOLOGY_STATIONS) >= 1
 
 
 def test_ecology_stations_have_required_fields():
     """Каждая станция содержит все обязательные поля ТЗ §4."""
-    from src.constants import NSK_ECOLOGY_STATIONS
+    from src.city_config import get_ecology_stations as _gest; NSK_ECOLOGY_STATIONS = _gest()
     required = {"station_id", "district", "address", "latitude", "longitude"}
     for s in NSK_ECOLOGY_STATIONS:
         missing = required - set(s.keys())
@@ -185,10 +185,12 @@ def test_ecology_stations_have_required_fields():
 
 
 def test_ecology_upsert_and_query_current(ecology_db_with_data):
-    """После upsert query_current() возвращает записи для всех 11 точек мониторинга."""
+    """После upsert query_current() возвращает записи для всех точек мониторинга."""
     from src.ecology_cache import query_current
+    from src.city_config import get_ecology_stations as _gest
+    expected = len(_gest())
     rows = query_current()
-    assert len(rows) == 11, f"Ожидалось 11 точек мониторинга, получено {len(rows)}"
+    assert len(rows) == expected, f"Ожидалось {expected} точек мониторинга, получено {len(rows)}"
 
 
 def test_ecology_query_current_district_filter(ecology_db_with_data):
@@ -220,7 +222,7 @@ def test_ecology_query_pdk_no_exceedances(ecology_db_with_data):
 def test_ecology_query_pdk_with_exceedances():
     """При PM2.5 > 35 query_pdk_exceedances() возвращает данные."""
     from src.ecology_cache import init_ecology_tables, upsert_stations, upsert_measurements, query_pdk_exceedances
-    from src.constants import NSK_ECOLOGY_STATIONS
+    from src.city_config import get_ecology_stations as _gest; NSK_ECOLOGY_STATIONS = _gest()
 
     init_ecology_tables()
     upsert_stations(NSK_ECOLOGY_STATIONS)
@@ -388,7 +390,7 @@ def test_api_ecology_history_days_validation(api_client):
 def test_api_ecology_update_ok(api_client, monkeypatch):
     """POST /ecology/update → 200 с success=True (мокаем fetch_all_ecology)."""
     from src import ecology_fetcher
-    from src.constants import NSK_ECOLOGY_STATIONS
+    from src.city_config import get_ecology_stations as _gest; NSK_ECOLOGY_STATIONS = _gest()
     from datetime import timezone
 
     # Мок: возвращает фиктивные записи, не делает реальных HTTP-запросов
