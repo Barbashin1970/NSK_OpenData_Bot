@@ -246,48 +246,41 @@ const ROLES = {
 let currentRole = localStorage.getItem('nsk_role') || 'citizen';
 let officialDistrict = localStorage.getItem('nsk_official_district') || '';  // '' = весь город
 
-const NSK_DISTRICTS = [
-  { val: '',                      label: 'Весь город',          desc: 'Сводные данные по всем районам' },
-  { val: 'Дзержинский район',     label: 'Дзержинский',         desc: '' },
-  { val: 'Железнодорожный район', label: 'Железнодорожный',     desc: '' },
-  { val: 'Заельцовский район',    label: 'Заельцовский',        desc: '' },
-  { val: 'Калининский район',     label: 'Калининский',         desc: '' },
-  { val: 'Кировский район',       label: 'Кировский',           desc: '' },
-  { val: 'Ленинский район',       label: 'Ленинский',           desc: '' },
-  { val: 'Октябрьский район',     label: 'Октябрьский',         desc: '' },
-  { val: 'Первомайский район',    label: 'Первомайский',        desc: '' },
-  { val: 'Советский район',       label: 'Советский',           desc: '' },
-  { val: 'Центральный район',     label: 'Центральный',         desc: '' },
-  { val: 'Академгородок',         label: 'Академгородок',       desc: 'Советский р-н' },
-  { val: 'Кольцово',              label: 'Кольцово',            desc: 'наукоград' },
+// Список районов — загружается из /api/city-config при старте.
+// NSK_DISTRICTS — константа переменная: `let`, чтобы её можно было перезаписать.
+let NSK_DISTRICTS = [
+  { val: '', label: 'Весь город', desc: 'Сводные данные по всем районам' },
 ];
+// Флаг: доступны ли стандартные CSV-темы (парковки, школы…) для текущего города
+let _cityHasOpendataCsv = false;
 
 // ─── Role-specific chips ───────────────────────────────────────────────────────
-// geo: true — запрос возвращает список объектов с адресами → появится кнопка «На карте»
-const ROLE_CHIPS = {
+// geo: true    — запрос возвращает список объектов с адресами → появится кнопка «На карте»
+// requires:    — "metro"|"airport"|"opendata" — чип скрывается если функция недоступна в городе
+// Плейсхолдеры {D1}/{D2}/{D3} и т.д. заменяются динамически в _resolveChips() после loadCityConfig()
+const ROLE_CHIPS_TPL = {
   citizen: [
-    {q: "что ты умеешь", bold: true},           // первый — онбординг нового пользователя
+    {q: "что ты умеешь", bold: true},
     {q: "нет горячей воды"},
     {q: "отключения электричества сейчас"},
-    {q: "метро Новосибирск", geo: true},
-    {q: "аэропорт Толмачёво", geo: true},
-    {q: "топ-5 аптек", geo: true},
-    {q: "аптеки в Центральном районе", geo: true},
-    {q: "библиотеки для детей", geo: true},
-    {q: "нет горячей воды в Ленинском районе"},
+    {q: "метро {METRO}", geo: true, requires: "metro"},
+    {q: "аэропорт {AIRPORT}", geo: true, requires: "airport"},
+    {q: "топ-5 аптек", geo: true, requires: "opendata"},
+    {q: "аптеки в {D1}", geo: true, requires: "opendata"},
+    {q: "библиотеки для детей", geo: true, requires: "opendata"},
+    {q: "нет горячей воды в {D2}"},
     {q: "отключение отопления сегодня"},
     {q: "качество воздуха в городе"},
-    {q: "погода в Академгородке"},
-    {q: "погода в Кольцово"},
-    {q: "как проехать из Академгородка в Дзержинский район"},
+    {q: "погода в {SUBURB}"},
+    {q: "как проехать из {D3_SHORT} в {D1_SHORT}"},
     {q: "пробки сейчас"},
     {q: "риски для жизни в городе"},
-    {q: "детские спортивные организации", geo: true},
-    {q: "школы в Советском районе", geo: true},
+    {q: "детские спортивные организации", geo: true, requires: "opendata"},
+    {q: "школы в {D2}", geo: true, requires: "opendata"},
     {q: "камеры видеофиксации", geo: true},
-    {q: "больницы Новосибирска", geo: true},
-    {q: "поликлиники в Дзержинском районе", geo: true},
-    {q: "активные стройки", geo: true},
+    {q: "больницы {CITY_GEN}", geo: true},
+    {q: "поликлиники в {D1}", geo: true},
+    {q: "активные стройки", geo: true, requires: "opendata"},
   ],
   official: [
     {q: "аварийные отключения ЖКХ сейчас"},
@@ -298,16 +291,16 @@ const ROLE_CHIPS = {
     {q: "превышение ПДК по PM2.5"},
     {q: "качество воздуха по всем районам"},
     {q: "динамика PM2.5 за неделю"},
-    {q: "сколько парковок по районам"},
-    {q: "школы по районам"},
-    {q: "аптеки в Ленинском районе", geo: true},
-    {q: "библиотеки города", geo: true},
-    {q: "культурные организации", geo: true},
+    {q: "сколько парковок по районам", requires: "opendata"},
+    {q: "школы по районам", requires: "opendata"},
+    {q: "аптеки в {D1}", geo: true, requires: "opendata"},
+    {q: "библиотеки города", geo: true, requires: "opendata"},
+    {q: "культурные организации", geo: true, requires: "opendata"},
     {q: "камеры фиксации нарушений", geo: true},
     {q: "больницы по районам"},
     {q: "поликлиники города", geo: true},
-    {q: "активные стройки", geo: true},
-    {q: "стройки по районам"},
+    {q: "активные стройки", geo: true, requires: "opendata"},
+    {q: "стройки по районам", requires: "opendata"},
   ],
   mayor: [
     {q: "отключения ЖКХ сейчас"},
@@ -315,18 +308,59 @@ const ROLE_CHIPS = {
     {q: "качество воздуха в городе"},
     {q: "динамика качества воздуха"},
     {q: "история отключений за неделю"},
-    {q: "школы по районам"},
-    {q: "сколько парковок по районам"},
-    {q: "топ-5 аптек", geo: true},
-    {q: "культурные организации", geo: true},
-    {q: "аптеки в Центральном районе", geo: true},
+    {q: "школы по районам", requires: "opendata"},
+    {q: "сколько парковок по районам", requires: "opendata"},
+    {q: "топ-5 аптек", geo: true, requires: "opendata"},
+    {q: "культурные организации", geo: true, requires: "opendata"},
+    {q: "аптеки в {D1}", geo: true, requires: "opendata"},
     {q: "камеры видеофиксации на дорогах", geo: true},
     {q: "больницы по районам"},
     {q: "больницы с приёмным покоем", geo: true},
-    {q: "активные стройки", geo: true},
-    {q: "стройки по районам"},
+    {q: "активные стройки", geo: true, requires: "opendata"},
+    {q: "стройки по районам", requires: "opendata"},
   ],
 };
+
+// ── District name helpers ──────────────────────────────────────────────────────
+
+/** "Советский район" → "Советском районе" (предложный падеж для chips) */
+function _distPrep(name) {
+  return name
+    .replace(/ский\s+(район|округ)/gi, (_, t) => `ском ${t}е`)
+    .replace(/ный\s+(район|округ)/gi,  (_, t) => `ном ${t}е`);
+}
+
+/** "Академгородок" → "Академгородке" (предложный для подрайонов) */
+function _subDistPrep(name) {
+  if (/ок$/i.test(name))  return name.slice(0, -2) + 'ке';
+  if (/[бвгджзклмнпрстфхцчшщ]$/i.test(name)) return name + 'е';
+  return name; // неизменяемые: "Кольцово" → "Кольцово"
+}
+
+/** Подставляет плейсхолдеры {D1}…{SUBURB} и фильтрует по features */
+function _resolveChips(vars, features) {
+  function r(tpl) {
+    return tpl.replace(/\{([A-Z1-9_]+)\}/g, (_, k) => (k in vars ? vars[k] : ''));
+  }
+  const result = {};
+  for (const [role, chips] of Object.entries(ROLE_CHIPS_TPL)) {
+    result[role] = chips
+      .filter(c => !c.requires || features[c.requires])
+      .map(c => ({...c, q: r(c.q)}));
+  }
+  return result;
+}
+
+// Начальное значение — NSK-дефолты (перезаписываются через ~10ms в loadCityConfig)
+let ROLE_CHIPS = _resolveChips(
+  { D1: 'Центральном районе', D1_SHORT: 'Центральный',
+    D2: 'Ленинском районе',   D2_SHORT: 'Ленинский',
+    D3: 'Советском районе',   D3_SHORT: 'Советский',
+    CITY: 'Новосибирск', CITY_GEN: 'Новосибирска',
+    AIRPORT: 'Толмачёво', METRO: 'Новосибирск',
+    SUBURB: 'Академгородке' },
+  { metro: true, airport: true, opendata: true }
+);
 
 // Состояние сворачивания подсказок — сохраняется в localStorage
 // По умолчанию открыто; опытный пользователь может свернуть и это запомнится
@@ -4361,7 +4395,55 @@ function toggleGamePanel() {
 
 // ─── [/PUZZLE GAME] ───────────────────────────────────────────────────────────
 
+// ─── City config — динамические районы ───────────────────────────────────────
+async function loadCityConfig() {
+  try {
+    const r = await fetch('/api/city-config');
+    if (!r.ok) return;
+    const cfg = await r.json();
+
+    // Обновляем список районов из профиля города
+    if (cfg.districts && cfg.districts.length > 1) {
+      NSK_DISTRICTS = cfg.districts;
+    }
+    _cityHasOpendataCsv = !!cfg.has_opendata_csv;
+
+    // ── Обновляем чипы под текущий город ────────────────────────────────────
+    // realDists — основные районы (desc пустой), subDists — подрайоны (desc = родитель)
+    const realDists = (cfg.districts || []).filter(d => d.val && !d.desc);
+    const subDists  = (cfg.districts || []).filter(d => d.val &&  d.desc);
+    if (realDists.length) {
+      // Перемешиваем случайно — каждая загрузка показывает разные районы в чипах
+      const sh = [...realDists].sort(() => Math.random() - 0.5);
+      const d0 = sh[0], d1 = sh[1] || sh[0], d2 = sh[2] || sh[0];
+      const sub = subDists[0] || null;
+      ROLE_CHIPS = _resolveChips({
+        D1: _distPrep(d0.val), D1_SHORT: d0.label,
+        D2: _distPrep(d1.val), D2_SHORT: d1.label,
+        D3: _distPrep(d2.val), D3_SHORT: d2.label,
+        CITY:     cfg.city_name            || '',
+        CITY_GEN: cfg.city_name_genitive   || cfg.city_name || '',
+        AIRPORT:  cfg.airport_name         || cfg.city_name || '',
+        METRO:    cfg.metro_name           || cfg.city_name || '',
+        SUBURB:   sub ? _subDistPrep(sub.val) : _distPrep(d2.val),
+      }, {
+        metro:   !!cfg.has_metro,
+        airport: !!cfg.has_airport,
+        opendata: !!cfg.has_opendata_csv,
+      });
+      buildChips(); // перерисовываем с городскими подсказками
+    }
+
+    // Если официальная панель уже видна — перерисовываем с актуальными районами
+    const dash = document.getElementById('roleDashboard');
+    if (dash && !dash.classList.contains('hidden')) {
+      loadRoleDashboard();
+    }
+  } catch(e) { /* fallback: NSK_DISTRICTS и NSK-дефолтные чипы */ }
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
+loadCityConfig();  // Async: районы обновятся до первого взаимодействия пользователя
 updateRoleBtn();
 buildChips();
 loadTopics();

@@ -123,6 +123,10 @@ city_stopwords:
 # has_metro: false → тема metro недоступна (в Омске нет метро)
 
 features:
+  # Стандартные CSV-датасеты с opendata.novo-sibirsk.ru (parking, schools, stops…)
+  # Для других городов — false (нет совместимого opendata-портала)
+  opendata_csv_enabled: true
+
   has_metro: true
   metro_name: "Новосибирский метрополитен"
 

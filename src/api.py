@@ -21,7 +21,7 @@ except ImportError:
 
 from .city_config import (
     get_city_name, get_city_id, get_city_slug, get_districts,
-    get_feature, get_opendata_base_url,
+    get_feature, get_opendata_base_url, get_sub_districts_info,
 )
 from .registry import load_registry
 from .router import route, best_topic
@@ -1856,6 +1856,18 @@ def get_ask(
         }
 
     # ── Стандартные темы opendata ─────────────────────────────────────────────
+    # Данные CSV-тем (парковки, школы, остановки…) доступны только для городов,
+    # у которых включён совместимый opendata-портал (opendata_csv_enabled: true).
+    if not get_feature("opendata_csv_enabled", False):
+        return {
+            "query": q,
+            "topic": topic,
+            "error": (
+                f"Данные по теме «{topic}» недоступны для {get_city_name(case='genitive')}: "
+                "портал открытых данных этого города не подключён."
+            ),
+        }
+
     if not table_exists(topic):
         # Данных нет — тихо подгружаем нужную тему прямо сейчас.
         # Первый запрос займёт 3–8 сек; после этого данные кэшируются на 24 ч.
@@ -3080,16 +3092,39 @@ def _check_dev_pwd(pwd: str) -> bool:
     return _hash_pwd(pwd) == _get_dev_hash()
 
 
+def _district_short_label(name: str) -> str:
+    """'Кировский округ' → 'Кировский', 'Советский район' → 'Советский'."""
+    return re.sub(r"\s+(район|округ|р-н)$", "", name, flags=re.IGNORECASE)
+
+
 @app.get("/api/city-config", include_in_schema=False)
 def city_config_endpoint():
     """Возвращает публичные параметры активного города для фронтенда и Studio.
 
     Используется index.html (подстановка URL в footer/карточках) и studio.html.
+    Поле districts — список {val, label, desc} для динамического построения
+    фильтра по районам (заменяет захардкоженный NSK_DISTRICTS в index.html).
     """
     from .city_config import get_city_profile, get_ecology_stations as _eco_st
     profile = get_city_profile()
     features = profile.get("features", {})
     datasets = profile.get("static_datasets", {})
+
+    # Список районов для фронтенда
+    districts_raw = get_districts()
+    sub_districts = get_sub_districts_info()
+    districts_list = [{"val": "", "label": "Весь город", "desc": "Сводные данные по всем районам"}]
+    districts_list += [
+        {"val": name, "label": _district_short_label(name), "desc": ""}
+        for name in districts_raw.keys()
+    ]
+    for sd_name, (parent, _examples) in sub_districts.items():
+        districts_list.append({
+            "val": sd_name,
+            "label": sd_name,
+            "desc": _district_short_label(parent) + " р-н",
+        })
+
     return {
         "city_id":    get_city_id(),
         "city_name":  get_city_name(),
@@ -3097,6 +3132,7 @@ def city_config_endpoint():
         "city_name_prepositional": get_city_name("prepositional"),
         "city_slug":  get_city_slug(),
         "opendata_url": get_opendata_base_url(),
+        "has_opendata_csv": bool(features.get("opendata_csv_enabled", False)),
         "power_outages_url":  features.get("power_outages_url", ""),
         "power_outages_base": features.get("power_outages_base", ""),
         "has_metro":   bool(features.get("has_metro")),
@@ -3105,6 +3141,7 @@ def city_config_endpoint():
         "airport_name": features.get("airport_name", ""),
         "airport_iata": features.get("airport_iata", ""),
         "ecology_stations_count": len(_eco_st()),
+        "districts": districts_list,
         "static_datasets": {
             k: {"enabled": bool(v.get("enabled")), "note": v.get("note", "")}
             for k, v in datasets.items()
