@@ -80,8 +80,8 @@ features:
     - "kja"
     - "аэровокзал"
 
-  power_outages_url: ""
-  power_outages_base: ""
+  power_outages_url: "http://www.admkrsk.ru/citytoday/municipal/Pages/default.aspx"
+  power_outages_base: "http://www.admkrsk.ru"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:

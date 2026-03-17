@@ -70,8 +70,8 @@ features:
     - "tjm"
     - "аэровокзал"
 
-  power_outages_url: ""
-  power_outages_base: ""
+  power_outages_url: "https://dom.tyumen-city.ru/category/?guid=3cb02621-d202-4d0b-813b-0e571f980f15"
+  power_outages_base: "https://dom.tyumen-city.ru"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:

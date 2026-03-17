@@ -72,8 +72,8 @@ features:
     - "ikt"
     - "аэровокзал"
 
-  power_outages_url: ""
-  power_outages_base: ""
+  power_outages_url: "https://www.irkutskenergo.ru/news/disconnection/"
+  power_outages_base: "https://www.irkutskenergo.ru"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:

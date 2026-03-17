@@ -93,9 +93,8 @@ features:
     - "oms"
     - "аэровокзал"
 
-  # Отключения ЖКХ — если у Омска есть аналогичный сайт, указать здесь
-  power_outages_url: ""
-  power_outages_base: ""
+  power_outages_url: "https://omskrts.ru/users/people/disconnections/"
+  power_outages_base: "https://omskrts.ru"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 # По одной точке на каждый округ — координаты центра округа.
