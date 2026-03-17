@@ -11,7 +11,8 @@ DATA_DIR     = PROJECT_ROOT / "data"
 RAW_DIR      = DATA_DIR / "raw"
 LOGS_DIR     = DATA_DIR / "logs"
 META_FILE    = DATA_DIR / "meta.json"
-DB_FILE      = DATA_DIR / "cache.db"
+# DB_FILE удалён: каждый город хранит данные в data/cities/{city_id}/cache.db
+# Используйте city_config.get_db_path() вместо прямого пути.
 CONFIG_FILE  = PROJECT_ROOT / "config" / "datasets.yaml"
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────

@@ -247,9 +247,33 @@ def get_opendata_base_url() -> str:
     return get_city_profile().get("opendata_base_url", "")
 
 
+# ── База данных ────────────────────────────────────────────────────────────────
+
+# _PROJECT_ROOT нужен get_db_path() раньше, чем объявлен ниже — объявим здесь
+_PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def get_db_path() -> Path:
+    """Путь к DuckDB-файлу для текущего активного города.
+
+    Каждый город хранит данные изолированно:
+        data/cities/novosibirsk/cache.db
+        data/cities/omsk/cache.db
+        ...
+
+    Директория создаётся автоматически при первом обращении.
+    НЕ кэшируется — переключение города через set-active-city работает
+    мгновенно без перезапуска сервера.
+    """
+    city_id = get_city_id()
+    db_dir = _PROJECT_ROOT / "data" / "cities" / city_id
+    db_dir.mkdir(parents=True, exist_ok=True)
+    return db_dir / "cache.db"
+
+
 # ── Статические датасеты ───────────────────────────────────────────────────────
 
-_PROJECT_ROOT = Path(__file__).parent.parent
+# _PROJECT_ROOT уже объявлен выше (нужен get_db_path)
 
 # Заглушка — возвращается когда датасет не настроен для города
 _DATASET_STUB: dict = {

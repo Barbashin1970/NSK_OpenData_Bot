@@ -9,16 +9,21 @@ from typing import Any
 
 import duckdb
 
-from .constants import DATA_DIR, DB_FILE
+from .constants import DATA_DIR
 from .fetcher import load_meta, save_meta
 
 log = logging.getLogger(__name__)
 
 
 def _get_conn() -> duckdb.DuckDBPyConnection:
-    """Открывает соединение с DuckDB. Создаёт директорию если нет."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return duckdb.connect(str(DB_FILE))
+    """Открывает соединение с DuckDB текущего активного города.
+
+    Путь: data/cities/{city_id}/cache.db — каждый город изолирован.
+    Определяется при каждом вызове (не кэшируется), поэтому переключение
+    города через /studio работает без перезапуска сервера.
+    """
+    from .city_config import get_db_path
+    return duckdb.connect(str(get_db_path()))
 
 
 def table_name(topic: str) -> str:

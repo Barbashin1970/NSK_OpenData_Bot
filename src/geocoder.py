@@ -21,7 +21,6 @@ from .city_config import get_city_name
 
 log = logging.getLogger(__name__)
 
-_DB_PATH = Path(__file__).parent.parent / "data" / "cache.db"
 _GEOCODE_URL = "https://catalog.api.2gis.com/3.0/items/geocode"
 _DEFAULT_CITY = get_city_name()  # из city_profile.yaml
 _REQUEST_TIMEOUT = 8
@@ -32,7 +31,8 @@ def _get_key() -> str | None:
 
 
 def _conn():
-    return duckdb.connect(str(_DB_PATH))
+    from .city_config import get_db_path
+    return duckdb.connect(str(get_db_path()))
 
 
 def _ensure_table() -> None:
@@ -146,7 +146,8 @@ def geocode_stats() -> dict:
         conn = _conn()
         try:
             count = conn.execute("SELECT COUNT(*) FROM geocode_cache").fetchone()[0]
-            return {"cached_addresses": count, "db_path": str(_DB_PATH)}
+            from .city_config import get_db_path
+            return {"cached_addresses": count, "db_path": str(get_db_path())}
         finally:
             conn.close()
     except Exception:

@@ -15,7 +15,6 @@ from .city_config import get_bbox_dict, get_ecology_stations
 
 log = logging.getLogger(__name__)
 
-_DB_PATH = Path(__file__).parent.parent / "data" / "cache.db"
 _TABLE = "medical_facilities"
 _TTL_HOURS = 72
 
@@ -38,7 +37,8 @@ def _classify_district(lat: float | None, lon: float | None) -> str:
 
 
 def _conn():
-    return duckdb.connect(str(_DB_PATH))
+    from .city_config import get_db_path
+    return duckdb.connect(str(get_db_path()))
 
 
 def _ensure_table() -> None:
