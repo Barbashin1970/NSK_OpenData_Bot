@@ -2681,6 +2681,31 @@ const TOPIC_ICONS = {
 };
 
 function renderInfo(_data) {
+  // ── Хелперы для динамических подстановок в примерах запросов ──────────────
+  const _infoDists = (_cityCfg?.districts || []).filter(d => d.val && !d.desc);
+  const _rndDist = (fbPrep, fbLabel) => {
+    if (!_infoDists.length) return { prep: fbPrep, label: fbLabel };
+    const d = _infoDists[Math.floor(Math.random() * _infoDists.length)];
+    return { prep: _distPrep(d.val), label: d.label };
+  };
+  // Два разных случайных района (для "как проехать")
+  const _rndPair = () => {
+    if (_infoDists.length < 2) return ['Советский', 'Центральный'];
+    const idx1 = Math.floor(Math.random() * _infoDists.length);
+    let idx2;
+    do { idx2 = Math.floor(Math.random() * _infoDists.length); } while (idx2 === idx1);
+    return [_infoDists[idx1].label, _infoDists[idx2].label];
+  };
+  const _hasMeta   = (key) => !_cityCfg || !!_cityCfg.static_datasets?.[key]?.enabled;
+  const _d1 = _rndDist('Центральном районе', 'Центральный');
+  const _d2 = _rndDist('Советском районе',   'Советский');
+  const _d3 = _rndDist('Дзержинском районе', 'Дзержинский');
+  const [_tr1, _tr2] = _rndPair();
+  const _metroQ   = _cityCfg?.metro_name   ? `метро ${_cityCfg.metro_name}`   : 'метро';
+  const _airportQ = _cityCfg?.airport_name ? `аэропорт ${_cityCfg.airport_name}` : 'аэропорт';
+  const _metroName   = _cityCfg?.metro_name   || 'Метро';
+  const _airportName = _cityCfg?.airport_name || 'Аэропорт';
+
   // Разделы по концепции IQ города
   const sections = [
     {
@@ -2707,7 +2732,7 @@ function renderInfo(_data) {
         { icon: '🌡️', name: 'Прогноз погоды',            q: 'прогноз погоды на неделю' },
         { icon: '⚠️', name: 'Риски для жизни',           q: 'риски для жизни в городе' },
         { icon: '📉', name: 'Динамика загрязнения',       q: 'динамика качества воздуха' },
-        { icon: '🏭', name: 'Выбросы по предприятиям',   q: 'выбросы в атмосферу НСО' },
+        _hasMeta('emissions') ? { icon: '🏭', name: 'Выбросы по предприятиям', q: 'выбросы в атмосферу' } : null,
       ],
     },
     {
@@ -2716,11 +2741,11 @@ function renderInfo(_data) {
       color: 'blue',
       items: [
         { icon: '🚗', name: 'Пробки сейчас',             q: 'пробки сейчас' },
-        { icon: '🚇', name: 'Метро Новосибирска',        q: 'метро Новосибирск' },
-        { icon: '✈️', name: 'Аэропорт Толмачёво',       q: 'аэропорт Толмачёво' },
-        { icon: '🚌', name: 'Остановки транспорта',      q: 'остановки в Центральном районе' },
-        { icon: '🗺️', name: 'Маршруты между районами',  q: 'как проехать из Академгородка в Центральный' },
-        { icon: '🅿️', name: 'Парковки',                 q: 'парковки в Центральном районе' },
+        (!_cityCfg || _cityCfg.has_metro)   ? { icon: '🚇', name: `Метро ${_metroName}`,   q: _metroQ }   : null,
+        (!_cityCfg || _cityCfg.has_airport) ? { icon: '✈️', name: `Аэропорт ${_airportName}`, q: _airportQ } : null,
+        { icon: '🚌', name: 'Остановки транспорта',      q: `остановки в ${_d1.prep}` },
+        { icon: '🗺️', name: 'Маршруты между районами',  q: `как проехать из ${_tr1} в ${_tr2}` },
+        { icon: '🅿️', name: 'Парковки',                 q: `парковки в ${_d2.prep}` },
       ],
     },
     {
@@ -2728,7 +2753,7 @@ function renderInfo(_data) {
       label: 'Строительство',
       color: 'orange',
       items: [
-        { icon: '🏗️', name: 'Активные стройки',         q: 'активные стройки Новосибирска' },
+        { icon: '🏗️', name: 'Активные стройки',         q: 'активные стройки' },
         { icon: '📄', name: 'Разрешения на строительство', q: 'разрешения на строительство' },
         { icon: '🔑', name: 'Введено в эксплуатацию',   q: 'ввод в эксплуатацию по районам' },
         { icon: '📊', name: 'Стройки по районам',        q: 'стройки по районам' },
@@ -2739,14 +2764,14 @@ function renderInfo(_data) {
       label: 'Инфраструктура города',
       color: 'purple',
       items: [
-        { icon: '🏥', name: 'Больницы и поликлиники',   q: 'больницы Новосибирска' },
-        { icon: '💊', name: 'Аптеки',                   q: 'аптеки в центре' },
+        { icon: '🏥', name: 'Больницы и поликлиники',   q: 'больницы города' },
+        { icon: '💊', name: 'Аптеки',                   q: `аптеки в ${_d1.prep}` },
         { icon: '🏫', name: 'Школы',                    q: 'школы по районам' },
-        { icon: '🧒', name: 'Детские сады',             q: 'детские сады в Советском районе' },
+        { icon: '🧒', name: 'Детские сады',             q: `детские сады в ${_d2.prep}` },
         { icon: '📚', name: 'Библиотеки',               q: 'библиотеки города' },
         { icon: '🎭', name: 'Культура',                 q: 'культурные организации' },
         { icon: '🏋️', name: 'Спортивные организации',  q: 'спортивные организации' },
-        { icon: '⚽', name: 'Спортплощадки',            q: 'спортплощадки в Дзержинском районе' },
+        { icon: '⚽', name: 'Спортплощадки',            q: `спортплощадки в ${_d3.prep}` },
       ],
     },
     {
@@ -2755,7 +2780,7 @@ function renderInfo(_data) {
       color: 'red',
       items: [
         { icon: '📷', name: 'Камеры фиксации ПДД',      q: 'камеры видеофиксации' },
-        { icon: '🌡️', name: 'Тепловые источники ТЭЦ',  q: 'тепловые источники Новосибирска' },
+        _hasMeta('heat_sources') ? { icon: '🌡️', name: 'Тепловые источники ТЭЦ', q: 'тепловые источники' } : null,
       ],
     },
   ];
@@ -2776,7 +2801,7 @@ function renderInfo(_data) {
 
   const sectionsHtml = sections.map(sec => {
     const c = colorMap[sec.color] || colorMap.blue;
-    const items = sec.items.map(it => `
+    const items = sec.items.filter(Boolean).map(it => `
       <button onclick="setQuery('${esc(it.q)}')"
               class="flex items-center gap-2 w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-700 ${c.hover} transition-colors group">
         <span class="text-sm flex-shrink-0 w-5 text-center">${it.icon}</span>
@@ -2799,7 +2824,7 @@ function renderInfo(_data) {
           <img src="/static/img/sigma-cat.png" class="h-16 w-auto flex-shrink-0 object-contain drop-shadow-md" alt="Сима">
           <div class="min-w-0">
             <p class="font-semibold text-base leading-snug">Привет! Я — Сима</p>
-            <p class="text-blue-100 text-xs mt-0.5 leading-relaxed">Ваш голосовой навигатор по открытым данным Новосибирска. Спросите меня о городе — голосом или текстом.</p>
+            <p class="text-blue-100 text-xs mt-0.5 leading-relaxed">Ваш голосовой навигатор по открытым данным${_cityCfg?.city_name_genitive ? ' ' + esc(_cityCfg.city_name_genitive) : ' города'}. Спросите меня о городе — голосом или текстом.</p>
           </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">${voiceHint}</div>
