@@ -253,6 +253,8 @@ let NSK_DISTRICTS = [
 ];
 // Флаг: доступны ли стандартные CSV-темы (парковки, школы…) для текущего города
 let _cityHasOpendataCsv = false;
+// Полный конфиг города — заполняется loadCityConfig(); до загрузки = null (NSK-дефолты)
+let _cityCfg = null;
 
 // ─── Role-specific chips ───────────────────────────────────────────────────────
 // geo: true    — запрос возвращает список объектов с адресами → появится кнопка «На карте»
@@ -1964,12 +1966,16 @@ function renderPower(data) {
         <span class="text-2xl block mb-1">✅</span>Отключений не зафиксировано</td></tr>`;
     } else {
       tableBody = meaningful.map(r => {
-        const distLabel = (!r.district || r.district === 'all') ? 'Весь город' : r.district;
+        const isAll = !r.district || r.district === 'all';
+        const distLabel = isAll ? 'Весь город' : r.district;
+        const periodHtml = isAll && r.date_from
+          ? `<div class="text-xs text-slate-400 mt-0.5">${esc(r.date_from)}${r.date_to ? ' – ' + esc(r.date_to) : ''}</div>`
+          : '';
         const ts = String(r.scraped_at || '').substring(0,16).replace('T',' ');
         return `
           <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
             <td class="px-4 py-3">${groupBadge(r.group_type)}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">${esc(distLabel)}</td>
+            <td class="px-4 py-3 text-sm text-slate-700">${esc(distLabel)}${periodHtml}</td>
             <td class="px-4 py-3 text-sm font-semibold text-slate-700">${r.houses}</td>
             <td class="px-4 py-3 text-xs text-slate-400">${ts}</td>
           </tr>
@@ -2891,6 +2897,9 @@ function renderTopics(topics) {
     </div>
   `;
 
+  const _powerDomain = (() => {
+    try { return new URL(_cityCfg?.power_outages_url || '').hostname; } catch { return ''; }
+  })();
   const powerCard = `
     <div class="topic-card bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 cursor-pointer hover:border-amber-400 hover:shadow-md"
          onclick="setQuery('отключения электричества сейчас')">
@@ -2899,7 +2908,7 @@ function renderTopics(topics) {
         <span class="bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full text-xs">realtime</span>
       </div>
       <div class="font-semibold text-sm text-slate-800 leading-tight">Отключения ЖКХ</div>
-      <div class="text-xs text-slate-500 mt-1">051.novo-sibirsk.ru</div>
+      <div class="text-xs text-slate-500 mt-1">${_powerDomain ? esc(_powerDomain) : 'Данные онлайн · каждые 30 мин'}</div>
     </div>
   `;
 
@@ -2911,7 +2920,7 @@ function renderTopics(topics) {
         <span class="bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-full text-xs">7 дней</span>
       </div>
       <div class="font-semibold text-sm text-slate-800 leading-tight">Видеофиксация нарушений ПДД</div>
-      <div class="text-xs text-slate-500 mt-1">OpenStreetMap · ~60 камер</div>
+      <div class="text-xs text-slate-500 mt-1">OpenStreetMap</div>
     </div>
   `;
 
@@ -2939,33 +2948,39 @@ function renderTopics(topics) {
     </div>
   `;
 
-  const heatSourcesCard = `
+  const _dsAvail = (name) => {
+    if (!_cityCfg) return true; // cfg не загружен — показываем (NSK дефолт)
+    return !!_cityCfg.static_datasets?.[name]?.enabled;
+  };
+
+  const heatSourcesCard = _dsAvail('heat_sources') ? `
     <div class="topic-card bg-gradient-to-br from-orange-50 to-red-50 border border-orange-200 rounded-2xl p-4 cursor-pointer hover:border-orange-400 hover:shadow-md"
-         onclick="setQuery('тепловые источники новосибирска')">
+         onclick="setQuery('тепловые источники')">
       <div class="flex justify-between items-start mb-2">
         <span class="text-2xl">🏭</span>
         <span class="bg-orange-100 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded-full text-xs">статично</span>
       </div>
       <div class="font-semibold text-sm text-slate-800 leading-tight">Тепловые источники</div>
-      <div class="text-xs text-slate-500 mt-1">СГК + УЭВ СО РАН · 7 объектов</div>
+      <div class="text-xs text-slate-500 mt-1">Статический датасет ТЭЦ</div>
     </div>
-  `;
+  ` : '';
 
-  const emissionsCard = `
+  const emissionsCard = _dsAvail('emissions') ? `
     <div class="topic-card bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 rounded-2xl p-4 cursor-pointer hover:border-violet-400 hover:shadow-md"
-         onclick="setQuery('выбросы в атмосферу нсо')">
+         onclick="setQuery('выбросы в атмосферу')">
       <div class="flex justify-between items-start mb-2">
         <span class="text-2xl">⚗️</span>
         <span class="bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full text-xs">2024</span>
       </div>
       <div class="font-semibold text-sm text-slate-800 leading-tight">Выбросы в атмосферу</div>
-      <div class="text-xs text-slate-500 mt-1">2-ТП Воздух · 34 МО НСО</div>
+      <div class="text-xs text-slate-500 mt-1">2-ТП Воздух</div>
     </div>
-  `;
+  ` : '';
 
+  const _cityGen = esc(_cityCfg?.city_name_genitive || '');
   const medicalCard = `
     <div class="topic-card bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4 cursor-pointer hover:border-red-400 hover:shadow-md"
-         onclick="setQuery('больницы Новосибирска')">
+         onclick="setQuery('больницы ${_cityGen || 'города'}')">
       <div class="flex justify-between items-start mb-2">
         <span class="text-2xl">🏥</span>
         <span class="bg-red-100 text-red-700 border border-red-200 px-1.5 py-0.5 rounded-full text-xs">72 ч</span>
@@ -4406,6 +4421,7 @@ async function loadCityConfig() {
     if (cfg.districts && cfg.districts.length > 1) {
       NSK_DISTRICTS = cfg.districts;
     }
+    _cityCfg = cfg;
     _cityHasOpendataCsv = !!cfg.has_opendata_csv;
 
     // ── Обновляем чипы под текущий город ────────────────────────────────────
@@ -4433,6 +4449,9 @@ async function loadCityConfig() {
       });
       buildChips(); // перерисовываем с городскими подсказками
     }
+
+    // Перезапускаем топик-грид — теперь _cityCfg заполнен, карточки отфильтруются
+    loadTopics();
 
     // Если официальная панель уже видна — перерисовываем с актуальными районами
     const dash = document.getElementById('roleDashboard');

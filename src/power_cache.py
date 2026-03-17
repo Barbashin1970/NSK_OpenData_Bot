@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS power_outages (
     district_href VARCHAR,
     houses        INTEGER,
     scraped_at    VARCHAR,
-    source_url    VARCHAR
+    source_url    VARCHAR,
+    date_from     VARCHAR,
+    date_to       VARCHAR
 )
 """
 
@@ -55,6 +57,12 @@ def init_power_table() -> None:
     try:
         conn.execute(_TABLE_DDL)
         conn.execute(_DETAIL_DDL)
+        # Миграция: добавляем date_from/date_to если их ещё нет (старая схема)
+        for col in ("date_from", "date_to"):
+            try:
+                conn.execute(f"ALTER TABLE power_outages ADD COLUMN {col} VARCHAR")
+            except Exception:
+                pass  # колонка уже существует
     finally:
         conn.close()
 
@@ -86,10 +94,12 @@ def upsert_outages(records: list[dict[str, Any]]) -> int:
                 int(r.get("houses", 0)),
                 r["scraped_at"],
                 r.get("source_url", ""),
+                r.get("date_from"),
+                r.get("date_to"),
             )
             for r in records
         ]
-        conn.executemany("INSERT INTO power_outages VALUES (?,?,?,?,?,?,?,?,?)", rows)
+        conn.executemany("INSERT INTO power_outages VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
         log.info(f"Добавлено {len(rows)} записей в power_outages")
         return len(rows)
     finally:
@@ -201,7 +211,8 @@ def query_power(
 
         where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         sql = f"""
-            SELECT utility, utility_id, group_type, district, houses, scraped_at, source_url
+            SELECT utility, utility_id, group_type, district, houses, scraped_at, source_url,
+                   date_from, date_to
             FROM power_outages
             {where_sql}
             ORDER BY scraped_at DESC, utility, district
