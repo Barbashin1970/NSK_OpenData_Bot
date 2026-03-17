@@ -22,7 +22,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-from .city_config import get_feature as _get_city_feature
+from .city_config import get_feature as _get_city_feature, get_city_id as _get_city_id
 from .constants import SCRAPER_HEADERS, SCRAPER_TIMEOUT
 
 log = logging.getLogger(__name__)
@@ -222,6 +222,12 @@ def fetch_outages_detail(
 def fetch_all_outages() -> list[dict[str, Any]]:
     """Основная функция получения данных об отключениях.
 
-    Возвращает сводку по районам из scrape_summary().
+    Диспетчеризует по city_id: каждый город может иметь свой скрапер.
+    По умолчанию используется новосибирский парсер (051.novo-sibirsk.ru).
     """
+    city = _get_city_id()
+    if city == "omsk":
+        from .power_scraper_omsk import fetch_all_outages as _omsk_fetch
+        return _omsk_fetch()
+    # Дефолт: Новосибирск и любой город с совместимым 051-сайтом
     return scrape_summary()

@@ -156,6 +156,5 @@ static_datasets:
     note: "Метро в Омске не функционирует. has_metro: false блокирует маршрут."
 
   airport:
-    enabled: false
-    file: null
-    note: "Подготовить data/cities/omsk/airport.json по аналогии с novosibirsk/airport.json"
+    enabled: true
+    file: "data/cities/omsk/airport.json"
