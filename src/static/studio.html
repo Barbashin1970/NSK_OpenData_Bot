@@ -291,10 +291,19 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 // ── Вкладка «Города» ──────────────────────────────────────────────────────
+let _activeCityId = null;
+
 async function loadProfiles() {
   const grid = document.getElementById('profiles-grid');
   grid.innerHTML = '<div class="text-slate-400 text-sm col-span-2 py-8 text-center">Загрузка…</div>';
   try {
+    // Узнаём текущий активный город
+    try {
+      const cfgResp = await fetch('/api/city-config');
+      const cfg = await cfgResp.json();
+      _activeCityId = cfg.city_id || null;
+    } catch(e) { _activeCityId = null; }
+
     const resp = await fetch('/studio/api/profiles');
     const data = await resp.json();
     renderProfiles(data.profiles || []);
@@ -326,7 +335,9 @@ function renderProfiles(profiles) {
       </div>`;
 
     const feat = p.features || {};
+    const isActive = (p.city_id === _activeCityId);
     const featureBadges = [
+      isActive ? '<span class="badge badge-ok" style="background:#dcfce7;color:#166534">● Активный</span>' : '',
       feat.has_metro   ? '<span class="badge" style="background:#ede9fe;color:#5b21b6">М метро</span>' : '',
       feat.has_airport ? `<span class="badge" style="background:#dbeafe;color:#1e40af">✈ ${esc(feat.airport_iata||'')}</span>` : '',
     ].filter(Boolean).join(' ');
@@ -409,7 +420,15 @@ function renderProfiles(profiles) {
           <ul class="space-y-0.5">${capHtml}</ul>
         </div>
 
-        <div class="px-5 py-3 border-t border-slate-100 flex gap-3 items-center">
+        <div class="px-5 py-3 border-t border-slate-100 flex gap-3 items-center flex-wrap">
+          ${isActive
+            ? `<span class="text-xs bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-lg font-medium">● Активный город</span>`
+            : `<button onclick="setActiveCity('${esc(p.city_id)}', ${idx})"
+                 id="activate-btn-${idx}"
+                 class="text-xs bg-slate-700 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg font-medium">
+                 Сделать активным
+               </button>`
+          }
           <button onclick="_quickImport('${esc(p.city_id)}', '')"
             class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
             Импортировать данные
@@ -444,6 +463,30 @@ function toggleCard(idx) {
   const open = !body.classList.contains('hidden');
   body.classList.toggle('hidden', open);
   if (arrow) arrow.textContent = open ? '▶' : '▼';
+}
+
+async function setActiveCity(cityId, idx) {
+  const btn = document.getElementById('activate-btn-' + idx);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Переключаю…'; }
+  try {
+    const resp = await fetch('/studio/api/set-active-city', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({city_id: cityId}),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      _activeCityId = cityId;
+      // Перерисовываем карточки чтобы обновить бейджи
+      await loadProfiles();
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = 'Сделать активным'; }
+      alert('Ошибка: ' + (data.detail || JSON.stringify(data)));
+    }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Сделать активным'; }
+    alert('Ошибка сети: ' + e.message);
+  }
 }
 
 function _quickImport(cityId, dsType) {

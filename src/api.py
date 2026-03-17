@@ -3194,6 +3194,53 @@ def studio_profiles():
     return {"profiles": profiles}
 
 
+@app.post("/studio/api/set-active-city", include_in_schema=False)
+def studio_set_active_city(body: dict):
+    """Переключить активный город без перезапуска сервера.
+
+    Body: {"city_id": "omsk"}
+    Меняет os.environ["CITY_PROFILE"] и сбрасывает lru_cache.
+    """
+    import yaml as _yaml
+    from .city_config import get_city_profile as _gcp, get_district_strip_re as _gdsr
+
+    city_id = (body.get("city_id") or "").strip()
+    if not city_id or not _re.match(r'^[\w\-]+$', city_id):
+        raise HTTPException(status_code=400, detail="Недопустимый city_id")
+
+    # Ищем yaml-файл по city_id
+    matched_path = None
+    for p in sorted(_CONFIG_DIR.glob("city_profile*.yaml")):
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = _yaml.safe_load(f)
+            if d and d.get("city", {}).get("id") == city_id:
+                matched_path = p
+                break
+        except Exception:
+            continue
+
+    if not matched_path:
+        raise HTTPException(status_code=404, detail=f"Профиль для '{city_id}' не найден")
+
+    # Имя без расширения — именно так его читает city_config._profile_path()
+    profile_name = matched_path.stem   # e.g. "city_profile_omsk"
+    os.environ["CITY_PROFILE"] = profile_name
+
+    # Сбрасываем все lru_cache из city_config
+    _gcp.cache_clear()
+    try:
+        _gdsr.cache_clear()
+    except Exception:
+        pass
+
+    # Читаем новый профиль (заодно прогреваем кэш)
+    new_profile = _gcp()
+    city_name = new_profile.get("city", {}).get("name", city_id)
+
+    return {"ok": True, "city_id": city_id, "city_name": city_name, "profile_file": matched_path.name}
+
+
 @app.get("/studio/api/schemas", include_in_schema=False)
 def studio_schemas():
     """Канонические схемы из canonical_schemas.yaml."""
