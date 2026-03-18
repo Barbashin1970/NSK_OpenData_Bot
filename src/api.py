@@ -1937,6 +1937,134 @@ def get_traffic_index() -> dict:
     return get_traffic_index_with_weather()
 
 
+# ── Индексы жизни города ──────────────────────────────────────────────────────
+
+def _compute_life_indices(rows: list[dict]) -> dict | None:
+    """Вычисляет индексы водителя, прогулки и коммунального напряжения.
+
+    Параметры загружаются из config/rules/life_indices_rules.yaml.
+    Логика перенесена сюда из computeLifeIndices() в index.html (Фаза 3).
+    """
+    if not rows:
+        return None
+
+    from .rule_engine import rules
+
+    def _avg(lst):
+        return round(sum(lst) / len(lst), 2) if lst else None
+
+    def _min(lst):
+        return round(min(lst), 2) if lst else None
+
+    def _vals(key):
+        return [float(r[key]) for r in rows if r.get(key) is not None]
+
+    avg_t = _avg(_vals("temperature_c"))
+    avg_w = _avg(_vals("wind_speed_ms"))
+    avg_p = _avg(_vals("pm25"))
+    avg_a = _avg(_vals("aqi"))
+    min_t = _min(_vals("temperature_c"))
+
+    cfg = rules.get("life_indices_rules")
+    dr  = cfg.get("driver",  {})
+    wk  = cfg.get("walk",    {})
+    ut  = cfg.get("utility", {})
+
+    # ── Индекс водителя ───────────────────────────────────────────────────────
+    driver = 0
+    if avg_t is not None:
+        bi_min = float(dr.get("temp_black_ice_min", -3.0))
+        bi_max = float(dr.get("temp_black_ice_max",  2.0))
+        if bi_min <= avg_t <= bi_max:
+            driver += int(dr.get("temp_black_ice_score", 5))
+        elif float(dr.get("temp_regular_ice_min", -10.0)) <= avg_t < bi_min:
+            driver += int(dr.get("temp_regular_ice_score", 2))
+        if avg_t < float(dr.get("temp_extreme_cold", -25.0)):
+            driver += int(dr.get("temp_extreme_cold_score", 3))
+        elif avg_t < float(dr.get("temp_severe_cold", -20.0)):
+            driver += int(dr.get("temp_severe_cold_score", 2))
+        elif avg_t < float(dr.get("temp_cold", -10.0)):
+            driver += int(dr.get("temp_cold_score", 1))
+    if avg_w is not None:
+        if avg_w > float(dr.get("wind_strong_ms", 12.0)):
+            driver += int(dr.get("wind_strong_score", 2))
+        elif avg_w > float(dr.get("wind_moderate_ms", 8.0)):
+            driver += int(dr.get("wind_moderate_score", 1))
+    driver = min(10, max(0, round(driver)))
+
+    driver_levels = dr.get("levels", [])
+    driver_label = next((l["label"] for l in driver_levels if driver <= l["max"]), "Крайне опасно")
+
+    # ── Индекс прогулки ───────────────────────────────────────────────────────
+    walk = int(wk.get("start_score", 10))
+    if avg_p is not None:
+        if avg_p > float(wk.get("pm25_high", 35.0)):    walk -= int(wk.get("pm25_high_penalty",   4))
+        elif avg_p > float(wk.get("pm25_medium", 25.0)): walk -= int(wk.get("pm25_medium_penalty", 2))
+        elif avg_p > float(wk.get("pm25_low", 15.0)):    walk -= int(wk.get("pm25_low_penalty",    1))
+    if avg_a is not None:
+        if avg_a > float(wk.get("aqi_very_high", 80)):   walk -= int(wk.get("aqi_very_high_penalty", 3))
+        elif avg_a > float(wk.get("aqi_high", 60)):      walk -= int(wk.get("aqi_high_penalty",      2))
+        elif avg_a > float(wk.get("aqi_medium", 40)):    walk -= int(wk.get("aqi_medium_penalty",    1))
+    if avg_t is not None:
+        if avg_t < float(wk.get("temp_extreme", -25.0)):  walk -= int(wk.get("temp_extreme_penalty", 3))
+        elif avg_t < float(wk.get("temp_cold", -15.0)):   walk -= int(wk.get("temp_cold_penalty",    2))
+        elif avg_t < float(wk.get("temp_chilly", -5.0)):  walk -= int(wk.get("temp_chilly_penalty",  1))
+    if avg_w is not None and avg_w > float(wk.get("wind_threshold_ms", 10.0)):
+        walk -= int(wk.get("wind_penalty", 1))
+    walk = min(10, max(0, round(walk)))
+
+    # Уровни прогулки упорядочены по убыванию min (8→6→4→0) — берём первое совпадение
+    walk_levels = wk.get("levels", [])
+    walk_label  = next((l["label"] for l in walk_levels if walk >= l["min"]), "Рекомендуется остаться дома")
+
+    # ── Индекс коммунального напряжения ───────────────────────────────────────
+    utility = 0
+    if min_t is not None:
+        if min_t < float(ut.get("temp_critical", -30.0)):  utility += int(ut.get("temp_critical_score", 4))
+        elif min_t < float(ut.get("temp_severe", -20.0)):  utility += int(ut.get("temp_severe_score",   3))
+        elif min_t < float(ut.get("temp_cold", -10.0)):    utility += int(ut.get("temp_cold_score",     2))
+        elif min_t < float(ut.get("temp_cool", -5.0)):     utility += int(ut.get("temp_cool_score",     1))
+    if avg_w is not None and avg_p is not None:
+        if avg_w < float(ut.get("smog_wind_threshold_ms", 1.5)) and avg_p > float(ut.get("smog_pm25_threshold", 20.0)):
+            utility += int(ut.get("smog_score", 2))
+    utility = min(10, max(0, round(utility)))
+
+    util_levels = ut.get("levels", [])
+    util_label  = next((l["label"] for l in util_levels if utility <= l["max"]), "Критично")
+
+    return {
+        "driver":  {"score": driver,  "label": driver_label,  "icon": "🚗", "name": "Индекс водителя"},
+        "walk":    {"score": walk,    "label": walk_label,    "icon": "🚶", "name": "Индекс прогулки"},
+        "utility": {"score": utility, "label": util_label,    "icon": "🏗️",  "name": "Коммунальное напряжение"},
+        "inputs":  {"avg_t": avg_t, "avg_w": avg_w, "avg_p": avg_p, "avg_a": avg_a, "min_t": min_t},
+    }
+
+
+@app.get(
+    "/life-indices",
+    tags=["Экология и погода"],
+    summary="Индексы жизни города (водитель / прогулка / коммуналка)",
+)
+def get_life_indices() -> dict:
+    """Три синтетических индекса на основе текущих экологических данных.
+
+    Параметры берутся из **config/rules/life_indices_rules.yaml** —
+    можно изменить пороги и применить через `POST /admin/reload-rules`.
+
+    | Индекс | Шкала | Смысл |
+    |---|---|---|
+    | Водитель | 0–10 (выше = опаснее) | Риск для автомобилиста |
+    | Прогулка | 0–10 (выше = лучше) | Комфорт прогулки на улице |
+    | Коммунальное напряжение | 0–10 (выше = хуже) | Нагрузка на ЖКХ и теплосети |
+    """
+    from .ecology_cache import query_current
+    rows = query_current()
+    result = _compute_life_indices(rows)
+    if result is None:
+        return {"error": "Нет данных экологии", "hint": "POST /update — обновить данные"}
+    return result
+
+
 # ── Управление регламентами ────────────────────────────────────────────────────
 
 @app.post(
@@ -1965,6 +2093,67 @@ def admin_rules_status() -> dict:
     """Показывает, какие YAML-регламенты загружены в память и их версии."""
     from .rule_engine import rules
     return rules.status()
+
+
+_RULES_DIR = Path(__file__).parent.parent / "config" / "rules"
+_ALLOWED_RULES = {"traffic_rules", "holiday_calendar", "ecology_rules", "life_indices_rules"}
+
+
+@app.get(
+    "/admin/rules/{name}",
+    tags=["Администрирование"],
+    summary="Получить YAML-регламент по имени",
+)
+def admin_get_rule(name: str) -> dict:
+    """Возвращает содержимое YAML-регламента как текст и как разобранный dict.
+
+    `name` — имя файла без `.yaml`: `traffic_rules`, `holiday_calendar`, `ecology_rules`, `life_indices_rules`.
+    """
+    if name not in _ALLOWED_RULES:
+        raise HTTPException(status_code=404, detail=f"Регламент '{name}' не найден. Доступны: {sorted(_ALLOWED_RULES)}")
+    path = _RULES_DIR / f"{name}.yaml"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Файл {path} не найден на диске")
+    yaml_text = path.read_text(encoding="utf-8")
+    import yaml as _yaml
+    parsed = _yaml.safe_load(yaml_text) or {}
+    return {"name": name, "yaml_text": yaml_text, "parsed": parsed}
+
+
+@app.put(
+    "/admin/rules/{name}",
+    tags=["Администрирование"],
+    summary="Сохранить YAML-регламент и применить без перезапуска",
+)
+async def admin_put_rule(name: str, request: Request) -> dict:
+    """Принимает тело запроса с полем `yaml_text` (строка YAML), валидирует, сохраняет файл
+    и вызывает горячую перезагрузку.
+
+    При ошибке YAML возвращает `400` с описанием синтаксической ошибки.
+    """
+    if name not in _ALLOWED_RULES:
+        raise HTTPException(status_code=404, detail=f"Регламент '{name}' не найден")
+    body = await request.json()
+    yaml_text: str = body.get("yaml_text", "")
+    if not yaml_text.strip():
+        raise HTTPException(status_code=400, detail="Поле yaml_text не может быть пустым")
+
+    import yaml as _yaml
+    try:
+        parsed = _yaml.safe_load(yaml_text)
+    except _yaml.YAMLError as exc:
+        raise HTTPException(status_code=400, detail=f"Синтаксическая ошибка YAML: {exc}")
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="YAML должен быть маппингом (dict) верхнего уровня")
+
+    path = _RULES_DIR / f"{name}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml_text, encoding="utf-8")
+
+    from .traffic_index import reload_traffic_rules
+    reloaded = reload_traffic_rules()
+    return {"status": "ok", "saved": name, "reloaded": reloaded}
 
 
 @app.get(

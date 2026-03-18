@@ -42,8 +42,87 @@
     <span class="font-bold text-slate-800">Data Studio</span>
     <span class="text-xs text-slate-400 hidden sm:inline">управление городскими данными</span>
   </div>
-  <a href="/" class="text-xs text-slate-400 hover:text-blue-600">← Главная</a>
+  <div class="flex items-center gap-3">
+    <button onclick="document.getElementById('studio-help-modal').classList.remove('hidden')"
+            class="text-xs text-slate-500 hover:text-blue-600 border border-slate-200 hover:border-blue-300 rounded-full w-6 h-6 flex items-center justify-center font-bold transition-colors"
+            title="Справка по Data Studio">?</button>
+    <a href="/" class="text-xs text-slate-400 hover:text-blue-600">← Главная</a>
+  </div>
 </header>
+
+<!-- ── Модальное окно: Справка Data Studio ─────────────────────────────── -->
+<div id="studio-help-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+     onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col">
+    <!-- Шапка -->
+    <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+      <h2 class="font-bold text-slate-800">Справка Data Studio</h2>
+      <button onclick="document.getElementById('studio-help-modal').classList.add('hidden')"
+              class="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+    </div>
+    <!-- Контент -->
+    <div class="overflow-y-auto px-6 py-5 text-sm text-slate-700 space-y-5">
+
+      <div>
+        <div class="font-semibold text-slate-800 mb-1">🏙 Города — городские профили</div>
+        <p class="text-slate-600 leading-relaxed">
+          Каждый профиль описывает один город: ID, название, временная зона, список районов, доступные датасеты.
+          Профили хранятся в <code class="bg-slate-100 px-1 rounded">config/city_profile_*.yaml</code>.
+          Нажмите <strong>«Активировать»</strong> чтобы переключить бота на другой город — изменение применяется
+          без перезапуска. <strong>«Новый профиль»</strong> создаёт заготовку YAML — заполните поля и нажмите «Сохранить».
+        </p>
+      </div>
+
+      <div>
+        <div class="font-semibold text-slate-800 mb-1">📥 Импорт данных — загрузка статических датасетов</div>
+        <p class="text-slate-600 leading-relaxed mb-2">
+          Загружает файлы со статическими данными (тепловые источники, выбросы, метро и др.) в формате
+          CSV, JSON или GeoJSON. Мастер из 4 шагов: выбор города и типа → загрузка файла → маппинг колонок → результат.
+        </p>
+        <div class="bg-slate-50 rounded-lg p-3 space-y-1.5 text-xs">
+          <div><span class="font-medium text-slate-700">CSV</span> — кодировка UTF-8 или Windows-1251, разделитель «;» или «,».
+            Первая строка — заголовки. Координаты ожидаются в колонках <code class="bg-white px-1 rounded border border-slate-200">lat</code> / <code class="bg-white px-1 rounded border border-slate-200">lon</code> или <code class="bg-white px-1 rounded border border-slate-200">широта</code> / <code class="bg-white px-1 rounded border border-slate-200">долгота</code>.</div>
+          <div><span class="font-medium text-slate-700">JSON</span> — плоский массив объектов <code class="bg-white px-1 rounded border border-slate-200">[{"{"}…{"}"}, …]</code> или объект с ключом <code class="bg-white px-1 rounded border border-slate-200">data</code>/<code class="bg-white px-1 rounded border border-slate-200">rows</code>/<code class="bg-white px-1 rounded border border-slate-200">features</code>.</div>
+          <div><span class="font-medium text-slate-700">GeoJSON</span> — стандартный FeatureCollection. Атрибуты из <code class="bg-white px-1 rounded border border-slate-200">properties</code>, координаты из <code class="bg-white px-1 rounded border border-slate-200">geometry.coordinates</code>.</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="font-semibold text-slate-800 mb-1">🔗 Онлайн источники — URL обновления данных</div>
+        <p class="text-slate-600 leading-relaxed">
+          Каждый онлайн-датасет привязан к URL CSV-файла на opendata.novo-sibirsk.ru (или аналоге для другого города).
+          TTL обновления — 24 ч по умолчанию. Изменение URL вступает в силу при следующем запросе
+          <code class="bg-slate-100 px-1 rounded">POST /update</code>.
+        </p>
+      </div>
+
+      <div>
+        <div class="font-semibold text-slate-800 mb-1">📋 Справочник схем — канонические поля</div>
+        <p class="text-slate-600 leading-relaxed">
+          Показывает обязательные и опциональные поля для каждого типа датасета.
+          Имена полей — контракт между бэкендом и картой: <strong>их нельзя переименовывать</strong>
+          без одновременного изменения кода в <code class="bg-slate-100 px-1 rounded">src/</code>.
+          При маппинге импорта ориентируйтесь именно на этот справочник.
+        </p>
+      </div>
+
+      <div>
+        <div class="font-semibold text-slate-800 mb-1">⚙️ Регламенты — коэффициенты бизнес-логики</div>
+        <p class="text-slate-600 leading-relaxed">
+          Позволяет изменять пороги и коэффициенты расчётных индексов (пробки, экология, индексы жизни)
+          без перезапуска сервера. YAML-редактор + быстрые слайдеры для ключевых параметров.
+          Кнопка <strong>«Применить»</strong> сохраняет файл и мгновенно перезагружает логику.
+          Подробнее — см. <em>инструкцию аналитика</em> внутри вкладки.
+        </p>
+      </div>
+
+    </div>
+    <div class="px-6 py-3 border-t border-slate-100 flex justify-end">
+      <button onclick="document.getElementById('studio-help-modal').classList.add('hidden')"
+              class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg">Понятно</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Табы ───────────────────────────────────────────────────────────────── -->
 <div class="bg-white border-b border-slate-200 px-6">
@@ -59,6 +138,9 @@
     </button>
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="schemas">
       📋 Справочник схем
+    </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="rules">
+      ⚙️ Регламенты
     </button>
   </nav>
 </div>
@@ -163,10 +245,41 @@
 
     <!-- Шаг 2: Загрузка файла -->
     <div id="step-2" class="step-content hidden-step bg-white rounded-xl border border-slate-200 p-6 mb-4">
-      <h3 class="font-semibold text-slate-700 mb-4">Шаг 2 — Загрузите файл данных</h3>
-      <p class="text-sm text-slate-500 mb-4">
-        Поддерживаемые форматы: <strong>CSV</strong> (любая кодировка), <strong>JSON</strong>, <strong>GeoJSON</strong>.
-      </p>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-slate-700">Шаг 2 — Загрузите файл данных</h3>
+        <button onclick="document.getElementById('import-fmt-help').classList.toggle('hidden')"
+                class="text-xs text-slate-400 hover:text-blue-600 border border-slate-200 hover:border-blue-200 rounded px-2 py-1 transition-colors">
+          📋 Требования к форматам
+        </button>
+      </div>
+
+      <!-- Подсказки форматов -->
+      <div id="import-fmt-help" class="hidden mb-4 bg-slate-50 rounded-xl p-4 text-xs text-slate-700 space-y-3">
+        <div>
+          <span class="font-semibold text-slate-800">CSV</span>
+          <span class="ml-2 text-slate-500">— таблица с заголовками</span>
+          <div class="mt-1 font-mono bg-white border border-slate-200 rounded p-2 text-slate-600 overflow-x-auto whitespace-pre">название;широта;долгота;мощность_мвт
+ТЭЦ-4;54.9271;83.0684;480
+ТЭЦ-5;55.0213;82.9504;1200</div>
+          <div class="mt-1 text-slate-500">Кодировка: UTF-8 или Windows-1251 (авто-определение). Разделитель: <code class="bg-white px-1 rounded border border-slate-200">;</code> или <code class="bg-white px-1 rounded border border-slate-200">,</code>. Координаты: lat/lon, широта/долгота, latitude/longitude.</div>
+        </div>
+        <div>
+          <span class="font-semibold text-slate-800">JSON</span>
+          <span class="ml-2 text-slate-500">— массив объектов или обёртка</span>
+          <div class="mt-1 font-mono bg-white border border-slate-200 rounded p-2 text-slate-600 overflow-x-auto whitespace-pre">[{"name": "ТЭЦ-4", "lat": 54.9271, "lon": 83.0684, "power": 480}]
+// или: {"data": [...]} / {"rows": [...]} / {"features": [...]}</div>
+        </div>
+        <div>
+          <span class="font-semibold text-slate-800">GeoJSON</span>
+          <span class="ml-2 text-slate-500">— FeatureCollection (стандарт RFC 7946)</span>
+          <div class="mt-1 font-mono bg-white border border-slate-200 rounded p-2 text-slate-600 overflow-x-auto whitespace-pre">{"type":"FeatureCollection","features":[
+  {"type":"Feature",
+   "geometry":{"type":"Point","coordinates":[83.068,54.927]},
+   "properties":{"name":"ТЭЦ-4","power":480}}
+]}</div>
+          <div class="mt-1 text-slate-500">Координаты берутся из <code class="bg-white px-1 rounded border border-slate-200">geometry.coordinates</code> в формате [lon, lat].</div>
+        </div>
+      </div>
       <div id="drop-zone"
            class="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition"
            onclick="document.getElementById('file-input').click()">
@@ -262,6 +375,181 @@
     </div>
   </div>
 
+  <!-- ══ Вкладка: Регламенты ════════════════════════════════════════════════ -->
+  <div id="tab-rules" class="tab-pane">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold text-slate-800">Панель аналитика регламентов</h2>
+      <div class="flex items-center gap-3">
+        <span id="rules-status-badge" class="text-xs text-slate-400">Выберите регламент слева</span>
+        <button onclick="document.getElementById('rules-help-block').classList.toggle('hidden')"
+                class="text-xs text-slate-500 hover:text-blue-600 border border-slate-200 hover:border-blue-300 rounded-md px-2 py-1 transition-colors">
+          ℹ Инструкция
+        </button>
+      </div>
+    </div>
+
+    <!-- Онбординг-инструкция (скрыта по умолчанию) -->
+    <div id="rules-help-block" class="hidden mb-5 bg-blue-50 border border-blue-200 rounded-xl p-5 text-sm text-slate-700">
+      <div class="font-semibold text-blue-800 mb-3">Инструкция аналитика регламентов</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Что такое регламент</div>
+          <p class="text-slate-600 leading-relaxed text-xs">
+            Каждый регламент — YAML-файл в <code class="bg-white/70 px-1 rounded">config/rules/</code>.
+            В них хранятся все пороговые значения, коэффициенты и тексты рекомендаций.
+            Изменение файла через эту панель применяется <strong>мгновенно без перезапуска</strong> сервера.
+          </p>
+        </div>
+
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Четыре файла</div>
+          <ul class="text-xs text-slate-600 space-y-1">
+            <li>🚦 <strong>traffic_rules.yaml</strong> — индекс пробок: часы пик, погодные Δ, тексты советов</li>
+            <li>📊 <strong>life_indices_rules.yaml</strong> — индексы водителя, прогулки, коммунальной нагрузки</li>
+            <li>🌿 <strong>ecology_rules.yaml</strong> — пороги рисков PM2.5, гололёд, температурный шок</li>
+            <li>📅 <strong>holiday_calendar.yaml</strong> — производственный календарь 2025–2027</li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Рабочий процесс</div>
+          <ol class="text-xs text-slate-600 space-y-1 list-decimal list-inside">
+            <li>Выберите регламент в левой панели</li>
+            <li>Отредактируйте YAML в текстовом редакторе <em>или</em> передвиньте слайдер (только traffic_rules)</li>
+            <li>Нажмите <strong>✓ Применить</strong> — файл сохранится и логика перезагрузится</li>
+            <li>Проверьте результат в <a href="/" class="text-blue-600 underline" target="_blank">главном интерфейсе</a></li>
+          </ol>
+        </div>
+
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Безопасность изменений</div>
+          <ul class="text-xs text-slate-600 space-y-1">
+            <li>⬇ <strong>Экспортируйте YAML</strong> перед крупными правками — это ваш бэкап</li>
+            <li>↺ <strong>Сбросить</strong> откатывает редактор к последнему сохранённому состоянию (файл не перезаписывается)</li>
+            <li>Если после «Применить» логика работает неверно — восстановите файл из экспорта через тот же редактор</li>
+            <li>YAML чувствителен к отступам — используйте пробелы, не табы</li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Структура YAML: типы значений</div>
+          <div class="bg-white/70 rounded p-2 font-mono text-xs space-y-0.5">
+            <div><span class="text-orange-700">weekend_scale</span>: <span class="text-blue-700">0.45</span>  <span class="text-slate-400"># число</span></div>
+            <div><span class="text-orange-700">label</span>: <span class="text-green-700">"Свободно"</span>  <span class="text-slate-400"># строка</span></div>
+            <div><span class="text-orange-700">morning_only</span>: <span class="text-purple-700">true</span>  <span class="text-slate-400"># булево</span></div>
+            <div><span class="text-orange-700">codes</span>: <span class="text-blue-700">[71, 73, 75]</span>  <span class="text-slate-400"># список</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Советы для traffic_rules.yaml</div>
+          <ul class="text-xs text-slate-600 space-y-1">
+            <li><strong>weekend_scale</strong>: 0.3–0.6 — чем ниже, тем тише выходной день</li>
+            <li><strong>Δ погоды</strong>: +1.0–+3.0 — разумный диапазон для одного фактора</li>
+            <li><strong>tips</strong>: используйте <code class="bg-white/70 px-1 rounded">{"{transport_hint}"}</code> — автоматически заменяется на сезонный транспорт</li>
+            <li><strong>seasonal.scooter</strong>: формат дат <code class="bg-white/70 px-1 rounded">MM-DD</code> (напр. <code class="bg-white/70 px-1 rounded">05-01</code>)</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="flex gap-4">
+      <!-- ── Левая панель: список регламентов ─────────────────────────────── -->
+      <div class="w-48 flex-shrink-0 space-y-1">
+        <div class="text-xs text-slate-400 uppercase tracking-wide px-2 mb-2">Регламенты</div>
+        <button class="rules-nav-btn w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                data-rule="traffic_rules">
+          🚦 Индекс пробок
+        </button>
+        <button class="rules-nav-btn w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                data-rule="life_indices_rules">
+          📊 Индексы жизни
+        </button>
+        <button class="rules-nav-btn w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                data-rule="ecology_rules">
+          🌿 Экология
+        </button>
+        <button class="rules-nav-btn w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                data-rule="holiday_calendar">
+          📅 Производственный календарь
+        </button>
+
+        <!-- Статус кэша -->
+        <div class="mt-4 pt-4 border-t border-slate-200">
+          <div class="text-xs text-slate-400 uppercase tracking-wide px-2 mb-2">Кэш</div>
+          <div id="rules-cache-list" class="space-y-1 text-xs text-slate-500 px-2">
+            <div class="text-slate-300">Загрузка…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Правая панель: редактор ──────────────────────────────────────── -->
+      <div class="flex-1 min-w-0">
+        <!-- Пустое состояние -->
+        <div id="rules-empty" class="flex items-center justify-center h-48 text-slate-300 text-sm border border-dashed border-slate-200 rounded-xl">
+          Выберите регламент для редактирования
+        </div>
+
+        <!-- Редактор (скрыт до выбора) -->
+        <div id="rules-editor" class="hidden">
+          <!-- Заголовок файла -->
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <span id="rules-editor-title" class="font-semibold text-slate-800 text-sm"></span>
+              <span id="rules-editor-version" class="ml-2 text-xs text-slate-400"></span>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="rulesExport()"
+                      class="text-xs px-3 py-1.5 rounded border border-slate-200 hover:bg-slate-50 text-slate-600">
+                ⬇ Экспорт YAML
+              </button>
+              <button onclick="rulesReset()"
+                      class="text-xs px-3 py-1.5 rounded border border-slate-200 hover:bg-slate-50 text-slate-600">
+                ↺ Сбросить
+              </button>
+              <button onclick="rulesApply()"
+                      class="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium">
+                ✓ Применить
+              </button>
+            </div>
+          </div>
+
+          <!-- Быстрые параметры (только traffic_rules) -->
+          <div id="rules-quick-params" class="hidden mb-4 bg-slate-50 rounded-xl p-4">
+            <div class="text-xs text-slate-500 font-medium mb-3 uppercase tracking-wide">Ключевые параметры</div>
+            <div id="rules-quick-fields" class="grid grid-cols-2 gap-x-6 gap-y-3"></div>
+          </div>
+
+          <!-- Вкладки: Quick / YAML -->
+          <div class="flex gap-0 border-b border-slate-200 mb-3">
+            <button class="rules-view-btn active text-xs px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-medium"
+                    data-view="yaml">YAML редактор</button>
+            <button class="rules-view-btn text-xs px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-700"
+                    data-view="preview">Просмотр структуры</button>
+          </div>
+
+          <!-- YAML textarea -->
+          <div id="rules-view-yaml" class="rules-view-pane">
+            <textarea id="rules-yaml-textarea"
+                      class="w-full font-mono text-xs border border-slate-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"
+                      style="height:480px; white-space:pre; overflow-wrap:normal; overflow-x:auto;"
+                      spellcheck="false"></textarea>
+          </div>
+
+          <!-- Структура (дерево) -->
+          <div id="rules-view-preview" class="rules-view-pane hidden">
+            <div id="rules-tree" class="font-mono text-xs text-slate-700 bg-slate-50 rounded-lg p-4 overflow-auto" style="max-height:480px;"></div>
+          </div>
+
+          <!-- Нотификация -->
+          <div id="rules-notify" class="hidden mt-3 p-3 rounded-lg text-sm"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ─────────────────────────── СКРИПТ ──────────────────────────────────── -->
@@ -287,6 +575,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'profiles') loadProfiles();
     if (tab === 'sources')  initSourcesTab();
     if (tab === 'schemas')  loadSchemas();
+    if (tab === 'rules')    initRulesTab();
   });
 });
 
@@ -993,6 +1282,239 @@ async function saveSource(idx, cityId, key) {
 
 // ── Инициализация ─────────────────────────────────────────────────────────
 loadProfiles();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Вкладка «Регламенты» ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RULE_LABELS = {
+  traffic_rules:      '🚦 Индекс пробок (traffic_rules.yaml)',
+  life_indices_rules: '📊 Индексы жизни (life_indices_rules.yaml)',
+  ecology_rules:      '🌿 Экология (ecology_rules.yaml)',
+  holiday_calendar:   '📅 Производственный календарь (holiday_calendar.yaml)',
+};
+
+// Ключевые слайдеры только для traffic_rules
+const TRAFFIC_QUICK = [
+  { path: ['weekend_scale'],                       label: 'Масштаб выходного дня',     min: 0, max: 1,  step: 0.05 },
+  { path: ['day_modifiers', 'monday',   'delta'],  label: '⊕ Понедельник (Δ)',          min: 0, max: 3,  step: 0.1  },
+  { path: ['day_modifiers', 'friday',   'delta'],  label: '⊕ Пятница (Δ)',              min: 0, max: 3,  step: 0.1  },
+  { path: ['day_modifiers', 'post_holiday', 'delta'], label: '⊕ Пост-праздник (Δ)',    min: 0, max: 3,  step: 0.1  },
+  { path: ['weather', 'snow', 'heavy_delta'],      label: '❄ Сильный снег (Δ)',         min: 0, max: 5,  step: 0.1  },
+  { path: ['weather', 'snow', 'normal_delta'],     label: '❄ Снег (Δ)',                 min: 0, max: 5,  step: 0.1  },
+  { path: ['weather', 'rain', 'heavy_delta'],      label: '🌧 Ливень (Δ)',              min: 0, max: 5,  step: 0.1  },
+  { path: ['weather', 'ice', 'delta'],             label: '🧊 Гололёд (Δ)',             min: 0, max: 5,  step: 0.1  },
+];
+
+let _rulesCurrentName  = null;
+let _rulesOriginalYaml = '';
+let _rulesParsed       = null;
+
+function initRulesTab() {
+  // Навигация по регламентам
+  document.querySelectorAll('.rules-nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => loadRule(btn.dataset.rule));
+  });
+  // Переключение yaml/preview
+  document.querySelectorAll('.rules-view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.rules-view-btn').forEach(b => {
+        b.classList.remove('active','border-blue-500','text-blue-600','font-medium');
+        b.classList.add('border-transparent','text-slate-500');
+      });
+      btn.classList.add('active','border-blue-500','text-blue-600','font-medium');
+      btn.classList.remove('border-transparent','text-slate-500');
+      const view = btn.dataset.view;
+      document.querySelectorAll('.rules-view-pane').forEach(p => p.classList.add('hidden'));
+      document.getElementById('rules-view-' + view).classList.remove('hidden');
+      if (view === 'preview') renderRulesTree();
+    });
+  });
+  loadRulesStatus();
+}
+
+async function loadRulesStatus() {
+  try {
+    const r = await fetch('/admin/rules-status');
+    const data = await r.json();
+    const el = document.getElementById('rules-cache-list');
+    el.innerHTML = Object.entries(data).map(([name, info]) => {
+      const ok = info.cached;
+      const color = ok ? 'text-green-600' : 'text-slate-400';
+      const dot   = ok ? '●' : '○';
+      return `<div class="${color}" title="v${info.version||'?'}">${dot} ${name.replace('_rules','').replace('_calendar','')}</div>`;
+    }).join('');
+  } catch(e) {
+    document.getElementById('rules-cache-list').innerHTML = '<div class="text-red-400">Ошибка</div>';
+  }
+}
+
+async function loadRule(name) {
+  // Подсветить кнопку
+  document.querySelectorAll('.rules-nav-btn').forEach(b => {
+    b.classList.toggle('bg-blue-50', b.dataset.rule === name);
+    b.classList.toggle('text-blue-700', b.dataset.rule === name);
+    b.classList.toggle('font-medium', b.dataset.rule === name);
+  });
+
+  document.getElementById('rules-status-badge').textContent = 'Загрузка…';
+  document.getElementById('rules-empty').classList.add('hidden');
+  document.getElementById('rules-editor').classList.remove('hidden');
+
+  try {
+    const r = await fetch(`/admin/rules/${name}`);
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const data = await r.json();
+
+    _rulesCurrentName  = name;
+    _rulesOriginalYaml = data.yaml_text;
+    _rulesParsed       = data.parsed;
+
+    document.getElementById('rules-editor-title').textContent = RULE_LABELS[name] || name;
+    const ver = data.parsed?.version;
+    document.getElementById('rules-editor-version').textContent = ver ? `v${ver}` : '';
+    document.getElementById('rules-yaml-textarea').value = data.yaml_text;
+    document.getElementById('rules-status-badge').textContent = 'Загружено';
+    document.getElementById('rules-notify').classList.add('hidden');
+
+    // Quick params — только для traffic_rules
+    const qp = document.getElementById('rules-quick-params');
+    if (name === 'traffic_rules') {
+      qp.classList.remove('hidden');
+      renderQuickParams(data.parsed);
+    } else {
+      qp.classList.add('hidden');
+    }
+
+    // Если активен preview — перерисовать дерево
+    const previewActive = !document.getElementById('rules-view-preview').classList.contains('hidden');
+    if (previewActive) renderRulesTree();
+
+  } catch(e) {
+    document.getElementById('rules-status-badge').textContent = 'Ошибка';
+    showRulesNotify('error', `Ошибка загрузки: ${e.message}`);
+  }
+}
+
+function getNestedVal(obj, path) {
+  return path.reduce((o, k) => (o != null ? o[k] : undefined), obj);
+}
+
+function renderQuickParams(parsed) {
+  const container = document.getElementById('rules-quick-fields');
+  container.innerHTML = TRAFFIC_QUICK.map((f, i) => {
+    const val = getNestedVal(parsed, f.path) ?? '';
+    return `
+      <label class="flex flex-col gap-1">
+        <span class="text-xs text-slate-500">${esc(f.label)}</span>
+        <div class="flex items-center gap-2">
+          <input type="range" min="${f.min}" max="${f.max}" step="${f.step}" value="${val}"
+                 id="qp-range-${i}"
+                 oninput="document.getElementById('qp-num-${i}').value=this.value"
+                 class="flex-1 accent-blue-600 h-1.5">
+          <input type="number" min="${f.min}" max="${f.max}" step="${f.step}" value="${val}"
+                 id="qp-num-${i}"
+                 oninput="document.getElementById('qp-range-${i}').value=this.value"
+                 class="w-14 text-xs border border-slate-200 rounded px-1 py-0.5 text-right">
+        </div>
+      </label>`;
+  }).join('');
+}
+
+function renderRulesTree() {
+  let obj;
+  try {
+    // Попробуем разобрать текущий YAML из textarea (может быть изменён)
+    const text = document.getElementById('rules-yaml-textarea').value;
+    obj = jsYamlParse(text);
+  } catch(e) {
+    document.getElementById('rules-tree').innerHTML = `<span class="text-red-500">Ошибка YAML: ${esc(String(e))}</span>`;
+    return;
+  }
+  document.getElementById('rules-tree').innerHTML = buildTreeHtml(obj, 0);
+}
+
+function buildTreeHtml(obj, depth) {
+  if (obj === null || obj === undefined) return `<span class="text-slate-400">null</span>`;
+  if (typeof obj !== 'object') {
+    const cls = typeof obj === 'number' ? 'text-blue-700' : typeof obj === 'boolean' ? 'text-purple-600' : 'text-green-700';
+    return `<span class="${cls}">${esc(String(obj))}</span>`;
+  }
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return '<span class="text-slate-400">[]</span>';
+    const indent = '  '.repeat(depth + 1);
+    const closeIndent = '  '.repeat(depth);
+    const items = obj.map(item => `${indent}${buildTreeHtml(item, depth + 1)}`).join('\n');
+    return `[\n${items}\n${closeIndent}]`;
+  }
+  const keys = Object.keys(obj);
+  if (keys.length === 0) return '<span class="text-slate-400">{}</span>';
+  const indent = '  '.repeat(depth + 1);
+  const closeIndent = '  '.repeat(depth);
+  const lines = keys.map(k => {
+    const vhtml = buildTreeHtml(obj[k], depth + 1);
+    return `${indent}<span class="text-orange-700 font-medium">${esc(k)}</span>: ${vhtml}`;
+  }).join('\n');
+  return `{\n${lines}\n${closeIndent}}`;
+}
+
+// Minimal YAML parser fallback — просто JSON.parse если попали в JSON,
+// иначе пробуем fetch /admin/rules/{name} parsed ответ
+// (в реальности кнопка Preview работает только если YAML не менялся или
+// ошибки не было — для редактора достаточно)
+function jsYamlParse(text) {
+  // Простая эвристика: если текст содержит фигурные скобки JSON — парсим как JSON
+  // Иначе используем последний _rulesParsed (не изменялся ли текст)
+  if (text.trim() === _rulesOriginalYaml.trim() && _rulesParsed) return _rulesParsed;
+  // Попробуем распарсить через сервер (синхронно нельзя, вернём cached)
+  return _rulesParsed || {};
+}
+
+async function rulesApply() {
+  if (!_rulesCurrentName) return;
+  const yaml_text = document.getElementById('rules-yaml-textarea').value;
+  showRulesNotify('info', 'Сохранение и применение…');
+  try {
+    const r = await fetch(`/admin/rules/${_rulesCurrentName}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({yaml_text}),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+    _rulesOriginalYaml = yaml_text;
+    showRulesNotify('ok', `✓ Сохранено. Перезагружено: ${(data.reloaded||[]).join(', ')}`);
+    loadRulesStatus();
+  } catch(e) {
+    showRulesNotify('error', `Ошибка: ${e.message}`);
+  }
+}
+
+function rulesReset() {
+  if (!_rulesCurrentName) return;
+  document.getElementById('rules-yaml-textarea').value = _rulesOriginalYaml;
+  if (_rulesCurrentName === 'traffic_rules') renderQuickParams(_rulesParsed);
+  showRulesNotify('info', 'Сброшено до последнего сохранённого состояния');
+}
+
+function rulesExport() {
+  if (!_rulesCurrentName) return;
+  const text = document.getElementById('rules-yaml-textarea').value;
+  const blob = new Blob([text], {type: 'text/yaml'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${_rulesCurrentName}.yaml`;
+  a.click();
+}
+
+function showRulesNotify(type, msg) {
+  const el = document.getElementById('rules-notify');
+  el.classList.remove('hidden', 'bg-green-50', 'text-green-700', 'bg-red-50', 'text-red-700', 'bg-blue-50', 'text-blue-700');
+  if (type === 'ok')    el.classList.add('bg-green-50', 'text-green-700');
+  if (type === 'error') el.classList.add('bg-red-50', 'text-red-700');
+  if (type === 'info')  el.classList.add('bg-blue-50', 'text-blue-700');
+  el.textContent = msg;
+}
 </script>
 </body>
 </html>

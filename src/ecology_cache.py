@@ -21,6 +21,12 @@ from .constants import (
     ECOLOGY_TTL_MINUTES,
     DATA_DIR,
 )
+from .rule_engine import rules as _rules
+
+
+def _eco_rules() -> dict:
+    """Возвращает секцию risks из ecology_rules.yaml."""
+    return _rules.get("ecology_rules").get("risks", {})
 
 log = logging.getLogger(__name__)
 
@@ -375,7 +381,8 @@ def query_pdk_exceedances(district_filter: str | None = None) -> list[dict]:
     conn = _get_conn()
     try:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        wheres = ["f.measured_at >= ?", "f.pm25 > 35.0"]
+        pdk_thr = float(_eco_rules().get("pdk", {}).get("threshold", 35.0))
+        wheres = ["f.measured_at >= ?", f"f.pm25 > {pdk_thr}"]
         params: list = [today]
         if district_filter:
             wheres.append("s.district ILIKE ?")
@@ -453,9 +460,27 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
 
     risks: list[dict] = []
 
+    # Загружаем пороги из ecology_rules.yaml
+    _r = _eco_rules()
+    _smog     = _r.get("smog_trap",    {})
+    _pdk      = _r.get("pdk",          {})
+    _ice      = _r.get("black_ice",    {})
+    _shock    = _r.get("temp_shock",   {})
+    _cold     = _r.get("extreme_cold", {})
+
+    smog_wind_thr    = float(_smog.get("wind_threshold_ms",         1.5))
+    smog_warn_pm25   = float(_smog.get("pm25_warning_threshold",   20.0))
+    smog_crit_pm25   = float(_smog.get("pm25_critical_threshold",  35.0))
+    pdk_thr          = float(_pdk.get("threshold",                 35.0))
+    ice_t_min        = float(_ice.get("temp_min",                  -3.0))
+    ice_t_max        = float(_ice.get("temp_max",                   2.0))
+    shock_delta      = float(_shock.get("delta_threshold",        -15.0))
+    cold_warn_thr    = float(_cold.get("warning_threshold",       -20.0))
+    cold_crit_thr    = float(_cold.get("critical_threshold",      -30.0))
+
     # ── Сценарий В: Экологическая ловушка / Чёрное небо ──────────────────────
-    if avg_wind is not None and avg_pm25 is not None and avg_wind < 1.5 and avg_pm25 > 20:
-        severity = "critical" if avg_pm25 > 35 else "warning"
+    if avg_wind is not None and avg_pm25 is not None and avg_wind < smog_wind_thr and avg_pm25 > smog_warn_pm25:
+        severity = "critical" if avg_pm25 > smog_crit_pm25 else "warning"
         risks.append({
             "id": "smog_trap",
             "scenario": "Экологическая ловушка",
@@ -475,14 +500,14 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
         })
 
     # ── Превышение нормы ВОЗ по PM2.5 ────────────────────────────────────────
-    if avg_pm25 is not None and avg_pm25 > 35:
+    if avg_pm25 is not None and avg_pm25 > pdk_thr:
         risks.append({
             "id": "pdk",
             "scenario": "Превышение нормы ВОЗ",
             "severity": "critical",
             "icon": "☢️",
-            "title": f"PM2.5 = {avg_pm25} мкг/м³ — норма превышена в {round(avg_pm25 / 35, 1)}×",
-            "metrics": f"Норма ВОЗ: 35 мкг/м³ · Текущее: {avg_pm25} мкг/м³",
+            "title": f"PM2.5 = {avg_pm25} мкг/м³ — норма превышена в {round(avg_pm25 / pdk_thr, 1)}×",
+            "metrics": f"Норма ВОЗ: {pdk_thr} мкг/м³ · Текущее: {avg_pm25} мкг/м³",
             "citizen": (
                 "Ограничьте время на улице. "
                 "Носите маску класса FFP2 / N95. "
@@ -495,7 +520,7 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
         })
 
     # ── Сценарий А: Риск чёрного льда ────────────────────────────────────────
-    if avg_temp is not None and -3.0 <= avg_temp <= 2.0:
+    if avg_temp is not None and ice_t_min <= avg_temp <= ice_t_max:
         hum_note = f" · Влажность {avg_hum}%" if avg_hum else ""
         risks.append({
             "id": "ice",
@@ -516,7 +541,7 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
         })
 
     # ── Сценарий Б: Температурный шок ────────────────────────────────────────
-    if temp_delta_24h is not None and temp_delta_24h <= -15.0:
+    if temp_delta_24h is not None and temp_delta_24h <= shock_delta:
         risks.append({
             "id": "temp_shock",
             "scenario": "Температурный шок",
@@ -537,11 +562,11 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
         })
 
     # ── Экстремальный холод ───────────────────────────────────────────────────
-    if min_temp is not None and min_temp < -20.0:
+    if min_temp is not None and min_temp < cold_warn_thr:
         risks.append({
             "id": "severe_cold",
             "scenario": "Экстремальный холод",
-            "severity": "critical" if min_temp < -30.0 else "warning",
+            "severity": "critical" if min_temp < cold_crit_thr else "warning",
             "icon": "🥶",
             "title": f"Экстремальные морозы: до {min_temp:.0f}°C",
             "metrics": f"Минимум по районам: {min_temp:.0f}°C",
@@ -740,15 +765,25 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
             r["weather_desc"] = desc
             t_max = r["temp_max"]
             t_min = r["temp_min"]
+            # Прогнозные флаги рисков из ecology_rules.yaml
+            _fc    = _rules.get("ecology_rules").get("forecast", {})
+            _ice_z = _fc.get("ice_risk", {})
+            _ice_z_min = float(_ice_z.get("temp_zone_min", -3.0))
+            _ice_z_max = float(_ice_z.get("temp_zone_max",  2.0))
+            _cold_thr  = float(_fc.get("cold_risk", {}).get("threshold", -20.0))
+            _snow_wc   = _fc.get("snow_risk", {})
+            _snow_min  = int(_snow_wc.get("wmo_code_min", 70))
+            _snow_max  = int(_snow_wc.get("wmo_code_max", 86))
+
             # Риск гололёда: суточный диапазон проходит через 0°C
             r["ice_risk"] = bool(t_min is not None and t_max is not None
                                  and t_min <= 0 <= t_max or
-                                 (t_min is not None and -3 <= t_min <= 2))
-            # Риск сильного мороза: мин < −20°C
-            r["cold_risk"] = bool(t_min is not None and t_min < -20)
+                                 (t_min is not None and _ice_z_min <= t_min <= _ice_z_max))
+            # Риск сильного мороза
+            r["cold_risk"] = bool(t_min is not None and t_min < _cold_thr)
             # Риск снегопада: осадки + код снега
             wc = r.get("weathercode") or 0
-            r["snow_risk"] = bool(r.get("precipitation", 0) and 70 <= wc <= 86)
+            r["snow_risk"] = bool(r.get("precipitation", 0) and _snow_min <= wc <= _snow_max)
 
         return rows
     except Exception as e:
