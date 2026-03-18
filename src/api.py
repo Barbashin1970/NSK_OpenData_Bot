@@ -3504,6 +3504,16 @@ def studio_set_active_city(body: dict):
     new_profile = _gcp()
     city_name = new_profile.get("city", {}).get("name", city_id)
 
+    # Обновляем module-level переменные router.py (заданы при импорте, не знают о смене города)
+    try:
+        from . import router as _router
+        from .city_config import get_districts as _gd, get_sub_districts_compiled as _gsdc, get_sub_districts_info as _gsdi
+        _router.DISTRICTS = _gd()
+        _router._SUB_DISTRICTS = _gsdc()
+        _router.SUB_DISTRICTS_INFO = _gsdi()
+    except Exception:
+        pass
+
     return {"ok": True, "city_id": city_id, "city_name": city_name, "profile_file": matched_path.name}
 
 

@@ -157,7 +157,7 @@
     </div>
 
     <!-- Search bar -->
-    <div class="flex gap-2 sm:gap-3">
+    <div class="flex gap-2 sm:gap-3 items-center">
       <div class="relative flex-1 min-w-0">
         <input
           id="queryInput"
@@ -1626,20 +1626,12 @@ function renderConstruction(data) {
       <span>${esc(data.note)}</span>
     </div>` : '';
 
-  // District filter options (used both for dist filter bar and type-switcher suffix)
-  const distOpts = [
-    {label: 'Весь город',      val: '',                        q: baseQuery},
-    {label: 'Дзержинский',     val: 'Дзержинский район',       q: `${baseQuery} в Дзержинском районе`},
-    {label: 'Железнодор.',     val: 'Железнодорожный район',   q: `${baseQuery} в Железнодорожном районе`},
-    {label: 'Заельцовский',    val: 'Заельцовский район',      q: `${baseQuery} в Заельцовском районе`},
-    {label: 'Калининский',     val: 'Калининский район',       q: `${baseQuery} в Калининском районе`},
-    {label: 'Кировский',       val: 'Кировский район',         q: `${baseQuery} в Кировском районе`},
-    {label: 'Ленинский',       val: 'Ленинский район',         q: `${baseQuery} в Ленинском районе`},
-    {label: 'Октябрьский',     val: 'Октябрьский район',       q: `${baseQuery} в Октябрьском районе`},
-    {label: 'Первомайский',    val: 'Первомайский район',      q: `${baseQuery} в Первомайском районе`},
-    {label: 'Советский',       val: 'Советский район',         q: `${baseQuery} в Советском районе`},
-    {label: 'Центральный',     val: 'Центральный район',       q: `${baseQuery} в Центральном районе`},
-  ];
+  // District filter options — dynamic from NSK_DISTRICTS (respects active city)
+  const distOpts = NSK_DISTRICTS.filter(d => !d.desc || d.val === '').map(d => ({
+    label: d.label,
+    val:   d.val,
+    q:     d.val ? `${baseQuery}${_distQuerySuffix(d.label, d.val)}` : baseQuery,
+  }));
 
   // District suffix for type-switcher (preserves active district when switching type)
   const activeDist = distOpts.find(d => d.val === currentDistrict);

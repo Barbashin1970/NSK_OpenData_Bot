@@ -61,9 +61,10 @@ def extract_district(query: str) -> str | None:
     sub = extract_sub_district(query)
     if sub:
         return sub[0]  # возвращаем родительский район для фильтрации
-    # Затем стандартные районы
+    # Затем стандартные районы — вызываем get_districts() динамически,
+    # чтобы корректно работать после переключения города без перезапуска.
     q = _normalize(query)
-    for district_name, patterns in DISTRICTS.items():
+    for district_name, patterns in get_districts().items():
         for pat in patterns:
             if pat in q:
                 return district_name
