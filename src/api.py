@@ -6,6 +6,7 @@ import os
 import re as _re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -2508,18 +2509,27 @@ def post_medical_update() -> dict:
 
 # ── Ecology endpoints ─────────────────────────────────────────────────────────
 
+_ecology_lock = threading.Lock()
+
+
 def _ecology_auto_update() -> None:
-    """Обновляет данные экологии и прогноза если TTL истёк."""
+    """Обновляет данные экологии и прогноза если TTL истёк.
+
+    Защищён threading.Lock() — предотвращает конкурентные записи в DuckDB
+    когда несколько эндпоинтов (/ecology/status, /ecology/risks) вызываются
+    одновременно при загрузке дашборда.
+    """
     from .ecology_cache import (
         is_ecology_stale, upsert_stations, upsert_measurements,
         is_forecast_stale, upsert_forecast,
     )
     from .ecology_fetcher import fetch_all_ecology, fetch_all_forecast
-    if is_ecology_stale():
-        upsert_stations()
-        upsert_measurements(fetch_all_ecology())
-    if is_forecast_stale():
-        upsert_forecast(fetch_all_forecast())
+    with _ecology_lock:
+        if is_ecology_stale():
+            upsert_stations()
+            upsert_measurements(fetch_all_ecology())
+        if is_forecast_stale():
+            upsert_forecast(fetch_all_forecast())
 
 
 @app.get(

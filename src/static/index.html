@@ -532,9 +532,18 @@ function setDistrictFilter(dist) {
   loadRoleDashboard();
 }
 
+let _dashRetried = false;
+
 async function loadRoleDashboard() {
+  _dashRetried = false;
+  return _loadRoleDashboardImpl(false);
+}
+
+async function _loadRoleDashboardImpl(isRetry) {
   const dashEl = document.getElementById('dashContent');
-  dashEl.innerHTML = '<div class="text-slate-400 text-sm text-center py-3">Загрузка данных...</div>';
+  if (!isRetry) {
+    dashEl.innerHTML = '<div class="text-slate-400 text-sm text-center py-3">Загрузка данных...</div>';
+  }
   try {
     const fetches = [
       fetch('/ask?q=' + encodeURIComponent('отключения ЖКХ сейчас')),
@@ -554,6 +563,13 @@ async function loadRoleDashboard() {
     dashEl.innerHTML = currentRole === 'mayor'
       ? renderMayorDashboard(power, eco, risks)
       : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData);
+
+    // Если AQI отсутствует — повторяем один раз через 5 с (экология могла ещё не загрузиться)
+    const hasAqi = eco?.rows?.some(r => r.aqi != null);
+    if (!hasAqi && !isRetry && (currentRole === 'mayor' || currentRole === 'official')) {
+      _dashRetried = true;
+      setTimeout(() => _loadRoleDashboardImpl(true), 5000);
+    }
     // Скрыть info-карточку "панель загружается…" после рендера дашборда
     const ra = document.getElementById('resultArea');
     if (ra && ra.classList.contains('bg-violet-50')) ra.className = 'hidden';
@@ -1403,16 +1419,17 @@ function _stripDistrictFromQuery(q) {
   ];
   let s = q;
   for (const stem of stems) {
-    s = s.replace(new RegExp('\\s*(в\\s+)?' + stem + '[а-яёa-z]*\\s*(район[еа]?|р-не?)?', 'gi'), ' ');
+    s = s.replace(new RegExp('\\s*(в\\s+)?' + stem + '[а-яёa-z]*\\s*(район[еа]?|р-не?|округ[еа]?)?', 'gi'), ' ');
   }
   return s.replace(/\s+/g, ' ').trim();
 }
 
-function _distQuerySuffix(label) {
+function _distQuerySuffix(label, distVal) {
   // Convert nominative adjective label → prepositional suffix for query
-  // "Советский" → " в Советском районе", "Железнодорожный" → " в Железнодорожном районе"
+  // "Советский" → " в Советском районе" (NSK) or " в Советском округе" (Omsk)
   const prep = label.replace(/ский$/, 'ском').replace(/ный$/, 'ном');
-  return ` в ${prep} районе`;
+  const isOkrug = (distVal || '').toLowerCase().endsWith('округ');
+  return ` в ${prep} ${isOkrug ? 'округе' : 'районе'}`;
 }
 
 function toggleTable(id) {
@@ -1443,11 +1460,12 @@ function renderTable(data) {
   const activeDist = data.district || '';
   const mainDists  = NSK_DISTRICTS.filter(d => !d.desc || d.val === '');
   const distBarHtml = data._skipDistBar ? '' : `
-    <div class="dist-filter-bar border-b border-slate-100" style="border-radius:0">
+    <div class="dist-filter-bar border-b border-slate-100" style="border-radius:0"
+         data-base-q="${esc(baseQ)}" data-active-dist="${esc(activeDist)}">
       <span class="text-xs text-slate-400 flex-shrink-0">Район:</span>
       ${mainDists.map(di => {
         const isAct = di.val === activeDist;
-        const q = di.val ? (baseQ + _distQuerySuffix(di.label)) : baseQ;
+        const q = di.val ? (baseQ + _distQuerySuffix(di.label, di.val)) : baseQ;
         const safeQ = q.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         return `<span class="dist-filter-tag${isAct ? ' active' : ''}" onclick="askNow('${safeQ}')">${di.label}</span>`;
       }).join('')}
@@ -4445,6 +4463,20 @@ async function loadCityConfig() {
     // Обновляем список районов из профиля города
     if (cfg.districts && cfg.districts.length > 1) {
       NSK_DISTRICTS = cfg.districts;
+      // Перерисовываем фильтр-бары в уже отрендеренных результатах (race condition:
+      // кэшированный результат может отрисоваться до того как этот fetch завершился)
+      document.querySelectorAll('.dist-filter-bar[data-base-q]').forEach(bar => {
+        const bq  = bar.dataset.baseQ || '';
+        const ad  = bar.dataset.activeDist || '';
+        const mds = NSK_DISTRICTS.filter(d => !d.desc || d.val === '');
+        bar.innerHTML = '<span class="text-xs text-slate-400 flex-shrink-0">Район:</span>' +
+          mds.map(di => {
+            const isAct = di.val === ad;
+            const q = di.val ? (bq + _distQuerySuffix(di.label, di.val)) : bq;
+            const sq = q.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            return `<span class="dist-filter-tag${isAct ? ' active' : ''}" onclick="askNow('${sq}')">${di.label}</span>`;
+          }).join('');
+      });
     }
     _cityCfg = cfg;
     _cityHasOpendataCsv = !!cfg.has_opendata_csv;
