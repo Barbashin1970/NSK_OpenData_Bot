@@ -468,16 +468,16 @@ function _showRoleList(dd) {
     const desc = key === 'official'
       ? (officialDistrict ? `Район: ${officialDistrict}` : 'Весь город — все районы')
       : r.desc;
-    // For official: left side sets role (keeps current district), right chevron opens district picker
+    // For official: click sets role; district is chosen inside the dashboard filter bar
     if (key === 'official') {
       return `
-        <div class="role-opt${isActive ? ' active' : ''}" style="padding-right:8px" onclick="setRole('official')">
+        <div class="role-opt${isActive ? ' active' : ''}" onclick="setRole('official')">
           <span class="role-icon">${r.icon}</span>
           <div class="role-info">
             <div class="role-name">${r.name}${distNote ? ` <span class="text-blue-500 font-normal text-xs">· ${distNote}</span>` : ''}</div>
             <div class="role-desc">${desc}</div>
           </div>
-          <button class="role-district-chevron" onclick="event.stopPropagation();_showDistrictPicker()" title="Выбрать район">›</button>
+          ${isActive ? '<span class="role-check">✓</span>' : ''}
         </div>`;
     }
     const check = isActive ? `<span class="role-check">✓</span>` : '';

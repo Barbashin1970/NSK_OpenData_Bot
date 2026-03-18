@@ -2201,7 +2201,7 @@ def get_transit(
         """Извлекает номера маршрутов из строки вида 'Автобус: 23, 36.Маршрутное такси: 4.'"""
         if not marshryt:
             return []
-        return re.findall(r"\b\d+[а-яёa-z]?\b", marshryt)
+        return _re.findall(r"\b\d+[а-яёa-z]?\b", marshryt)
 
     conn = _get_conn()
     try:
@@ -3323,7 +3323,7 @@ def _check_dev_pwd(pwd: str) -> bool:
 
 def _district_short_label(name: str) -> str:
     """'Кировский округ' → 'Кировский', 'Советский район' → 'Советский'."""
-    return re.sub(r"\s+(район|округ|р-н)$", "", name, flags=re.IGNORECASE)
+    return _re.sub(r"\s+(район|округ|р-н)$", "", name, flags=_re.IGNORECASE)
 
 
 @app.get("/api/city-config", include_in_schema=False)
