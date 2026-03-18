@@ -2939,8 +2939,9 @@ async function loadTopics() {
 }
 
 function renderTopics(topics) {
-  // Скрываем датасеты без данных — для нового города (Омск и др.) ещё не загруженные темы не показываем
-  const cards = topics.filter(t => t.rows != null && t.rows > 0).map(t => {
+  // Скрываем CSV-темы если у города нет подключённого opendata-портала (Омск и др.)
+  // Также скрываем темы без данных в кэше
+  const cards = topics.filter(t => _cityHasOpendataCsv && t.rows != null && t.rows > 0).map(t => {
     const rows = `${Number(t.rows).toLocaleString('ru-RU')} строк`;
     const hasData = true;
     const badge = hasData
