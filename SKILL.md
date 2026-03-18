@@ -709,7 +709,7 @@ Railway Dashboard → Logs tab → фильтр `UNKNOWN_QUERY`. Без перс
 
 > **Принцип:** `config/city_profile.yaml` — единственный источник городского знания. Все Python-модули читают город только через `src/city_config.py`. Прямое чтение YAML в других модулях запрещено.
 
-### Переключение города
+### Переключение города — серверный режим (env)
 
 ```bash
 CITY_PROFILE=city_profile_omsk bot serve       # Linux/macOS
@@ -721,6 +721,38 @@ $env:CITY_PROFILE="city_profile_omsk"; bot serve  # Windows PowerShell
 | не задан | `config/city_profile.yaml` | Новосибирск (дефолт) |
 | `city_profile_omsk` | `config/city_profile_omsk.yaml` | Омск |
 | абсолютный путь | `/etc/mybot/omsk.yaml` | произвольный путь |
+
+### Переключение города — UI (runtime, без перезапуска)
+
+Кнопка «🏙 Город ▾» в шапке index.html вызывает `_toggleCityMenu()` → показывает dropdown из `_availableCities`.
+
+**API:**
+- `GET /api/available-cities` → `{cities: [{city_id, city_name}, ...]}` (все `city_profile_*.yaml` в `config/`)
+- `POST /api/set-city {city_id}` → устанавливает `os.environ["CITY_PROFILE"]`, сбрасывает `lru_cache`, обновляет профиль
+- `GET /api/city-config` → возвращает `_cityCfg` для фронта (city_id, districts, has_opendata_csv, static_datasets...)
+
+**Фронт (index.html):**
+```javascript
+_loadAvailableCities()   // при инициализации — GET /api/available-cities
+_setActiveCity(cityId)   // POST /api/set-city → loadCityConfig() → loadTopics()
+```
+
+`loadCityConfig()` устанавливает `_cityHasOpendataCsv = !!cfg.has_opendata_csv` и вызывает `loadTopics()`.
+
+### Фильтрация CSV-карточек по городу
+
+В `renderTopics()` (index.html) CSV-плашки фильтруются двумя условиями:
+```javascript
+topics.filter(t => _cityHasOpendataCsv && t.rows != null && t.rows > 0)
+```
+- `_cityHasOpendataCsv = false` для городов без `opendata_csv_enabled: true` в профиле (Омск и др.)
+- Важно: backend `cache.py` хранит `_DB_PATH` на уровне модуля (устанавливается при импорте = NSK-путь), поэтому `/topics` может вернуть NSK-строки даже после переключения города. Фронтовый фильтр — надёжная защита.
+
+### Омск: специфика
+
+- **Отключения ЖКХ:** `power_scraper.py` диспетчеризует по `city_id == "omsk"` → `power_scraper_omsk.py` (POST API `omskrts.ru`, парсит адреса + группирует по типу ресурса / периоду)
+- **CSV-темы:** не подключены (`opendata_csv_enabled` не задан), плашки скрыты
+- **Аэропорт, Экология, Камеры, Медицина:** работают через Omsk-координаты из профиля
 
 ### Ключевые функции city_config.py
 
@@ -832,14 +864,28 @@ curl http://localhost:8000/topics
 
 ---
 
+## Вход для разработчиков и аналитиков регламентов
+
+Кнопка **«Вход для разработчиков 🔒»** в подвале `index.html` → модальный диалог ввода пароля → сессия сохраняется в `sessionStorage('dev_auth_ok')`.
+
+Эндпоинт аутентификации: `GET /dev-auth?password=<value>` → `{valid: true/false}`.
+Пароль по умолчанию: `sigma2024`. Хранится как SHA-256 в `data/api_keys.json`.
+
+После входа доступны два интерфейса:
+
+| Интерфейс | URL | Для кого |
+|---|---|---|
+| API Документация | `/docs` | Разработчики — Swagger с тест-запросами |
+| Data Studio | `/studio` | Аналитики регламентов — города, импорт данных, схемы |
+
 ## Data Studio (/studio)
 
-Визуальный интерфейс управления городскими данными. Для аналитиков мэрии.
-Открыть: `http://127.0.0.1:8000/studio`
+Визуальный интерфейс управления городскими данными. Для аналитиков регламентов городской среды.
 
 | Вкладка | Что делает |
 |---|---|
 | **Города** | Список всех `city_profile*.yaml`, статус датасетов (включён / файл есть / отсутствует) |
+| **Онлайн-источники** | URL порталов открытых данных и ЖКХ-отключений — редактируются без перезапуска |
 | **Импорт данных** | Загрузить CSV/JSON → предпросмотр → маппинг колонок → сохранить |
 | **Справочник схем** | Канонические схемы из `canonical_schemas.yaml` |
 
@@ -852,6 +898,11 @@ curl http://localhost:8000/topics
 | `GET` | `/studio/api/schemas` | Canonical schemas (YAML → JSON) |
 | `POST` | `/studio/api/preview` | Загрузить файл → `{columns, sample[5]}` |
 | `POST` | `/studio/api/import` | Загрузить + маппинг → сохранить в `data/cities/<city_id>/` |
+| `GET` | `/api/city-config` | Текущий city_profile в виде JSON для фронта |
+| `GET` | `/api/available-cities` | Список всех доступных городов |
+| `POST` | `/api/set-city` | Переключить активный город (runtime, без перезапуска) |
+| `GET` | `/api/online-sources/<city_id>` | Онлайн-источники для редактирования |
+| `POST` | `/api/edit-source` | Сохранить URL источника в city_profile_*.yaml |
 
 ### Импорт CSV: flow
 
