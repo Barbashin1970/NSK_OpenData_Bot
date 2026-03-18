@@ -419,7 +419,7 @@ function updateRoleBtn() {
   const r = ROLES[currentRole];
   document.getElementById('roleBtnIcon').textContent = r.icon;
   if (currentRole === 'official' && officialDistrict) {
-    const short = officialDistrict.replace(' район', '');
+    const short = officialDistrict.replace(/ (район|округ)$/i, '');
     document.getElementById('roleBtnName').textContent = short;
   } else {
     document.getElementById('roleBtnName').textContent = r.name;
@@ -464,7 +464,7 @@ function _showRoleList(dd) {
   dd.innerHTML = Object.entries(ROLES).map(([key, r]) => {
     const isActive = key === currentRole;
     const distNote = key === 'official' && officialDistrict
-      ? officialDistrict.replace(' район', '') : '';
+      ? officialDistrict.replace(/ (район|округ)$/i, '') : '';
     const desc = key === 'official'
       ? (officialDistrict ? `Район: ${officialDistrict}` : 'Весь город — все районы')
       : r.desc;
@@ -614,7 +614,7 @@ function renderTransitWidget(transit, district) {
   const barsHtml = rows.slice(0, 10).map(r => {
     const isHighlighted = d && (r.district||'').toLowerCase().includes(dKey);
     const pct  = Math.round(r.stops_count / maxVal * 100);
-    const dist = (r.district || '').replace(' район','').replace('Центральный','Централ.');
+    const dist = (r.district || '').replace(/ (район|округ)$/i,'').replace('Центральный','Централ.');
     const barCls = isHighlighted
       ? 'bg-gradient-to-r from-blue-500 to-indigo-500'
       : 'bg-gradient-to-r from-violet-400 to-indigo-400';
@@ -628,7 +628,7 @@ function renderTransitWidget(transit, district) {
       <span class="text-xs font-semibold ${isHighlighted ? 'text-blue-700' : 'text-slate-600'} w-6 text-right flex-shrink-0">${r.stops_count}</span>
     </div>`;
   }).join('');
-  const titleSuffix = d ? ` · ${d.replace(' район','')}` : ' по районам';
+  const titleSuffix = d ? ` · ${d.replace(/ (район|округ)$/i,'')}` : ' по районам';
   return `
     <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
@@ -683,7 +683,7 @@ function renderTrafficCompact(data) {
 
 function renderOfficialDashboard(power, eco, risks, transit, district, trafficData) {
   const d = district || '';  // '' = весь город
-  const dShort = d.replace(' район', '');
+  const dShort = d.replace(/ (район|округ)$/i, '');
 
   // ─ helper: фильтрация по подстроке района ────────────────────────────────
   // Для подрайонов (Академгородок) матчим родительский район (Советский)
@@ -795,8 +795,10 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
   const ecoChipRows = d ? ecoRows : allEcoRows.slice(0, 8);
   const ecoChips = ecoChipRows.map(r => {
     const c2 = aqiColor(r.aqi);
-    const dist = (r.district||'').replace(' район','');
-    const _q = `качество воздуха в ${dist} районе`;
+    const distRaw = r.district || '';
+    const isOkrug = distRaw.toLowerCase().endsWith('округ');
+    const dist = distRaw.replace(/ (район|округ)$/i, '');
+    const _q = `качество воздуха в ${dist} ${isOkrug ? 'округе' : 'районе'}`;
     return `<span class="${c2.bg} ${c2.text} border border-current/20 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity"
       onclick="askNow(decodeURIComponent('${encodeURIComponent(_q)}')">${dist}: ${r.aqi??'—'}</span>`;
   }).join('');
@@ -805,7 +807,7 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
   const distFilterBar = `
     <div class="dist-filter-bar">
       <span class="text-xs text-slate-400 flex-shrink-0">Район:</span>
-      ${NSK_DISTRICTS.map(di => {
+      ${NSK_DISTRICTS.filter(di => !di.desc || di.val === '').map(di => {
         const safeVal = di.val.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         const isAct   = officialDistrict === di.val;
         return `<span class="dist-filter-tag${isAct ? ' active' : ''}"
@@ -986,7 +988,7 @@ function _trySpecialQuery(raw) {
     const dist = _extractDistrict(ql);
     setRole('official', dist || officialDistrict);
     document.getElementById('queryInput').value = '';
-    const dLabel = (dist || officialDistrict || '').replace(' район', '');
+    const dLabel = (dist || officialDistrict || '').replace(/ (район|округ)$/i, '');
     _showInfoCard('🏙️', 'Режим: Служащий' + (dLabel ? ' · ' + dLabel : '') + ' — панель загружается…');
     setTimeout(() => {
       const dash = document.getElementById('roleDashboard');
@@ -2905,9 +2907,10 @@ async function loadTopics() {
 }
 
 function renderTopics(topics) {
-  const cards = topics.map(t => {
-    const rows = t.rows != null ? `${Number(t.rows).toLocaleString('ru-RU')} строк` : 'нет данных';
-    const hasData = t.rows != null && t.rows > 0;
+  // Скрываем датасеты без данных — для нового города (Омск и др.) ещё не загруженные темы не показываем
+  const cards = topics.filter(t => t.rows != null && t.rows > 0).map(t => {
+    const rows = `${Number(t.rows).toLocaleString('ru-RU')} строк`;
+    const hasData = true;
     const badge = hasData
       ? (t.stale
           ? `<span class="bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full text-xs">устарел</span>`
@@ -4463,6 +4466,8 @@ async function loadCityConfig() {
     // Обновляем список районов из профиля города
     if (cfg.districts && cfg.districts.length > 1) {
       NSK_DISTRICTS = cfg.districts;
+      // Кэшируем в localStorage — следующая загрузка страницы сразу применит правильные районы
+      try { localStorage.setItem('nsk_city_cfg', JSON.stringify({districts: cfg.districts, city_id: cfg.city_id})); } catch(e) {}
       // Перерисовываем фильтр-бары в уже отрендеренных результатах (race condition:
       // кэшированный результат может отрисоваться до того как этот fetch завершился)
       document.querySelectorAll('.dist-filter-bar[data-base-q]').forEach(bar => {
@@ -4519,7 +4524,15 @@ async function loadCityConfig() {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-loadCityConfig();  // Async: районы обновятся до первого взаимодействия пользователя
+// Синхронно применяем кэшированный конфиг города из прошлой сессии —
+// это устраняет гонку между рендером дашборда и async loadCityConfig()
+;(function _applyCachedCityConfig() {
+  try {
+    const c = JSON.parse(localStorage.getItem('nsk_city_cfg') || 'null');
+    if (c?.districts?.length > 1) NSK_DISTRICTS = c.districts;
+  } catch(e) {}
+})();
+loadCityConfig();  // Async: обновит конфиг и кэш, перезапустит дашборд
 updateRoleBtn();
 buildChips();
 loadTopics();
