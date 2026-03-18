@@ -3507,6 +3507,31 @@ def studio_set_active_city(body: dict):
     return {"ok": True, "city_id": city_id, "city_name": city_name, "profile_file": matched_path.name}
 
 
+# ── Public city endpoints (для city-switcher в index.html) ───────────────────
+
+@app.get("/api/available-cities", include_in_schema=False)
+def api_available_cities():
+    """Список всех доступных профилей городов для выпадающего меню."""
+    import yaml as _yaml
+    cities = []
+    for p in sorted(_CONFIG_DIR.glob("city_profile*.yaml")):
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = _yaml.safe_load(f)
+            if d and "city" in d:
+                c = d["city"]
+                cities.append({"city_id": c.get("id", ""), "city_name": c.get("name", "")})
+        except Exception:
+            pass
+    return {"cities": cities}
+
+
+@app.post("/api/set-city", include_in_schema=False)
+def api_set_city(body: dict):
+    """Переключить активный город (делегирует studio_set_active_city)."""
+    return studio_set_active_city(body)
+
+
 @app.get("/studio/api/schemas", include_in_schema=False)
 def studio_schemas():
     """Канонические схемы из canonical_schemas.yaml."""

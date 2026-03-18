@@ -140,6 +140,15 @@
           </button>
           <div id="roleDropdown" class="role-dropdown hidden"></div>
         </div>
+        <!-- City indicator (always visible) + dropdown city switcher -->
+        <div id="cityIndicator" class="relative flex-shrink-0">
+          <button onclick="_toggleCityMenu()"
+            class="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-blue-500/20 border border-blue-400/30 text-blue-200 text-xs rounded-xl font-medium hover:bg-blue-500/30 transition-colors"
+            title="Активный город · нажмите для переключения">
+            🏙<span id="cityIndicatorName" class="hidden sm:inline"> …</span><span class="opacity-60 text-xs">▾</span>
+          </button>
+          <div id="cityDropdown" class="hidden absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 min-w-[10rem] overflow-hidden"></div>
+        </div>
         <!-- 2GIS badge — icon+text on desktop, icon-only on mobile -->
         <div id="mapglBadge" class="hidden flex-shrink-0 flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs rounded-xl font-medium" title="2GIS API ключ загружен · карты и геокодирование доступны">
           📍<span class="hidden sm:inline"> 2GIS</span>
@@ -4515,6 +4524,23 @@ async function loadCityConfig() {
     _cityCfg = cfg;
     _cityHasOpendataCsv = !!cfg.has_opendata_csv;
 
+    // ── Обновляем индикатор города ───────────────────────────────────────────
+    const cityNameEl = document.getElementById('cityIndicatorName');
+    if (cityNameEl && cfg.city_name) cityNameEl.textContent = ' ' + cfg.city_name;
+
+    // ── Проверяем officialDistrict — при смене города сбрасываем ─────────────
+    if (officialDistrict) {
+      const validVals = new Set((cfg.districts || []).map(d => d.val));
+      if (!validVals.has(officialDistrict)) {
+        officialDistrict = '';
+        localStorage.removeItem('nsk_official_district');
+        updateRoleBtn();
+      }
+    }
+
+    // Загружаем список городов для dropdown
+    _loadAvailableCities();
+
     // ── Обновляем чипы под текущий город ────────────────────────────────────
     // realDists — основные районы (desc пустой), subDists — подрайоны (desc = родитель)
     const realDists = (cfg.districts || []).filter(d => d.val && !d.desc);
@@ -4550,6 +4576,69 @@ async function loadCityConfig() {
       loadRoleDashboard();
     }
   } catch(e) { /* fallback: NSK_DISTRICTS и NSK-дефолтные чипы */ }
+}
+
+// ─── City switcher ────────────────────────────────────────────────────────────
+let _availableCities = [];
+
+async function _loadAvailableCities() {
+  try {
+    const r = await fetch('/api/available-cities');
+    if (!r.ok) return;
+    const data = await r.json();
+    _availableCities = data.cities || [];
+    _renderCityDropdown();
+  } catch(e) {}
+}
+
+function _renderCityDropdown() {
+  const dd = document.getElementById('cityDropdown');
+  if (!dd) return;
+  const currentId = _cityCfg?.city_id || '';
+  dd.innerHTML = _availableCities.map(c => `
+    <button onclick="_setActiveCity('${c.city_id}')"
+      class="w-full text-left px-4 py-2 text-sm transition-colors ${c.city_id === currentId
+        ? 'text-blue-600 font-semibold bg-blue-50'
+        : 'text-slate-700 hover:bg-slate-50'}">${c.city_name}${c.city_id === currentId ? ' ✓' : ''}</button>
+  `).join('');
+}
+
+function _toggleCityMenu() {
+  const dd = document.getElementById('cityDropdown');
+  if (!dd) return;
+  const closing = !dd.classList.contains('hidden');
+  dd.classList.toggle('hidden');
+  if (!closing) {
+    _renderCityDropdown();
+    setTimeout(() => {
+      document.addEventListener('click', function _closeCityMenu(e) {
+        if (!e.target.closest('#cityIndicator')) { dd.classList.add('hidden'); }
+        document.removeEventListener('click', _closeCityMenu);
+      });
+    }, 0);
+  }
+}
+
+async function _setActiveCity(cityId) {
+  const dd = document.getElementById('cityDropdown');
+  if (dd) dd.classList.add('hidden');
+  if (_cityCfg?.city_id === cityId) return;  // уже активен
+  try {
+    const r = await fetch('/api/set-city', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({city_id: cityId})
+    });
+    if (!r.ok) return;
+    // Сброс district localStorage при смене города
+    officialDistrict = '';
+    localStorage.removeItem('nsk_official_district');
+    localStorage.removeItem('nsk_city_cfg');
+    await loadCityConfig();
+    // Перезагрузить дашборд если видим
+    const dash = document.getElementById('roleDashboard');
+    if (dash && !dash.classList.contains('hidden')) loadRoleDashboard();
+  } catch(e) {}
 }
 
 // ─── Input clear button ───────────────────────────────────────────────────────
