@@ -2166,12 +2166,12 @@ def get_transit(
     from_district: str = Query(
         ...,
         description="Район отправления. Например: `Советский район`",
-        example="Советский район",
+        examples={"default": {"value": "Советский район"}},
     ),
     to_district: str = Query(
         ...,
         description="Район назначения. Например: `Дзержинский район`",
-        example="Дзержинский район",
+        examples={"default": {"value": "Дзержинский район"}},
     ),
 ) -> dict:
     """

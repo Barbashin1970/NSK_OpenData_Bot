@@ -646,7 +646,7 @@ def serve(host: str, port: int, restart: bool) -> None:
         console.print("[red]Для запуска сервера установите: pip install fastapi uvicorn[/red]")
         sys.exit(1)
 
-    console.print(f"[bold green]NSK OpenData Bot API запущен: http://{host}:{port}[/bold green]")
+    console.print(f"[bold green]Фреймворк Сигма API запущен: http://{host}:{port}[/bold green]")
     console.print("[dim]Ctrl+C — остановить  ·  bot serve --restart — перезапустить[/dim]")
     uvicorn.run(app, host=host, port=port, log_level="warning")
 

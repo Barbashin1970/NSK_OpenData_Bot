@@ -509,8 +509,8 @@ def _geocode_metro_bg() -> None:
     """
     try:
         from .geocoder import geocode
-        from .metro_data import METRO_STATIONS
-        for s in METRO_STATIONS:
+        from .metro_data import get_stations
+        for s in get_stations():
             geocode(f"метро {s['name']}")
     except Exception as e:
         log.warning(f"metro geocoding bg: {e}")
@@ -526,7 +526,10 @@ def execute_metro(plan: Plan) -> dict[str, Any]:
     Координаты обогащаются через 2GIS-геокодер (если ключ задан), иначе
     используются статические координаты из metro_data.py.
     """
-    from .metro_data import get_metro_info, get_stations, METRO_LINES, METRO_INFO
+    from .metro_data import get_metro_info, get_stations
+    _metro_full = get_metro_info()
+    METRO_LINES = _metro_full.get("lines", [])
+    METRO_INFO = {k: v for k, v in _metro_full.items() if k not in ("lines", "stations")}
 
     op = plan.operation
     line_filter = plan.extra_filters.get("line") or None

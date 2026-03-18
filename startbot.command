@@ -15,8 +15,8 @@ COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "")
 COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null || echo "")
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  NSK OpenData Bot  v${VERSION}"
-echo "  Открытые данные мэрии Новосибирска"
+echo "  Фреймворк Сигма  v${VERSION}"
+echo "  Открытые данные и цифровые регламенты городской среды"
 if [ -n "$COMMIT" ]; then
   echo "  Коммит: ${COMMIT}  ${COMMIT_MSG}"
 fi
