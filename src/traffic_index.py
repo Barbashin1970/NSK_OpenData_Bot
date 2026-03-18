@@ -17,14 +17,28 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from .city_config import get_utc_offset
+from .rule_engine import rules as _rules
 
 log = logging.getLogger(__name__)
 
 _NSK_UTC_OFFSET = get_utc_offset()
 
+
+def _build_holiday_db() -> dict[date, str]:
+    """Строит словарь нерабочих дней из holiday_calendar.yaml."""
+    cal = _rules.get("holiday_calendar")
+    db: dict[date, str] = {}
+    for entry in cal.get("holidays", []):
+        try:
+            d = date.fromisoformat(entry["date"])
+            db[d] = entry["type"]
+        except Exception as exc:
+            log.warning("holiday_calendar: некорректная запись %s: %s", entry, exc)
+    return db
+
+
 # ── База официальных нерабочих дней 2025–2027 ────────────────────────────────
-# Источники: Производственный календарь РФ, Постановления Правительства
-#
+# Загружается из config/rules/holiday_calendar.yaml
 # Тип записи:
 #   "holiday"      — нерабочий праздничный день (= выходной)
 #   "bridge"       — перенесённый выходной (мост между праздником и уик-эндом)
@@ -126,22 +140,32 @@ _HOLIDAY_DB: dict[date, str] = {
     date(2027, 12, 31): "pre",
 }
 
-# Дополнительные городские события (ежегодные, дата фиксирована)
-# Формат: (month, day, label, traffic_delta)
-_ANNUAL_EVENTS: list[tuple[int, int, str, float]] = [
-    (9,  1,  "1 Сентября", +2.0),    # День знаний: все везут детей в школы
-    (6, 25,  "Выпускной вечер", +1.0),  # Вечер выпускников
-    (12, 28, "Канун новогодних каникул", +1.5),  # Все едут за подарками и в аэропорт
-    (12, 29, "Предновогодняя суета", +2.0),
-    (12, 30, "Предновогодняя суета", +2.0),
-]
+# Дополнительные городские события — загружаются из traffic_rules.yaml
+# Формат: (month, day, label, traffic_delta, morning_only, emoji)
+def _build_annual_events() -> list[tuple[int, int, str, float, bool, str]]:
+    evs = _rules.get("traffic_rules").get("annual_events", [])
+    return [
+        (e["month"], e["day"], e.get("label", ""), float(e.get("delta", 0)),
+         bool(e.get("morning_only", False)), e.get("emoji", "📅"))
+        for e in evs
+    ]
 
-# WMO weathercode → категория осадков
-_SNOW_CODES  = {71, 73, 75, 77, 85, 86}
-_RAIN_CODES  = {51, 53, 55, 61, 63, 65, 80, 81, 82}
-_ICE_CODES   = {56, 57, 66, 67}
-_STORM_CODES = {95, 96, 99}
-_FOG_CODES   = {45, 48}
+
+def _build_wmo_codes() -> tuple[set, set, set, set, set]:
+    codes = _rules.get("traffic_rules").get("weather", {}).get("wmo_codes", {})
+    return (
+        set(codes.get("snow",  [71, 73, 75, 77, 85, 86])),
+        set(codes.get("rain",  [51, 53, 55, 61, 63, 65, 80, 81, 82])),
+        set(codes.get("ice",   [56, 57, 66, 67])),
+        set(codes.get("storm", [95, 96, 99])),
+        set(codes.get("fog",   [45, 48])),
+    )
+
+
+_ANNUAL_EVENTS = _build_annual_events()
+
+# WMO weathercode → категория осадков (из traffic_rules.yaml)
+_SNOW_CODES, _RAIN_CODES, _ICE_CODES, _STORM_CODES, _FOG_CODES = _build_wmo_codes()
 
 
 @dataclass
@@ -164,21 +188,29 @@ class TrafficIndex:
     factors: list[TrafficFactor] = field(default_factory=list)
 
 
-# ── Паттерны часов пик ────────────────────────────────────────────────────────
+# ── Паттерны часов пик (из traffic_rules.yaml) ───────────────────────────────
 
 # (start_hour, end_hour, base_score, label)
-_TIME_ZONES = [
-    ( 0.0,  6.0, 0.3,  "Ночь"),
-    ( 6.0,  7.5, 1.8,  "Раннее утро"),
-    ( 7.5,  9.5, 5.5,  "Утренний час пик"),
-    ( 9.5, 11.0, 3.2,  "Постпиковое утро"),
-    (11.0, 13.0, 2.8,  "Середина дня"),
-    (13.0, 14.5, 3.5,  "Обеденное время"),
-    (14.5, 16.5, 3.0,  "Послеобеденное время"),
-    (16.5, 19.0, 5.0,  "Вечерний час пик"),
-    (19.0, 22.0, 2.5,  "Вечер"),
-    (22.0, 24.0, 1.2,  "Поздний вечер"),
-]
+def _build_time_zones() -> list[tuple[float, float, float, str]]:
+    zones = _rules.get("traffic_rules").get("time_zones", [])
+    if not zones:
+        # fallback: оригинальные значения
+        return [
+            ( 0.0,  6.0, 0.3,  "Ночь"),
+            ( 6.0,  7.5, 1.8,  "Раннее утро"),
+            ( 7.5,  9.5, 5.5,  "Утренний час пик"),
+            ( 9.5, 11.0, 3.2,  "Постпиковое утро"),
+            (11.0, 13.0, 2.8,  "Середина дня"),
+            (13.0, 14.5, 3.5,  "Обеденное время"),
+            (14.5, 16.5, 3.0,  "Послеобеденное время"),
+            (16.5, 19.0, 5.0,  "Вечерний час пик"),
+            (19.0, 22.0, 2.5,  "Вечер"),
+            (22.0, 24.0, 1.2,  "Поздний вечер"),
+        ]
+    return [(z["start"], z["end"], z["score"], z.get("label", "")) for z in zones]
+
+
+_TIME_ZONES = _build_time_zones()
 
 
 def _nsk_now() -> datetime:
@@ -200,54 +232,62 @@ def _day_factors(
     is_pre: bool,
     day_type: str,
 ) -> tuple[float, list[TrafficFactor]]:
-    """Модификаторы по дню недели и специальным событиям."""
+    """Модификаторы по дню недели и специальным событиям (из traffic_rules.yaml)."""
     factors: list[TrafficFactor] = []
     mod = 0.0
+    dm = _rules.get("traffic_rules").get("day_modifiers", {})
 
     # Понедельник: все сонные едут на работу → сильнее по утрам
-    if dow == 0 and not is_holiday and 7.0 <= hour < 10.0:
-        mod += 0.8
+    mon = dm.get("monday", {})
+    if dow == 0 and not is_holiday and mon.get("hours_from", 7.0) <= hour < mon.get("hours_to", 10.0):
+        delta = float(mon.get("delta", 0.8))
+        mod += delta
         factors.append(TrafficFactor(
-            "Понедельничный эффект",
-            "Все возвращаются к работе после выходных — движение плотнее",
-            0.8, "😴",
+            mon.get("name", "Понедельничный эффект"),
+            mon.get("description", "Все возвращаются к работе после выходных — движение плотнее"),
+            delta, mon.get("emoji", "😴"),
         ))
 
     # Пятница: вечерний исход усилен
-    if dow == 4 and not is_holiday and hour >= 16.0:
-        mod += 0.7
+    fri = dm.get("friday", {})
+    if dow == 4 and not is_holiday and hour >= fri.get("hours_from", 16.0):
+        delta = float(fri.get("delta", 0.7))
+        mod += delta
         factors.append(TrafficFactor(
-            "Пятничный исход",
-            "Все спешат покинуть город на выходные — вечерний пик усилен",
-            0.7, "🏁",
+            fri.get("name", "Пятничный исход"),
+            fri.get("description", "Все спешат покинуть город на выходные — вечерний пик усилен"),
+            delta, fri.get("emoji", "🏁"),
         ))
 
     # Предпраздничный день: часть людей уезжает раньше → лёгкое снижение
+    pre = dm.get("pre_holiday", {})
     if is_pre and not is_holiday:
-        mod -= 0.4
+        delta = float(pre.get("delta", -0.4))
+        mod += delta
         factors.append(TrafficFactor(
-            "Предпраздничный день",
-            "Укороченный рабочий день — многие уезжают раньше обычного",
-            -0.4, "🎉",
+            pre.get("name", "Предпраздничный день"),
+            pre.get("description", "Укороченный рабочий день — многие уезжают раньше обычного"),
+            delta, pre.get("emoji", "🎉"),
         ))
 
     # Пост-праздник: возврат из каникул (Jan 9 и аналоги)
+    post = dm.get("post_holiday", {})
     if day_type == "post_holiday":
-        mod += 1.2
+        delta = float(post.get("delta", 1.2))
+        mod += delta
         factors.append(TrafficFactor(
-            "Возврат после каникул",
-            "Все возвращаются в город после длинных праздников — пробки выше нормы",
-            1.2, "🏠➡🏙",
+            post.get("name", "Возврат после каникул"),
+            post.get("description", "Все возвращаются в город после длинных праздников — пробки выше нормы"),
+            delta, post.get("emoji", "🏠➡🏙"),
         ))
 
     # Ежегодные городские события
-    for ev_month, ev_day, ev_label, ev_delta in _ANNUAL_EVENTS:
+    for ev_month, ev_day, ev_label, ev_delta, ev_morning_only, ev_emoji in _ANNUAL_EVENTS:
         if today.month == ev_month and today.day == ev_day:
-            # 1 сентября эффективно только утром
-            if ev_label == "1 Сентября" and not (7.0 <= hour < 10.0):
+            if ev_morning_only and not (7.0 <= hour < 10.0):
                 continue
             mod += ev_delta
-            factors.append(TrafficFactor(ev_label, f"Городское событие: {ev_label}", ev_delta, "📅"))
+            factors.append(TrafficFactor(ev_label, f"Городское событие: {ev_label}", ev_delta, ev_emoji))
 
     return mod, factors
 
@@ -271,112 +311,141 @@ def _weather_factors(
     if today is None:
         today = _nsk_now().date()
 
+    w_cfg = _rules.get("traffic_rules").get("weather", {})
+
     # ── Снег ─────────────────────────────────────────────────────────────────
     if wcode in _SNOW_CODES:
-        if precip > 5:
-            delta += 2.5
+        snow_cfg = w_cfg.get("snow", {})
+        heavy_thr   = float(snow_cfg.get("heavy_threshold_mm", 5.0))
+        heavy_d     = float(snow_cfg.get("heavy_delta", 2.5))
+        normal_d    = float(snow_cfg.get("normal_delta", 1.5))
+        first_d     = float(snow_cfg.get("first_snow_extra_delta", 1.5))
+        first_months= set(snow_cfg.get("first_snow_months", [10, 11]))
+
+        if precip > heavy_thr:
+            delta += heavy_d
             factors.append(TrafficFactor(
                 "Сильный снегопад",
                 f"Осадки {precip:.1f} мм — видимость снижена, дороги скользкие",
-                2.5, "❄️",
+                heavy_d, "❄️",
             ))
         else:
-            delta += 1.5
+            delta += normal_d
             factors.append(TrafficFactor(
-                "Снегопад", "Снег на дорогах — движение замедляется", 1.5, "🌨",
+                "Снегопад", "Снег на дорогах — движение замедляется", normal_d, "🌨",
             ))
 
-        # Первый осенний снег (октябрь–ноябрь): город не готов
-        if today.month in (10, 11):
-            delta += 1.5
+        # Первый осенний снег: город не готов
+        if today.month in first_months:
+            delta += first_d
             factors.append(TrafficFactor(
                 "Первый осенний снег",
                 "Летняя резина, неубранный снег, неготовность служб — экстремальный риск",
-                1.5, "🚨",
+                first_d, "🚨",
             ))
 
     # ── Дождь ────────────────────────────────────────────────────────────────
     elif wcode in _RAIN_CODES:
-        if precip > 10:
-            delta += 1.5
+        rain_cfg = w_cfg.get("rain", {})
+        heavy_thr = float(rain_cfg.get("heavy_threshold_mm", 10.0))
+        heavy_d   = float(rain_cfg.get("heavy_delta", 1.5))
+        normal_d  = float(rain_cfg.get("normal_delta", 0.8))
+
+        if precip > heavy_thr:
+            delta += heavy_d
             factors.append(TrafficFactor(
-                "Ливень", f"Интенсивные осадки {precip:.1f} мм — видимость и сцепление снижены", 1.5, "⛈",
+                "Ливень", f"Интенсивные осадки {precip:.1f} мм — видимость и сцепление снижены", heavy_d, "⛈",
             ))
         else:
-            delta += 0.8
+            delta += normal_d
             factors.append(TrafficFactor(
-                "Дождь", "Мокрое покрытие — водители снижают скорость", 0.8, "🌧",
+                "Дождь", "Мокрое покрытие — водители снижают скорость", normal_d, "🌧",
             ))
 
     # ── Ледяной дождь / изморозь ──────────────────────────────────────────────
     elif wcode in _ICE_CODES:
-        delta += 2.5
+        ice_d = float(w_cfg.get("ice", {}).get("delta", 2.5))
+        delta += ice_d
         factors.append(TrafficFactor(
-            "Ледяной дождь", "Гололедица на дорогах — крайне опасно", 2.5, "🧊",
+            "Ледяной дождь", "Гололедица на дорогах — крайне опасно", ice_d, "🧊",
         ))
 
     # ── Гроза ────────────────────────────────────────────────────────────────
     elif wcode in _STORM_CODES:
-        delta += 2.0
+        storm_d = float(w_cfg.get("storm", {}).get("delta", 2.0))
+        delta += storm_d
         factors.append(TrafficFactor(
-            "Гроза", "Непогода резко снижает видимость и скорость потока", 2.0, "⛈",
+            "Гроза", "Непогода резко снижает видимость и скорость потока", storm_d, "⛈",
         ))
 
     # ── Туман ────────────────────────────────────────────────────────────────
     elif wcode in _FOG_CODES:
-        delta += 0.8
+        fog_d = float(w_cfg.get("fog", {}).get("delta", 0.8))
+        delta += fog_d
         factors.append(TrafficFactor(
-            "Туман", "Видимость снижена — водители едут осторожнее", 0.8, "🌫",
+            "Туман", "Видимость снижена — водители едут осторожнее", fog_d, "🌫",
         ))
 
     # ── Гололедица (температура ≈0 + осадки) ────────────────────────────────
-    if -3 <= temp <= 2 and precip > 0 and wcode not in _ICE_CODES:
-        delta += 1.0
+    bi_cfg = w_cfg.get("black_ice", {})
+    bi_min = float(bi_cfg.get("temp_min", -3.0))
+    bi_max = float(bi_cfg.get("temp_max", 2.0))
+    bi_d   = float(bi_cfg.get("delta", 1.0))
+    if bi_min <= temp <= bi_max and precip > 0 and wcode not in _ICE_CODES:
+        delta += bi_d
         factors.append(TrafficFactor(
             "Риск гололедицы",
             f"Температура {temp:.0f}°C + осадки — возможна гололедица на мостах и тенистых участках",
-            1.0, "🧊",
+            bi_d, "🧊",
         ))
 
     # ── Экстремальный мороз: машины не заводятся, меньше автомобилей ─────────
-    if temp < -30:
-        delta -= 1.5
+    fr_cfg    = w_cfg.get("frost", {})
+    fr_ext_t  = float(fr_cfg.get("extreme_threshold", -30.0))
+    fr_ext_d  = float(fr_cfg.get("extreme_delta", -1.5))
+    fr_str_t  = float(fr_cfg.get("strong_threshold", -20.0))
+    fr_str_d  = float(fr_cfg.get("strong_delta", -0.5))
+
+    if temp < fr_ext_t:
+        delta += fr_ext_d
         factors.append(TrafficFactor(
             "Экстремальный мороз",
             f"{temp:.0f}°C — массовый отказ техники, горожане пересаживаются на ОТ",
-            -1.5, "🥶",
+            fr_ext_d, "🥶",
         ))
-    elif temp < -20:
-        delta -= 0.5
+    elif temp < fr_str_t:
+        delta += fr_str_d
         factors.append(TrafficFactor(
             "Сильный мороз",
             f"{temp:.0f}°C — часть авто не заводится, трафик ниже среднего",
-            -0.5, "🥶",
+            fr_str_d, "🥶",
         ))
 
     # ── Сильный ветер ────────────────────────────────────────────────────────
-    if wind > 15:
-        delta += 0.5
+    wind_cfg = w_cfg.get("wind", {})
+    wind_thr = float(wind_cfg.get("strong_threshold_ms", 15.0))
+    wind_d   = float(wind_cfg.get("strong_delta", 0.5))
+    if wind > wind_thr:
+        delta += wind_d
         factors.append(TrafficFactor(
-            "Сильный ветер", f"{wind:.0f} м/с — снижение скорости на открытых участках", 0.5, "💨",
+            "Сильный ветер", f"{wind:.0f} м/с — снижение скорости на открытых участках", wind_d, "💨",
         ))
 
     return delta, factors
 
 
 def _classify(index: float) -> tuple[str, str]:
-    if index < 2.0:
-        return "Свободно", "🟢"
-    elif index < 3.5:
-        return "Умеренно", "🟡"
-    elif index < 5.0:
-        return "Затруднено", "🟠"
-    elif index < 6.5:
-        return "Сложно", "🔴"
-    elif index < 8.5:
-        return "Очень сложно", "🔴"
-    else:
-        return "Коллапс", "⛔"
+    levels = _rules.get("traffic_rules").get("levels", [])
+    for lvl in levels:
+        if index < float(lvl["max"]):
+            return lvl["label"], lvl.get("emoji", "")
+    # fallback
+    if index < 2.0:   return "Свободно",     "🟢"
+    if index < 3.5:   return "Умеренно",     "🟡"
+    if index < 5.0:   return "Затруднено",   "🟠"
+    if index < 6.5:   return "Сложно",       "🔴"
+    if index < 8.5:   return "Очень сложно", "🔴"
+    return "Коллапс", "⛔"
 
 
 def _next_peak_desc(hour: float, dow: int, is_holiday: bool) -> str:
@@ -398,36 +467,36 @@ def _next_peak_desc(hour: float, dow: int, is_holiday: bool) -> str:
 def _build_tips(index: float, factors: list[TrafficFactor]) -> tuple[str, str]:
     fnames = {f.name for f in factors}
 
-    if index < 2:
-        citizen  = "Дороги свободны. Отличное время для поездки."
-        official = "Штатный режим. Усиления не требуется."
-    elif index < 3.5:
-        citizen  = "Движение умеренное. Поездка комфортная."
-        official = "Штатный мониторинг."
-    elif index < 5.0:
-        citizen  = "Возможны заторы. Заложите дополнительно 15–20 минут."
-        official = "Рекомендуется мониторинг ключевых перекрёстков."
-    elif index < 6.5:
-        citizen  = "Значительные заторы. Рассмотрите общественный транспорт или метро."
-        official = "Рассмотреть регулировку светофоров на пиковых узлах."
-    elif index < 8.5:
-        citizen  = "Серьёзные пробки. Используйте метро, электросамокаты или пешие маршруты."
-        official = "Задействовать ручное управление движением на перегруженных узлах."
-    else:
-        citizen  = "Коллапс. Оставайтесь дома или используйте только метро и пешеходные маршруты."
-        official = "Режим чрезвычайной нагрузки. Аварийное регулирование. Экстренное информирование населения."
+    # Определяем ключ уровня по порогам из YAML
+    levels = _rules.get("traffic_rules").get("levels", [])
+    level_keys = ["free", "moderate", "difficult", "complex", "very_complex", "collapse"]
+    level_key = "collapse"
+    for i, lvl in enumerate(levels):
+        if index < float(lvl["max"]) and i < len(level_keys):
+            level_key = level_keys[i]
+            break
 
-    # Специфические уточнения
+    today = _nsk_now().date()
+    citizen  = _rules.tip(level_key, "citizen",  today)
+    official = _rules.tip(level_key, "official", today)
+
+    # Специфические уточнения по активным факторам
+    fh = _rules.get("traffic_rules").get("factor_hints", {})
+    dm = _rules.get("traffic_rules").get("day_modifiers", {})
+    post_name = dm.get("post_holiday", {}).get("name", "Возврат после каникул")
+    mon_name  = dm.get("monday",       {}).get("name", "Понедельничный эффект")
+    fri_name  = dm.get("friday",       {}).get("name", "Пятничный исход")
+
     if "Первый осенний снег" in fnames:
-        citizen += " ⚠️ Первый снег — экстремально скользко! Пересядьте на метро."
+        citizen += " " + fh.get("first_snow", "⚠️ Первый снег — экстремально скользко! Пересядьте на метро.")
     if "Ледяной дождь" in fnames or "Риск гололедицы" in fnames:
-        citizen += " 🧊 Гололедица: при поездке снизьте скорость вдвое."
-    if "Понедельничный эффект" in fnames:
-        citizen += " Выезжайте до 07:30 или после 09:30."
-    if "Пятничный исход" in fnames:
-        citizen += " Пятничный вечер: выезжайте после 20:00 или используйте ОТ."
-    if "Возврат после каникул" in fnames:
-        citizen += " Первый день после праздников — трафик выше нормы весь день."
+        citizen += " " + fh.get("ice", "🧊 Гололедица: при поездке снизьте скорость вдвое.")
+    if mon_name in fnames:
+        citizen += " " + fh.get("monday", "Выезжайте до 07:30 или после 09:30.")
+    if fri_name in fnames:
+        citizen += " " + fh.get("friday", "Пятничный вечер: выезжайте после 20:00 или используйте ОТ.")
+    if post_name in fnames:
+        citizen += " " + fh.get("post_holiday", "Первый день после праздников — трафик выше нормы весь день.")
 
     return citizen, official
 
@@ -466,8 +535,9 @@ def calculate_traffic_index(
 
     # Базовый балл по времени суток
     base, time_label = _time_base(hour)
-    # Выходные/праздники: трафик ≈ вдвое меньше
-    weekend_scale = 0.45 if is_holiday else 1.0
+    # Выходные/праздники: трафик ≈ вдвое меньше (масштаб из traffic_rules.yaml)
+    ws = float(_rules.get("traffic_rules").get("weekend_scale", 0.45))
+    weekend_scale = ws if is_holiday else 1.0
     base_scaled = base * weekend_scale
 
     # Модификаторы дня
@@ -495,6 +565,26 @@ def calculate_traffic_index(
         next_peak   = next_peak,
         factors     = day_fac + w_fac,
     )
+
+
+def reload_traffic_rules() -> list[str]:
+    """Перезагрузить регламенты из YAML и пересобрать кэшированные глобалы.
+
+    Вызывается из POST /admin/reload-rules — применяет новые коэффициенты
+    без перезапуска сервера.
+    """
+    global _HOLIDAY_DB, _ANNUAL_EVENTS, _TIME_ZONES
+    global _SNOW_CODES, _RAIN_CODES, _ICE_CODES, _STORM_CODES, _FOG_CODES
+
+    reloaded = _rules.reload()
+
+    _HOLIDAY_DB    = _build_holiday_db()
+    _ANNUAL_EVENTS = _build_annual_events()
+    _TIME_ZONES    = _build_time_zones()
+    _SNOW_CODES, _RAIN_CODES, _ICE_CODES, _STORM_CODES, _FOG_CODES = _build_wmo_codes()
+
+    log.info("reload_traffic_rules: пересобраны глобалы, регламенты: %s", reloaded)
+    return reloaded
 
 
 def get_traffic_index_with_weather() -> dict[str, Any]:

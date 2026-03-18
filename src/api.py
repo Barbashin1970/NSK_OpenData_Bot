@@ -1937,6 +1937,36 @@ def get_traffic_index() -> dict:
     return get_traffic_index_with_weather()
 
 
+# ── Управление регламентами ────────────────────────────────────────────────────
+
+@app.post(
+    "/admin/reload-rules",
+    tags=["Администрирование"],
+    summary="Горячая перезагрузка YAML-регламентов",
+)
+def admin_reload_rules() -> dict:
+    """Перечитывает все YAML-файлы из `config/rules/` и пересобирает
+    кэшированные глобалы в traffic_index.py.
+
+    Применяет новые коэффициенты **без перезапуска сервера**.
+    После редактирования YAML-файла вызовите этот эндпоинт чтобы изменения вступили в силу.
+    """
+    from .traffic_index import reload_traffic_rules
+    reloaded = reload_traffic_rules()
+    return {"status": "ok", "reloaded": reloaded}
+
+
+@app.get(
+    "/admin/rules-status",
+    tags=["Администрирование"],
+    summary="Статус кэша YAML-регламентов",
+)
+def admin_rules_status() -> dict:
+    """Показывает, какие YAML-регламенты загружены в память и их версии."""
+    from .rule_engine import rules
+    return rules.status()
+
+
 @app.get(
     "/transit",
     tags=["Запросы"],

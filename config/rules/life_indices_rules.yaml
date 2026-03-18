@@ -1,0 +1,89 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Регламент: Индексы жизни города (вычисляются в браузере из данных экологии)
+# Версия 1.0 — Фаза 0, инициализирована из computeLifeIndices() в index.html
+#
+# Фаза 3: эти же значения будут использоваться Python-бэкендом (GET /life-indices)
+# ─────────────────────────────────────────────────────────────────────────────
+version: "1.0"
+
+# ── Индекс водителя: 0 = безопасно, 10 = крайне опасно ──────────────────────
+driver:
+  # Температурные добавки (суммируются)
+  temp_black_ice_min: -3.0      # °C — нижняя граница зоны чёрного льда
+  temp_black_ice_max:  2.0      # °C — верхняя граница
+  temp_black_ice_score: 5       # +5 за нахождение в зоне чёрного льда
+  temp_regular_ice_min: -10.0   # °C — нижняя граница обычного льда
+  temp_regular_ice_score: 2     # +2 если -10...-3°C
+  temp_extreme_cold: -25.0      # °C — ниже этого: +3
+  temp_extreme_cold_score: 3
+  temp_severe_cold: -20.0       # °C — ниже этого (но ≥ -25): +2
+  temp_severe_cold_score: 2
+  temp_cold: -10.0              # °C — ниже этого (но ≥ -20): +1
+  temp_cold_score: 1
+  # Ветер
+  wind_strong_ms: 12.0          # м/с — сильный ветер: +2
+  wind_strong_score: 2
+  wind_moderate_ms: 8.0         # м/с — умеренный ветер: +1
+  wind_moderate_score: 1
+  # Пороги уровней (≤ значения)
+  levels:
+    - {max: 2, label: "Безопасно"}
+    - {max: 5, label: "Осторожно"}
+    - {max: 7, label: "Опасно"}
+    - {max: 10, label: "Крайне опасно"}
+
+# ── Индекс прогулки: 0 = сиди дома, 10 = идеально ───────────────────────────
+walk:
+  start_score: 10               # начальное значение, штрафы вычитаются
+  # PM2.5 штрафы
+  pm25_high: 35.0               # мкг/м³ — -4
+  pm25_high_penalty: 4
+  pm25_medium: 25.0             # мкг/м³ — -2
+  pm25_medium_penalty: 2
+  pm25_low: 15.0                # мкг/м³ — -1
+  pm25_low_penalty: 1
+  # AQI штрафы
+  aqi_very_high: 80             # — -3
+  aqi_very_high_penalty: 3
+  aqi_high: 60                  # — -2
+  aqi_high_penalty: 2
+  aqi_medium: 40                # — -1
+  aqi_medium_penalty: 1
+  # Температурные штрафы
+  temp_extreme: -25.0           # °C — -3
+  temp_extreme_penalty: 3
+  temp_cold: -15.0              # °C — -2
+  temp_cold_penalty: 2
+  temp_chilly: -5.0             # °C — -1
+  temp_chilly_penalty: 1
+  # Ветер
+  wind_threshold_ms: 10.0       # м/с — -1
+  wind_penalty: 1
+  # Пороги уровней (≥ значения)
+  levels:
+    - {min: 8, label: "Отличные условия"}
+    - {min: 6, label: "Хорошие условия"}
+    - {min: 4, label: "Ограниченно"}
+    - {min: 0, label: "Рекомендуется остаться дома"}
+
+# ── Индекс коммунального напряжения: 0 = норма, 10 = критично ───────────────
+utility:
+  # Температурные добавки по минимальной температуре (minT)
+  temp_critical: -30.0          # °C — +4
+  temp_critical_score: 4
+  temp_severe: -20.0            # °C — +3
+  temp_severe_score: 3
+  temp_cold: -10.0              # °C — +2
+  temp_cold_score: 2
+  temp_cool: -5.0               # °C — +1
+  temp_cool_score: 1
+  # Штиль + загрязнение: нагрузка на вентиляцию и отопление
+  smog_wind_threshold_ms: 1.5   # м/с
+  smog_pm25_threshold: 20.0     # мкг/м³
+  smog_score: 2                 # +2 при выполнении обоих условий
+  # Пороги уровней (≤ значения)
+  levels:
+    - {max: 2, label: "Норма"}
+    - {max: 5, label: "Повышенная нагрузка"}
+    - {max: 7, label: "Высокое напряжение"}
+    - {max: 10, label: "Критично"}
