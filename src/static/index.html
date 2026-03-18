@@ -149,13 +149,18 @@
 
     <!-- Search bar -->
     <div class="flex gap-2 sm:gap-3">
-      <input
-        id="queryInput"
-        type="text"
-        placeholder="Введите вопрос..."
-        class="search-glow flex-1 min-w-0 px-4 sm:px-5 py-3.5 rounded-2xl bg-white text-slate-900 text-sm shadow-lg focus:outline-none placeholder:text-slate-400 transition-shadow"
-        onkeydown="if(event.key==='Enter') ask()"
-      >
+      <div class="relative flex-1 min-w-0">
+        <input
+          id="queryInput"
+          type="text"
+          placeholder="Введите вопрос..."
+          class="search-glow w-full px-4 sm:px-5 pr-9 py-3.5 rounded-2xl bg-white text-slate-900 text-sm shadow-lg focus:outline-none placeholder:text-slate-400 transition-shadow"
+          onkeydown="if(event.key==='Enter') ask()"
+          oninput="_toggleClearBtn()"
+        >
+        <button id="clearBtn" onclick="_clearInput()" title="Очистить"
+          class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors flex items-center justify-center text-base leading-none">×</button>
+      </div>
       <button
         onclick="ask()"
         class="flex-shrink-0 px-4 sm:px-6 py-3.5 bg-white text-blue-700 font-semibold text-sm rounded-2xl shadow-lg hover:bg-blue-50 active:scale-95 transition-all"
@@ -184,7 +189,14 @@
 
 <!-- ═══════════════════ ROLE DASHBOARD ═══════════════════ -->
 <div id="roleDashboard" class="hidden bg-white border-b border-slate-200 shadow-sm">
-  <div class="max-w-4xl mx-auto px-4 py-5">
+  <div class="max-w-4xl mx-auto px-4 py-3 sm:py-5">
+    <!-- Кнопка свернуть/развернуть — только на мобильном -->
+    <div class="flex items-center justify-between sm:hidden mb-2">
+      <span class="text-xs text-slate-400 font-medium tracking-wide uppercase">Панель</span>
+      <button onclick="_toggleDashBody()" id="dashCollapseBtn"
+        class="text-slate-400 hover:text-slate-600 px-2 py-0.5 rounded text-sm transition-colors select-none"
+        title="Свернуть/развернуть панель">▼ скрыть</button>
+    </div>
     <div id="dashContent" class="text-slate-400 text-sm text-center py-2">Загрузка...</div>
   </div>
 </div>
@@ -370,8 +382,12 @@ let _chipsOpen = localStorage.getItem('nsk_chips_open') !== 'false';
 
 function buildChips() {
   const el = document.getElementById('chips');
-  const chips = ROLE_CHIPS[currentRole] || ROLE_CHIPS.citizen;
+  const allChips = ROLE_CHIPS[currentRole] || ROLE_CHIPS.citizen;
   const hasKey = Boolean(_mapglKey);
+  // Показываем 1 bold-чип + 7 случайных обычных = 8 итого
+  const boldChips   = allChips.filter(c => c.bold);
+  const regularPool = allChips.filter(c => !c.bold).sort(() => Math.random() - 0.5).slice(0, 7);
+  const chips = [...boldChips, ...regularPool];
   el.innerHTML = chips.map(item => {
     const q    = item.q;
     const geo  = item.geo && hasKey;
@@ -407,10 +423,11 @@ function _applyChipsState() {
   }
 }
 
-/** Сворачивает/разворачивает блок примеров вопросов */
+/** Сворачивает/разворачивает блок примеров вопросов; при открытии — новая случайная выборка */
 function toggleChips() {
   _chipsOpen = !_chipsOpen;
   localStorage.setItem('nsk_chips_open', _chipsOpen);
+  if (_chipsOpen) buildChips();  // новая случайная выборка при каждом раскрытии
   _applyChipsState();
 }
 
@@ -563,6 +580,7 @@ async function _loadRoleDashboardImpl(isRetry) {
     dashEl.innerHTML = currentRole === 'mayor'
       ? renderMayorDashboard(power, eco, risks)
       : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData);
+    _restoreDashCollapse();
 
     // Если AQI отсутствует — повторяем один раз через 5 с (экология могла ещё не загрузиться)
     const hasAqi = eco?.rows?.some(r => r.aqi != null);
@@ -1008,12 +1026,13 @@ function _trySpecialQuery(raw) {
   }
 
   // ── ЦИИ НГУ ───────────────────────────────────────────────────────────────
-  const cii = /\b(ции|центр\s*и\.?и\.?|центр\s*нгу)\b/i;
+  // \b не работает с кириллицей в JS — используем явные паттерны
+  const cii = /(ции|центр\s*(?:и\.?и\.?|нгу)|центр\s+искусственного)/i;
 
   // О центре
   if (
-    /что\s+такое\s+(ции|центр\s*(ии?|искусственного\s*интеллекта)|искусственный\s+интеллект)/i.test(ql) ||
-    /расскажи\s+о\s+(ции|центре)/i.test(ql) ||
+    /что\s+такое\s+(ции|центр(?:\s+(?:ии?|нгу|искусственного\s*интеллекта))?|искусственный\s+интеллект)/i.test(ql) ||
+    /расскажи\s+о\s+(ции|центре?(?:\s+искусственного)?)/i.test(ql) ||
     (cii.test(ql) && !/проект|команд|публикац|новост|контакт/.test(ql))
   ) {
     if (!_ciiPanelOpen) toggleCiiPanel();
@@ -1022,6 +1041,13 @@ function _trySpecialQuery(raw) {
   }
   // Проекты
   if (/(проекты?\s+(ции|центра)|какие\s+проекты?\s*(центра|ции|в\s+работе)?|проекты?\s+в\s+работе)/i.test(ql)) {
+    if (!_ciiPanelOpen) toggleCiiPanel();
+    loadCiiSection('projects');
+    return true;
+  }
+  // Конкретный проект ЦИИ: «фреймворк/платформа + имя» или «про/проект + имя»
+  if (/(фреймворк\s*(?:сигм|капп)|платформ\w*\s+архи|окулист\s+игорь|квадрокоптер\s+журавел|тест\w*\s+рки)/i.test(ql) ||
+      (/(?:про\s+(?:проект\s+)?|проект\s+|что\s+такое\s+(?:фреймворк\s+)?)/i.test(ql) && /(?:сигм|капп|архи|окулист|журавел|рки)\S*/i.test(ql))) {
     if (!_ciiPanelOpen) toggleCiiPanel();
     loadCiiSection('projects');
     return true;
@@ -1167,6 +1193,7 @@ async function ask() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     renderResult(data, q);
+    document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     showError('Ошибка соединения с сервером. Проверьте, что бот запущен: <code class="bg-red-100 px-1 rounded">bot serve</code>');
   }
@@ -1174,9 +1201,11 @@ async function ask() {
 
 function setLoading(q) {
   _resetMap();
-  document.getElementById('loadingState').className = 'flex items-center gap-3 text-slate-500 text-sm';
+  const ls = document.getElementById('loadingState');
+  ls.className = 'flex items-center gap-3 text-slate-500 text-sm';
   document.getElementById('loadingText').textContent = `Ищу ответ на: «${q}»`;
   document.getElementById('resultArea').className = 'hidden';
+  setTimeout(() => ls.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 }
 
 function showError(html) {
@@ -2951,7 +2980,7 @@ function renderTopics(topics) {
          onclick="setQuery('отключения электричества сейчас')">
       <div class="flex justify-between items-start mb-2">
         <span class="text-2xl">⚡</span>
-        <span class="bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full text-xs">realtime</span>
+        <span class="bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full text-xs">онлайн</span>
       </div>
       <div class="font-semibold text-sm text-slate-800 leading-tight">Отключения ЖКХ</div>
       <div class="text-xs text-slate-500 mt-1">${_powerDomain ? esc(_powerDomain) : 'Данные онлайн · каждые 30 мин'}</div>
@@ -4521,6 +4550,37 @@ async function loadCityConfig() {
       loadRoleDashboard();
     }
   } catch(e) { /* fallback: NSK_DISTRICTS и NSK-дефолтные чипы */ }
+}
+
+// ─── Input clear button ───────────────────────────────────────────────────────
+function _toggleClearBtn() {
+  const btn = document.getElementById('clearBtn');
+  if (btn) btn.classList.toggle('hidden', !document.getElementById('queryInput').value);
+}
+function _clearInput() {
+  document.getElementById('queryInput').value = '';
+  document.getElementById('clearBtn').classList.add('hidden');
+  document.getElementById('queryInput').focus();
+}
+
+// ─── Dashboard collapse (mobile) ──────────────────────────────────────────────
+function _toggleDashBody() {
+  const body = document.getElementById('dashContent');
+  const btn  = document.getElementById('dashCollapseBtn');
+  if (!body || !btn) return;
+  const collapsed = body.classList.toggle('hidden');
+  btn.textContent = collapsed ? '▲ показать' : '▼ скрыть';
+  localStorage.setItem('dashCollapsed', collapsed ? '1' : '0');
+}
+// Восстанавливаем состояние коллапса при рендере дашборда
+function _restoreDashCollapse() {
+  const body = document.getElementById('dashContent');
+  const btn  = document.getElementById('dashCollapseBtn');
+  if (!body || !btn) return;
+  if (localStorage.getItem('dashCollapsed') === '1') {
+    body.classList.add('hidden');
+    btn.textContent = '▲ показать';
+  }
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
