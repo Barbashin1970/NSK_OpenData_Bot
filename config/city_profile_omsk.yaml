@@ -142,9 +142,14 @@ opendata_base_url: "http://www.omsk.ru"
 static_datasets:
 
   emissions:
-    enabled: false
-    file: null
-    note: "Скачать 2-ТП Воздух для Омской области с rpn.gov.ru → data/cities/omsk/emissions_2tp.json"
+    enabled: true
+    file: "data/cities/omsk/emissions_2tp.json"
+    scope: "Омская область"
+    municipalities_count: 33
+    year: 2024
+    form: "2-ТП Воздух"
+    source: "Росприроднадзор (rpn.gov.ru)"
+    published: "2025-03"
 
   heat_sources:
     enabled: false

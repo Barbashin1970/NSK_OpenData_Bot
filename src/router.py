@@ -476,10 +476,15 @@ def _route_emissions(q: str) -> "RouteResult | None":
         score = 1.0
 
     confidence = min(1.0, max(score / 8, 0.65))
+    # Динамическое имя из профиля города
+    from .city_config import get_emissions_meta_from_profile
+    _emeta = get_emissions_meta_from_profile()
+    _scope = _emeta.get("scope") or "НСО"
+    _year = _emeta.get("year") or 2024
     return RouteResult(
         topic="emissions",
         confidence=confidence,
-        name="Выбросы в атмосферу НСО (2-ТП Воздух 2024)",
+        name=f"Выбросы в атмосферу {_scope} (2-ТП Воздух {_year})",
         matched_keywords=[kw for kw in _EMISSIONS_KEYWORDS if _normalize(kw) in q],
     )
 

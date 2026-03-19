@@ -55,6 +55,8 @@ def get_emissions_meta() -> dict:
         return {}
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
+    from .city_config import get_emissions_meta_from_profile
+    profile_meta = get_emissions_meta_from_profile()
     return {
         "year": data.get("year"),
         "form": data.get("form"),
@@ -62,6 +64,7 @@ def get_emissions_meta() -> dict:
         "published": data.get("published"),
         "note": data.get("note"),
         "total_municipalities": len(data.get("municipalities", [])),
+        "scope": profile_meta.get("scope", ""),
     }
 
 
