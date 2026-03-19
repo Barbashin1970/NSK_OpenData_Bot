@@ -229,5 +229,8 @@ def fetch_all_outages() -> list[dict[str, Any]]:
     if city == "omsk":
         from .power_scraper_omsk import fetch_all_outages as _omsk_fetch
         return _omsk_fetch()
+    if city == "khabarovsk":
+        from .power_scraper_khabarovsk import fetch_all_outages as _khv_fetch
+        return _khv_fetch()
     # Дефолт: Новосибирск и любой город с совместимым 051-сайтом
     return scrape_summary()
