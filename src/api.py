@@ -317,8 +317,11 @@ async def _start_background_preloader() -> None:
     lazy fallback в /ask подгружает её синхронно.
     """
     import asyncio
-    from .updater import preload_all_async
+    from .updater import preload_all_async, periodic_refresh_loop
     asyncio.create_task(preload_all_async(delay_start=15.0))
+    # Периодический авто-рефреш: каждые 12ч обновляет устаревшие CSV-темы,
+    # чтобы чипы «актуален» не превращались в «устарел» при отсутствии пользователей.
+    asyncio.create_task(periodic_refresh_loop())
 
 
 # ── Кастомный Swagger UI: навигационная панель с кнопкой «← На главную» ───────
@@ -683,31 +686,55 @@ const NSKTests = (() => {
     btn.className = 'running';
     btn.textContent = '⟳ Загружаю данные…';
 
-    addLine('Запуск полного обновления системы…', 'info');
-    addLine('Открытые данные · Экология · Отключения ЖКХ', 'dim');
+    // ── Определяем активный город и его возможности ──────────────────────────
+    let cityName = 'город';
+    let hasOpendataCsv = true;
+    let hasPower = true;
+    try {
+      const cfgResp = await fetch('/api/city-config');
+      if (cfgResp.ok) {
+        const cfg = await cfgResp.json();
+        cityName = cfg.city_name || cityName;
+        hasOpendataCsv = !!cfg.has_opendata_csv;
+        hasPower = !!(cfg.power_outages_url);
+      }
+    } catch (_) {}
+
+    addLine('Загрузка данных: ' + cityName, 'info');
+    const sources = [];
+    if (hasOpendataCsv) sources.push('Открытые данные');
+    sources.push('Экология');
+    if (hasPower) sources.push('Отключения ЖКХ');
+    sources.push('Камеры (OSM)');
+    sources.push('Медучреждения (OSM)');
+    addLine(sources.join(' · '), 'dim');
     addLine('', '');
 
     let totalOk = 0, totalErr = 0;
 
-    // ── 1. Открытые данные (10 наборов) ─────────────────────────────────────
-    addLine('▶ Открытые данные мэрии (10 наборов)…', 'info');
-    try {
-      const resp = await fetch('/update', { method: 'POST' });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const data = await resp.json();
-      const updated = data.updated || {};
-      for (const [tid, info] of Object.entries(updated)) {
-        if (info.success) {
-          totalOk++;
-          addLine('  ✓ ' + tid + ' — ' + (info.rows || 0) + ' строк', 'passed');
-        } else {
-          totalErr++;
-          addLine('  ✗ ' + tid + ' — ошибка загрузки', 'failed');
+    // ── 1. Открытые данные CSV (только если есть opendata-портал) ────────────
+    if (hasOpendataCsv) {
+      addLine('▶ Открытые данные мэрии…', 'info');
+      try {
+        const resp = await fetch('/update', { method: 'POST' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        const updated = data.updated || {};
+        for (const [tid, info] of Object.entries(updated)) {
+          if (info.success) {
+            totalOk++;
+            addLine('  ✓ ' + tid + ' — ' + (info.rows || 0) + ' строк', 'passed');
+          } else {
+            totalErr++;
+            addLine('  ✗ ' + tid + ' — ошибка загрузки', 'failed');
+          }
         }
+      } catch (e) {
+        totalErr++;
+        addLine('  ✗ Открытые данные: ' + e.message, 'failed');
       }
-    } catch (e) {
-      totalErr++;
-      addLine('  ✗ Открытые данные: ' + e.message, 'failed');
+    } else {
+      addLine('▷ Открытые данные CSV — не подключены для ' + cityName, 'dim');
     }
 
     // ── 2. Экология и погода ─────────────────────────────────────────────────
@@ -733,28 +760,32 @@ const NSKTests = (() => {
       addLine('  ✗ Экология: ' + e.message, 'failed');
     }
 
-    // ── 3. Отключения ЖКХ ───────────────────────────────────────────────────
+    // ── 3. Отключения ЖКХ (только если есть URL) ─────────────────────────────
     addLine('', '');
-    addLine('▶ Отключения ЖКХ (051.novo-sibirsk.ru)…', 'info');
-    try {
-      const resp = await fetch('/power/update', { method: 'POST' });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const data = await resp.json();
-      if (data.success) {
-        totalOk++;
-        addLine(
-          '  ✓ power_outages — ' + (data.records_loaded || 0) + ' записей · ' +
-          'аварийных: ' + (data.active_houses || 0) + ' д. · ' +
-          'плановых: ' + (data.planned_houses || 0) + ' д.',
-          'passed'
-        );
-      } else {
+    if (hasPower) {
+      addLine('▶ Отключения ЖКХ…', 'info');
+      try {
+        const resp = await fetch('/power/update', { method: 'POST' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (data.success) {
+          totalOk++;
+          addLine(
+            '  ✓ power_outages — ' + (data.records_loaded || 0) + ' записей · ' +
+            'аварийных: ' + (data.active_houses || 0) + ' д. · ' +
+            'плановых: ' + (data.planned_houses || 0) + ' д.',
+            'passed'
+          );
+        } else {
+          totalErr++;
+          addLine('  ✗ power_outages — данные не загружены', 'failed');
+        }
+      } catch (e) {
         totalErr++;
-        addLine('  ✗ power_outages — данные не загружены', 'failed');
+        addLine('  ✗ Отключения ЖКХ: ' + e.message, 'failed');
       }
-    } catch (e) {
-      totalErr++;
-      addLine('  ✗ Отключения ЖКХ: ' + e.message, 'failed');
+    } else {
+      addLine('▷ Отключения ЖКХ — не подключены для ' + cityName, 'dim');
     }
 
     // ── 4. Камеры фиксации нарушений (OSM) ──────────────────────────────────
@@ -800,9 +831,9 @@ const NSKTests = (() => {
     // ── Итог ─────────────────────────────────────────────────────────────────
     addLine('', '');
     if (totalErr === 0) {
-      addLine('Все источники данных обновлены (' + totalOk + ' успешно).', 'passed');
+      addLine('Все источники ' + cityName + ' обновлены (' + totalOk + ' успешно).', 'passed');
       btn.className = 'done-ok';
-      btn.textContent = '✓ Все данные загружены';
+      btn.textContent = '✓ Данные загружены (' + cityName + ')';
       result().textContent = '✓ Обновлено (' + totalOk + ')';
       result().className = 'ok';
     } else {

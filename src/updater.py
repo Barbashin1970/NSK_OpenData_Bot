@@ -130,3 +130,37 @@ async def preload_all_async(delay_start: float = 15.0) -> None:
         await asyncio.sleep(_PRELOAD_INTERVAL)
 
     log.info("Фоновый preloader: все темы обработаны")
+
+
+# ── Периодический авто-рефреш (каждые N часов) ──────────────────────────────
+# На Railway (и любом сервере) данные устаревают если нет пользователей.
+# Этот цикл каждые 12 часов проверяет TTL и обновляет устаревшие темы,
+# чтобы чипы на главной всегда показывали «актуален».
+
+_REFRESH_INTERVAL_HOURS = 12
+
+
+async def periodic_refresh_loop(interval_hours: float = _REFRESH_INTERVAL_HOURS) -> None:
+    """Бесконечный цикл: каждые interval_hours обновляет устаревшие CSV-темы.
+
+    Запускать через asyncio.create_task() при старте API-сервера.
+    Первая итерация начинается через interval_hours после preloader'а.
+    """
+    interval_sec = interval_hours * 3600
+    log.info("periodic_refresh_loop: старт (интервал %.0f ч)", interval_hours)
+
+    while True:
+        await asyncio.sleep(interval_sec)
+        log.info("periodic_refresh_loop: проверка устаревших тем…")
+        refreshed = 0
+        for topic in PRELOAD_ORDER:
+            try:
+                if is_stale(topic) or not table_exists(topic):
+                    n = await asyncio.to_thread(refresh_topic, topic, True)
+                    if n > 0:
+                        refreshed += 1
+                        log.info("periodic_refresh: %s — обновлено (%d строк)", topic, n)
+                    await asyncio.sleep(_PRELOAD_INTERVAL)
+            except Exception as e:
+                log.warning("periodic_refresh: ошибка %s: %s", topic, e)
+        log.info("periodic_refresh_loop: завершено, обновлено %d тем", refreshed)
