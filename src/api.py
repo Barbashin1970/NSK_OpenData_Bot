@@ -925,33 +925,41 @@ def run_tests():
         from .cache import table_exists
         from .power_cache import get_power_meta
 
+        # Определяем возможности активного города
+        _has_csv = get_feature("opendata_csv_enabled", False)
+        _has_power = bool(get_feature("power_outages_url", ""))
+
         registry = load_registry()
         meta = load_meta()
         health_checks = []
-        for tid, ds in registry.items():
-            if not table_exists(tid):
-                health_checks.append({"topic": tid, "status": "missing",
-                                      "msg": "Данные не загружены"})
-            elif is_stale(tid, ds.get("ttl_hours", 24)):
-                rows = meta.get(tid, {}).get("rows", "?")
-                health_checks.append({"topic": tid, "status": "stale",
-                                      "msg": f"Устаревший кэш ({rows} строк)"})
-            else:
-                rows = meta.get(tid, {}).get("rows", "?")
-                health_checks.append({"topic": tid, "status": "ok",
-                                      "msg": f"{rows} строк"})
 
-        try:
-            pwr = get_power_meta()
-            if pwr.get("last_scraped"):
-                health_checks.append({"topic": "power_outages", "status": "ok",
-                                      "msg": f"обновлено {pwr['last_scraped']}"})
-            else:
+        # CSV-темы показываем только для городов с opendata-порталом
+        if _has_csv:
+            for tid, ds in registry.items():
+                if not table_exists(tid):
+                    health_checks.append({"topic": tid, "status": "missing",
+                                          "msg": "Данные не загружены"})
+                elif is_stale(tid, ds.get("ttl_hours", 24)):
+                    rows = meta.get(tid, {}).get("rows", "?")
+                    health_checks.append({"topic": tid, "status": "stale",
+                                          "msg": f"Устаревший кэш ({rows} строк)"})
+                else:
+                    rows = meta.get(tid, {}).get("rows", "?")
+                    health_checks.append({"topic": tid, "status": "ok",
+                                          "msg": f"{rows} строк"})
+
+        if _has_power:
+            try:
+                pwr = get_power_meta()
+                if pwr.get("last_scraped"):
+                    health_checks.append({"topic": "power_outages", "status": "ok",
+                                          "msg": f"обновлено {pwr['last_scraped']}"})
+                else:
+                    health_checks.append({"topic": "power_outages", "status": "missing",
+                                          "msg": "Нет данных об отключениях"})
+            except Exception:
                 health_checks.append({"topic": "power_outages", "status": "missing",
-                                      "msg": "Нет данных об отключениях"})
-        except Exception:
-            health_checks.append({"topic": "power_outages", "status": "missing",
-                                  "msg": "Ошибка при проверке"})
+                                      "msg": "Ошибка при проверке"})
 
         # ── Экология и погода ────────────────────────────────────────────────
         try:
@@ -1027,9 +1035,15 @@ def run_tests():
             return
 
         project_root = Path(__file__).parent.parent
+        # Тесты всегда запускаются с базовым профилем (Новосибирск),
+        # даже если в UI переключён другой город. Это гарантирует
+        # стабильные результаты: тесты районов, подрайонов, геокодера
+        # рассчитаны на НСК-профиль с 10 районами и подрайонами.
+        test_env = {**os.environ, "CITY_PROFILE": "city_profile"}
         proc = subprocess.Popen(
             [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "--no-header"],
             cwd=str(project_root),
+            env=test_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
