@@ -130,6 +130,5 @@ static_datasets:
     note: "Метро в Иркутске отсутствует"
 
   airport:
-    enabled: false
-    file: ""
-    note: "Создать data/cities/irkutsk/airport.json"
+    enabled: true
+    file: "data/cities/irkutsk/airport.json"

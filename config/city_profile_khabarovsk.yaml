@@ -130,6 +130,5 @@ static_datasets:
     note: "Метро в Хабаровске отсутствует"
 
   airport:
-    enabled: false
-    file: ""
-    note: "Создать data/cities/khabarovsk/airport.json"
+    enabled: true
+    file: "data/cities/khabarovsk/airport.json"

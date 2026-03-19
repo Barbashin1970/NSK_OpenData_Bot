@@ -116,6 +116,5 @@ static_datasets:
     note: "Метро в Тюмени отсутствует"
 
   airport:
-    enabled: false
-    file: ""
-    note: "Создать data/cities/tyumen/airport.json"
+    enabled: true
+    file: "data/cities/tyumen/airport.json"

@@ -150,6 +150,5 @@ static_datasets:
     note: "Красноярский метрополитен строится, данных нет"
 
   airport:
-    enabled: false
-    file: ""
-    note: "Создать data/cities/krasnoyarsk/airport.json"
+    enabled: true
+    file: "data/cities/krasnoyarsk/airport.json"

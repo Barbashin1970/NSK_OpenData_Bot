@@ -151,6 +151,5 @@ static_datasets:
     note: "Создать data/cities/yekaterinburg/metro.json (9 станций, 1 линия)"
 
   airport:
-    enabled: false
-    file: ""
-    note: "Создать data/cities/yekaterinburg/airport.json"
+    enabled: true
+    file: "data/cities/yekaterinburg/airport.json"

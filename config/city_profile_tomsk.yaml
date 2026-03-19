@@ -127,6 +127,5 @@ static_datasets:
     note: "Метро в Томске отсутствует"
 
   airport:
-    enabled: false
-    file: ""
-    note: "Создать data/cities/tomsk/airport.json (терминалы, транспорт до города)"
+    enabled: true
+    file: "data/cities/tomsk/airport.json"

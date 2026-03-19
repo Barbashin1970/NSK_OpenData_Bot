@@ -1,4 +1,8 @@
-"""FastAPI HTTP API для NSK OpenData Bot (bot serve)."""
+"""FastAPI HTTP API для NSK OpenData Bot (bot serve).
+
+Этот файл — точка входа: создаёт FastAPI app, подключает middleware, startup events
+и роутеры. Бизнес-логика эндпоинтов живёт в src/routes/*.py.
+"""
 
 import json
 import logging
@@ -6,30 +10,22 @@ import os
 import re as _re
 import subprocess
 import sys
-import threading
 from pathlib import Path
-from typing import Any
 
 log = logging.getLogger(__name__)
 
 try:
-    from fastapi import FastAPI, Query, UploadFile, File, Form, Header, HTTPException, Request
-    from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse, FileResponse
+    from fastapi import FastAPI, Request
+    from fastapi.responses import HTMLResponse, StreamingResponse
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.staticfiles import StaticFiles
 except ImportError:
     raise ImportError("Установите fastapi: pip install fastapi uvicorn")
 
 from .city_config import (
-    get_city_name, get_city_id, get_city_slug, get_districts,
-    get_feature, get_opendata_base_url, get_sub_districts_info,
+    get_city_name, get_city_id, get_districts,
+    get_feature, get_opendata_base_url,
 )
-from .registry import load_registry
-from .router import route, best_topic
-from .planner import make_plan, INFO_PATTERNS, DISTRICTS_PATTERNS
-from .executor import execute_plan
-from .fetcher import load_meta, is_stale
-from .cache import get_table_info, table_exists
 
 _STATIC = Path(__file__).parent / "static"
 _API_KEYS_FILE = Path(__file__).parent.parent / "data" / "api_keys.json"
@@ -44,20 +40,8 @@ def _load_api_keys() -> dict:
     return {}
 
 
-def _save_api_keys(keys: dict) -> None:
-    _API_KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _API_KEYS_FILE.write_text(json.dumps(keys, ensure_ascii=False, indent=2), "utf-8")
-
-
-def _get_twogis_key() -> str | None:
-    """Возвращает текущий ключ 2GIS: ENV > файл > None."""
-    env_key = os.environ.get("TWOGIS_API_KEY", "").strip()
-    if env_key:
-        return env_key
-    return _load_api_keys().get("twogis_key", "").strip() or None
-
 def _build_api_description() -> str:
-    city_gen  = get_city_name(case="genitive")       # Новосибирска
+    city_gen  = get_city_name(case="genitive")
     districts = get_districts()
     main_districts = [k for k in districts if "район" in k]
     district_line = " · ".join(k.replace(" район", "") for k in main_districts)
@@ -202,6 +186,8 @@ async def _no_cache_static(request: Request, call_next):
     return response
 
 
+# ── .env loader ───────────────────────────────────────────────────────────────
+
 _ENV_FILE = Path(__file__).parent.parent / ".env"
 
 
@@ -220,16 +206,15 @@ def _load_dotenv() -> None:
             if key and not os.environ.get(key, "").strip():
                 os.environ[key] = val
     except Exception as e:
-        import logging
         logging.getLogger(__name__).warning("Не удалось загрузить .env: %s", e)
 
+
+# ── Startup events ───────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 def _load_saved_api_keys() -> None:
     """При старте: загружает ключи из .env, затем из data/api_keys.json (если ENV не задан)."""
-    # 1. .env файл (создайте его вручную, он в .gitignore и не перезаписывается при обновлениях)
     _load_dotenv()
-    # 2. data/api_keys.json (сохраняется через POST /twogis/key)
     if not os.environ.get("TWOGIS_API_KEY", "").strip():
         saved = _load_api_keys().get("twogis_key", "").strip()
         if saved:
@@ -238,30 +223,17 @@ def _load_saved_api_keys() -> None:
 
 @app.on_event("startup")
 def _seed_ecology_history() -> None:
-    """При старте заполняет ecology_daily_archive заглушками за последние 20 дней.
-
-    Вставка происходит только для дат, которых ещё нет в архиве
-    (ON CONFLICT DO NOTHING), поэтому реальные данные не перезаписываются.
-    Заглушки (-10 °C, pm25≈12) будут вытеснены реальными показателями
-    Open-Meteo при первом же обновлении экологических данных.
-    """
+    """При старте заполняет ecology_daily_archive заглушками за последние 20 дней."""
     try:
         from .ecology_cache import seed_history_placeholder
         seed_history_placeholder(days=20, temp_c=-10.0)
     except Exception as e:
-        import logging
         logging.getLogger(__name__).warning(f"seed_ecology_history: {e}")
 
 
 @app.on_event("startup")
 async def _geocode_metro_stations() -> None:
-    """Фоновое геокодирование станций метро через 2GIS при старте.
-
-    Ждёт 5 сек (ключ уже загружен), затем запускает _geocode_metro_bg()
-    в thread executor (blocking requests). Кеширует все 13 станций
-    в geocode_cache — последующие /ask?metro отдают точные координаты.
-    Если ключа нет — geocoder сам вернёт None и кеш останется пустым.
-    """
+    """Фоновое геокодирование станций метро через 2GIS при старте."""
     import asyncio
 
     async def _run():
@@ -270,10 +242,8 @@ async def _geocode_metro_stations() -> None:
             from .executor import _geocode_metro_bg
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _geocode_metro_bg)
-            import logging
             logging.getLogger(__name__).info("metro geocoding: готово")
         except Exception as e:
-            import logging
             logging.getLogger(__name__).warning(f"metro geocoding startup: {e}")
 
     asyncio.create_task(_run())
@@ -281,11 +251,7 @@ async def _geocode_metro_stations() -> None:
 
 @app.on_event("startup")
 async def _preload_medical() -> None:
-    """Фоновая предзагрузка медучреждений (OSM) при старте.
-
-    Стартует через 30 сек — после health check и основного preloader'а.
-    Если данные свежие — ничего не делает (lazy check).
-    """
+    """Фоновая предзагрузка медучреждений (OSM) при старте."""
     import asyncio
 
     async def _run():
@@ -297,10 +263,8 @@ async def _preload_medical() -> None:
                 data = fetch_medical()
                 if data:
                     upsert_medical(data)
-                    import logging
                     logging.getLogger(__name__).info("medical preload: загружено %d объектов", len(data))
         except Exception as e:
-            import logging
             logging.getLogger(__name__).warning("medical preload startup: %s", e)
 
     asyncio.create_task(_run())
@@ -308,23 +272,14 @@ async def _preload_medical() -> None:
 
 @app.on_event("startup")
 async def _start_background_preloader() -> None:
-    """Фоновая загрузка всех тем opendata после старта сервера.
-
-    Стартует через 15 сек — Railway успевает пройти health check до начала
-    HTTP-запросов к opendata.novo-sibirsk.ru. Темы загружаются поочерёдно
-    с паузой 5 сек, чтобы не нагружать CPU и сеть.
-    Если пользователь запрашивает тему до того, как preloader до неё дошёл —
-    lazy fallback в /ask подгружает её синхронно.
-    """
+    """Фоновая загрузка всех тем opendata после старта сервера."""
     import asyncio
     from .updater import preload_all_async, periodic_refresh_loop
     asyncio.create_task(preload_all_async(delay_start=15.0))
-    # Периодический авто-рефреш: каждые 12ч обновляет устаревшие CSV-темы,
-    # чтобы чипы «актуален» не превращались в «устарел» при отсутствии пользователей.
     asyncio.create_task(periodic_refresh_loop())
 
 
-# ── Кастомный Swagger UI: навигационная панель с кнопкой «← На главную» ───────
+# ── Кастомный Swagger UI ─────────────────────────────────────────────────────
 _NAV_BAR_HTML = """
 <style>
   /* ── Nav bar ─────────────────────────────────────────────────────────────── */
@@ -633,7 +588,6 @@ const NSKTests = (() => {
         source.close(); source = null;
         runBtn().disabled = false;
         if (d.no_pytest) {
-          // pytest не установлен в production-окружении
           setProgress(0, 0, 0, 0);
           pctTxt().textContent = 'N/A';
           passCnt().textContent = '— прошли';
@@ -686,7 +640,6 @@ const NSKTests = (() => {
     btn.className = 'running';
     btn.textContent = '⟳ Загружаю данные…';
 
-    // ── Определяем активный город и его возможности ──────────────────────────
     let cityName = 'город';
     let hasOpendataCsv = true;
     let hasPower = true;
@@ -712,7 +665,6 @@ const NSKTests = (() => {
 
     let totalOk = 0, totalErr = 0;
 
-    // ── 1. Открытые данные CSV (только если есть opendata-портал) ────────────
     if (hasOpendataCsv) {
       addLine('▶ Открытые данные мэрии…', 'info');
       try {
@@ -737,7 +689,6 @@ const NSKTests = (() => {
       addLine('▷ Открытые данные CSV — не подключены для ' + cityName, 'dim');
     }
 
-    // ── 2. Экология и погода ─────────────────────────────────────────────────
     addLine('', '');
     addLine('▶ Экология и погода (Open-Meteo)…', 'info');
     try {
@@ -760,7 +711,6 @@ const NSKTests = (() => {
       addLine('  ✗ Экология: ' + e.message, 'failed');
     }
 
-    // ── 3. Отключения ЖКХ (только если есть URL) ─────────────────────────────
     addLine('', '');
     if (hasPower) {
       addLine('▶ Отключения ЖКХ…', 'info');
@@ -788,7 +738,6 @@ const NSKTests = (() => {
       addLine('▷ Отключения ЖКХ — не подключены для ' + cityName, 'dim');
     }
 
-    // ── 4. Камеры фиксации нарушений (OSM) ──────────────────────────────────
     addLine('', '');
     addLine('▶ Камеры фиксации нарушений (OpenStreetMap / Overpass API)…', 'info');
     try {
@@ -808,7 +757,6 @@ const NSKTests = (() => {
       addLine('  ✗ Камеры: ' + e.message, 'failed');
     }
 
-    // ── 5. Медицинские учреждения (OSM) ─────────────────────────────────────
     addLine('', '');
     addLine('▶ Медицинские учреждения (OpenStreetMap / Overpass API)…', 'info');
     try {
@@ -828,7 +776,6 @@ const NSKTests = (() => {
       addLine('  ✗ Медицина: ' + e.message, 'failed');
     }
 
-    // ── Итог ─────────────────────────────────────────────────────────────────
     addLine('', '');
     if (totalErr === 0) {
       addLine('Все источники ' + cityName + ' обновлены (' + totalOk + ' успешно).', 'passed');
@@ -911,21 +858,21 @@ const NSKDev = (() => {
 """
 
 
+# ── /run-tests SSE endpoint ──────────────────────────────────────────────────
+
 @app.get("/run-tests", include_in_schema=False)
 def run_tests():
     """SSE-стрим: запускает pytest и отдаёт прогресс + проверку здоровья данных."""
+    from .registry import load_registry
+    from .fetcher import load_meta, is_stale
+    from .cache import table_exists
 
     def _sse(obj: dict) -> str:
         return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
     def generate():
-        # ── Проверка здоровья данных ─────────────────────────────────────────
-        from .registry import load_registry
-        from .fetcher import load_meta, is_stale
-        from .cache import table_exists
         from .power_cache import get_power_meta
 
-        # Определяем возможности активного города
         _has_csv = get_feature("opendata_csv_enabled", False)
         _has_power = bool(get_feature("power_outages_url", ""))
 
@@ -933,7 +880,6 @@ def run_tests():
         meta = load_meta()
         health_checks = []
 
-        # CSV-темы показываем только для городов с opendata-порталом
         if _has_csv:
             for tid, ds in registry.items():
                 if not table_exists(tid):
@@ -961,7 +907,6 @@ def run_tests():
                 health_checks.append({"topic": "power_outages", "status": "missing",
                                       "msg": "Ошибка при проверке"})
 
-        # ── Экология и погода ────────────────────────────────────────────────
         try:
             from .ecology_cache import init_ecology_tables, get_ecology_meta, is_ecology_stale
             init_ecology_tables()
@@ -982,7 +927,6 @@ def run_tests():
             health_checks.append({"topic": "ecology", "status": "missing",
                                   "msg": "Ошибка проверки экологии"})
 
-        # ── Медицинские учреждения ───────────────────────────────────────────
         try:
             from .medical_cache import get_medical_meta, is_medical_stale, count_medical
             med_meta = get_medical_meta()
@@ -1002,7 +946,6 @@ def run_tests():
             health_checks.append({"topic": "medical", "status": "missing",
                                   "msg": "Ошибка проверки медучреждений"})
 
-        # ── Камеры фиксации ──────────────────────────────────────────────────
         try:
             from .cameras_cache import get_cameras_meta, is_cameras_stale, count_cameras
             cam_meta = get_cameras_meta()
@@ -1024,7 +967,6 @@ def run_tests():
 
         yield _sse({"type": "health", "checks": health_checks})
 
-        # ── Запуск pytest ────────────────────────────────────────────────────
         import importlib.util
         if importlib.util.find_spec("pytest") is None:
             yield _sse({"type": "log", "line": "⚠ pytest не установлен в этом окружении."})
@@ -1035,10 +977,6 @@ def run_tests():
             return
 
         project_root = Path(__file__).parent.parent
-        # Тесты всегда запускаются с базовым профилем (Новосибирск),
-        # даже если в UI переключён другой город. Это гарантирует
-        # стабильные результаты: тесты районов, подрайонов, геокодера
-        # рассчитаны на НСК-профиль с 10 районами и подрайонами.
         test_env = {**os.environ, "CITY_PROFILE": "city_profile"}
         proc = subprocess.Popen(
             [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "--no-header"],
@@ -1063,14 +1001,12 @@ def run_tests():
             if not line:
                 continue
 
-            # Количество тестов из строки "collected N items"
             m = _re.search(r"collected (\d+) item", line)
             if m:
                 total = int(m.group(1))
                 yield _sse({"type": "start", "total": total})
                 continue
 
-            # Строки вида "tests/test_router.py::test_foo PASSED  [  3%]"
             if _re.search(r"\s(PASSED|FAILED|ERROR)(\s|$)", line):
                 done += 1
                 if "PASSED" in line:
@@ -1081,12 +1017,10 @@ def run_tests():
                     status = "failed"
                     failed_lines.append(line)
                 pct = int(done / total * 100) if total > 0 else 0
-                # Короткое имя теста (убираем статус и процент)
                 short = _re.sub(r"\s+(PASSED|FAILED|ERROR).*$", "", _re.sub(r"^.*::", "", line))
                 yield _sse({"type": "progress", "done": done, "total": total,
                             "pct": pct, "status": status, "short": short, "line": line})
             else:
-                # Финальная сводка pytest: "N passed, M skipped, K failed, ... in X.XXs"
                 m_fin = _re.search(r"\b(\d+)\s+passed.*\bin\s+[\d.]+s", line)
                 if m_fin:
                     passed = int(m_fin.group(1))
@@ -1106,7 +1040,7 @@ def run_tests():
             "passed": passed,
             "failed": failed,
             "skipped": skipped,
-            "total": passed + failed,   # только выполненные, без skipped
+            "total": passed + failed,
             "returncode": proc.returncode,
             "failed_lines": failed_lines,
         })
@@ -1118,83 +1052,7 @@ def run_tests():
     )
 
 
-# ── Метро-подсказки для транзитных маршрутов ──────────────────────────────────
-_METRO_DISTRICT_ENTRY: dict[str, tuple[str, str]] = {
-    "Заельцовский":    ("Заельцовская", "1"),
-    "Калининский":     ("Гагаринская", "1"),
-    "Октябрьский":     ("Площадь Маркса", "1"),
-    "Дзержинский":     ("Золотая нива", "2"),
-    "Железнодорожный": ("Площадь Гарина-Михайловского", "2"),
-    # Центральный обслуживается обеими линиями — выбирается динамически
-}
-_METRO_NO_SERVICE = frozenset({"Советский", "Кировский", "Ленинский", "Первомайский", "Кольцово"})
-
-
-def _metro_route_hint(from_d: str, to_d: str) -> dict:
-    """Подсказка маршрута на метро между двумя районами НСК.
-
-    Возвращает dict:
-      available: bool — есть ли вариант на метро
-      from_station / to_station — станции входа и выхода
-      from_line / to_line — «1» или «2»
-      transfer: bool — нужна ли пересадка
-      transfer_exit / transfer_enter — станции пересадки (если transfer=True)
-    """
-    def _base(d: str) -> str:
-        return d.replace(" район", "").strip()
-
-    fb, tb = _base(from_d), _base(to_d)
-
-    if fb in _METRO_NO_SERVICE:
-        return {"available": False, "reason": f"{fb} район — станций метро нет"}
-    if tb in _METRO_NO_SERVICE:
-        return {"available": False, "reason": f"{tb} район — станций метро нет"}
-
-    is_from_central = (fb == "Центральный")
-    is_to_central   = (tb == "Центральный")
-
-    if not is_from_central and fb not in _METRO_DISTRICT_ENTRY:
-        return {"available": False}
-    if not is_to_central and tb not in _METRO_DISTRICT_ENTRY:
-        return {"available": False}
-
-    # Определяем линию назначения
-    if is_to_central:
-        to_station, to_line = None, None   # уточним после from_line
-    else:
-        to_station, to_line = _METRO_DISTRICT_ENTRY[tb]
-
-    # Определяем линию и станцию отправления
-    if is_from_central:
-        target = to_line or "1"
-        from_station = "Площадь Ленина" if target == "1" else "Сибирская"
-        from_line    = target
-    else:
-        from_station, from_line = _METRO_DISTRICT_ENTRY[fb]
-
-    # Уточняем станцию назначения в Центральном
-    if is_to_central:
-        to_station = "Площадь Ленина" if from_line == "1" else "Сибирская"
-        to_line    = from_line
-
-    transfer = (from_line != to_line)
-    result: dict = {
-        "available":    True,
-        "from_station": from_station,
-        "from_line":    from_line,
-        "to_station":   to_station,
-        "to_line":      to_line,
-        "transfer":     transfer,
-    }
-    if transfer:
-        if from_line == "1":
-            result["transfer_exit"]  = "Площадь Ленина"
-            result["transfer_enter"] = "Сибирская"
-        else:
-            result["transfer_exit"]  = "Сибирская"
-            result["transfer_enter"] = "Площадь Ленина"
-    return result
-
+# ── Pages ─────────────────────────────────────────────────────────────────────
 
 @app.get("/docs", include_in_schema=False)
 def custom_swagger_ui() -> HTMLResponse:
@@ -1204,11 +1062,11 @@ def custom_swagger_ui() -> HTMLResponse:
         openapi_url="/openapi.json",
         title="NSK OpenData Bot — API",
         swagger_ui_parameters={
-            "defaultModelsExpandDepth": -1,   # скрыть схемы по умолчанию
-            "docExpansion": "list",            # раскрыть список эндпоинтов
-            "tryItOutEnabled": True,           # «Try it out» сразу активен
-            "displayRequestDuration": True,    # показывать время ответа
-            "filter": True,                    # строка поиска по эндпоинтам
+            "defaultModelsExpandDepth": -1,
+            "docExpansion": "list",
+            "tryItOutEnabled": True,
+            "displayRequestDuration": True,
+            "filter": True,
             "persistAuthorization": True,
         },
     )
@@ -1227,2739 +1085,27 @@ def get_ui() -> HTMLResponse:
     return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
 
-@app.get(
-    "/topics",
-    tags=["Данные"],
-    summary="Список доступных тем",
-    response_description="Массив `topics` с метаданными и состоянием кэша каждой темы",
-)
-def get_topics() -> dict:
-    """
-    Возвращает все поддерживаемые темы открытых данных с информацией о состоянии кэша.
-
-    ### Поля каждой темы
-
-    | Поле | Тип | Описание |
-    |---|---|---|
-    | `id` | string | Идентификатор для `POST /update?topic=<id>` |
-    | `name` | string | Русское название |
-    | `description` | string | Краткое описание набора данных |
-    | `rows` | int or null | Число строк в кэше (`null` — данные не загружены) |
-    | `last_updated` | string or null | Дата последней загрузки (ISO 8601) |
-    | `stale` | bool | `true` если TTL истёк и рекомендуется обновление |
-    | `passport_url` | string | Паспорт набора на opendata.novo-sibirsk.ru |
-
-    Для обновления данных используйте `POST /update?topic=<id>` или `bot update --all` в CLI.
-    """
-    registry = load_registry()
-    meta = load_meta()
-    result = []
-    for tid, ds in registry.items():
-        m = meta.get(tid, {})
-        result.append({
-            "id": tid,
-            "name": ds.get("name"),
-            "description": ds.get("description"),
-            "rows": m.get("rows"),
-            "last_updated": m.get("last_updated"),
-            "stale": is_stale(tid, ds.get("ttl_hours", 24)),
-            "passport_url": ds.get("passport_url"),
-        })
-    return {"topics": result}
-
-
-@app.get(
-    "/ask",
-    tags=["Запросы"],
-    summary="Задать вопрос на русском языке",
-    response_description="Результат: operation, rows, count + метаданные темы и кэша",
-    responses={
-        200: {
-            "content": {
-                "application/json": {
-                    "examples": {
-                        "count": {
-                            "summary": "COUNT — «сколько школ»",
-                            "value": {
-                                "query": "сколько школ",
-                                "topic": "schools",
-                                "topic_name": "Школы",
-                                "confidence": 0.857,
-                                "operation": "COUNT",
-                                "district": None,
-                                "street": None,
-                                "count": 214,
-                                "rows": [],
-                                "columns": [],
-                                "cache": {"last_updated": "2026-03-04T10:00:00", "rows": 214},
-                            },
-                        },
-                        "group": {
-                            "summary": "GROUP — «парковки по районам»",
-                            "value": {
-                                "query": "парковки по районам",
-                                "topic": "parking",
-                                "topic_name": "Парковки",
-                                "confidence": 0.75,
-                                "operation": "GROUP",
-                                "district": None,
-                                "count": 2360,
-                                "rows": [
-                                    {"район": "Центральный район", "количество": 456},
-                                    {"район": "Советский район", "количество": 312},
-                                ],
-                                "columns": ["район", "количество"],
-                            },
-                        },
-                        "filter": {
-                            "summary": "FILTER — «библиотеки для детей»",
-                            "value": {
-                                "query": "библиотеки для детей",
-                                "topic": "libraries",
-                                "operation": "FILTER",
-                                "extra_filters": {"audience": "children"},
-                                "count": 7,
-                                "rows": [{"BiblName": "Детская библиотека № 1", "AdrDistr": "Ленинский район"}],
-                                "columns": ["BiblName", "AdrDistr", "AdrStreet", "AdrDom", "Phone", "Site"],
-                            },
-                        },
-                        "power": {
-                            "summary": "POWER_STATUS — «отключения электричества сейчас»",
-                            "value": {
-                                "query": "отключения электричества сейчас",
-                                "topic": "power_outages",
-                                "topic_name": "Отключения электроснабжения",
-                                "operation": "POWER_STATUS",
-                                "district": None,
-                                "count": 2,
-                                "rows": [
-                                    {"utility": "Электроснабжение", "group_type": "active",
-                                     "district": "Ленинский район", "houses": "14",
-                                     "scraped_at": "2026-03-04T09:30:00"},
-                                ],
-                                "columns": ["utility", "group_type", "district", "houses", "scraped_at"],
-                                "power_meta": {"last_scraped": "2026-03-04T09:30:00", "active_houses": 14},
-                            },
-                        },
-                    }
-                }
-            }
-        }
-    },
-)
-def get_ask(
-    q: str = Query(
-        ...,
-        description=(
-            "Вопрос на русском языке. Примеры:\n"
-            "- `сколько парковок по районам`\n"
-            "- `школы в Советском районе`\n"
-            "- `топ-5 аптек в центре`\n"
-            "- `отключения электричества сейчас`\n"
-            "- `плановые отключения света на неделю`\n"
-            "- `библиотеки для детей`\n"
-            "- `детские спортивные организации по районам`"
-        ),
-        examples={"default": {"summary": "Группировка по районам", "value": "сколько парковок по районам"}},
-        min_length=2,
-    ),
-    with_coords: bool = Query(
-        False,
-        description=(
-            "Обогатить строки результата координатами (_lat, _lon) через 2GIS Geocoder. "
-            "Работает только для операций FILTER и TOP_N с адресными данными. "
-            "Требует настроенный 2GIS API ключ; без ключа строки возвращаются без изменений."
-        ),
-    ),
-    offset: int = Query(
-        0, ge=0,
-        description="Смещение строк для пагинации (0-based). Используется с операцией FILTER.",
-    ),
-    page_size: int = Query(
-        20, ge=1, le=200,
-        description="Размер страницы для операции FILTER (по умолчанию 20, макс. 200).",
-    ),
-) -> dict:
-    """
-    Основной endpoint. Принимает запрос на русском языке, автоматически определяет
-    тему и тип операции, возвращает структурированный результат.
-
-    ### Как работает
-
-    1. **Маршрутизация** — определяет тему по ключевым словам (`router.py`)
-    2. **Планирование** — определяет операцию COUNT / GROUP / TOP_N / FILTER / POWER_* (`planner.py`)
-    3. **Выполнение** — SQL к DuckDB или скрапинг `051.novo-sibirsk.ru` (`executor.py`)
-
-    ### Поля ответа
-
-    | Поле | Тип | Описание |
-    |---|---|---|
-    | `query` | string | Исходный запрос |
-    | `topic` | string | ID темы (`parking`, `schools`, `power_outages`, …) |
-    | `topic_name` | string | Русское название темы |
-    | `confidence` | float | Уверенность маршрутизатора (0–1) |
-    | `operation` | string | COUNT / GROUP / TOP_N / FILTER / POWER_* |
-    | `district` | string or null | Распознанный район (если указан в запросе) |
-    | `street` | string or null | Распознанная улица (если указана) |
-    | `extra_filters` | object | Доп. фильтры (`audience: children/adults`) |
-    | `rows` | array | Строки результата |
-    | `columns` | array | Названия колонок |
-    | `count` | int | Общее число совпадений (без учёта лимита) |
-    | `cache` | object | `last_updated` и `rows` — состояние кэша |
-
-    ### Особые случаи
-
-    - Если тема не определена → поле `error` + список `available_topics`
-    - Если данные не загружены → `error` с инструкцией запустить `POST /update`
-    - Запросы об отключениях ЖКХ автоматически обновляют кэш если TTL > 30 мин
-    """
-    route_result = best_topic(q)
-
-    if not route_result:
-        q_lower = q.lower()
-        if DISTRICTS_PATTERNS.search(q_lower):
-            from .router import DISTRICTS
-            return {
-                "query": q,
-                "operation": "DISTRICTS",
-                "rows": list(DISTRICTS.keys()),
-                "count": len(DISTRICTS),
-            }
-        if INFO_PATTERNS.search(q_lower):
-            registry = load_registry()
-            topics_list = [
-                {"id": tid, "name": ds.get("name"), "description": ds.get("description")}
-                for tid, ds in registry.items()
-            ]
-            return {"query": q, "operation": "INFO", "topics": topics_list}
-        log.info("UNKNOWN_QUERY: %s", q)
-        return {
-            "query": q,
-            "operation": "UNKNOWN",
-        }
-
-    topic = route_result.topic
-    plan = make_plan(q, topic)
-    # Пагинация: применяем параметры запроса для FILTER-операций
-    plan.offset = offset
-    if page_size != 20 or plan.limit is None:
-        plan.limit = page_size
-
-    # ── Строительство ─────────────────────────────────────────────────────────
-    if topic == "construction":
-        from .executor import execute_construction
-        from .construction_opendata import get_construction_meta, permits_available
-
-        if not permits_available():
-            log.info("Lazy load: construction_permits/commissioned не загружены, подгружаю")
-            from .updater import ensure_fresh
-            ensure_fresh("construction_permits")
-            ensure_fresh("construction_commissioned")
-
-        if not permits_available():
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "error": "Данные о строительстве не загружены",
-                    "hint": "POST /update?topic=construction_permits и POST /update?topic=construction_commissioned",
-                },
-            )
-
-        result = execute_construction(plan)
-
-        if with_coords and plan.operation in ("CONSTRUCTION_ACTIVE", "CONSTRUCTION_COMMISSIONED") and result.get("rows"):
-            from .geocoder import geocode_rows
-            result["rows"] = geocode_rows(result["rows"])
-            result["coords_enriched"] = True
-            result["coords_source"] = "2GIS Geocoder (кеш + API)"
-
-        meta = get_construction_meta()
-        return {
-            "query": q,
-            "topic": "construction",
-            "operation": plan.operation,
-            "district": plan.district,
-            "meta": {
-                "permits_total": meta.get("permits_total", 0),
-                "commissioned_total": meta.get("commissioned_total", 0),
-                "active_total": meta.get("active_total", 0),
-                "permits_updated": meta.get("permits_updated", ""),
-                "commissioned_updated": meta.get("commissioned_updated", ""),
-            },
-            **result,
-        }
-
-    # ── Метро ─────────────────────────────────────────────────────────────────
-    if topic == "metro":
-        from .executor import execute_metro
-        result = execute_metro(plan)
-        return {
-            "query": q,
-            "topic": "metro",
-            "topic_name": f"{get_city_name()} метрополитен",
-            "confidence": route_result.confidence,
-            "operation": result.get("operation", plan.operation),
-            "district": plan.district,
-            **result,
-        }
-
-    # ── Аэропорт ──────────────────────────────────────────────────────────────
-    if topic == "airport":
-        from .executor import execute_airport
-        result = execute_airport(plan)
-        return {
-            "query": q,
-            "topic": "airport",
-            "topic_name": f"{get_feature('airport_name', 'Аэропорт')} ({get_feature('airport_iata', '')})",
-            "confidence": route_result.confidence,
-            "operation": result.get("operation", plan.operation),
-            **result,
-        }
-
-    # ── Экология и метеорология ───────────────────────────────────────────────
-    if topic == "ecology":
-        from .executor import execute_ecology
-        from .ecology_cache import (
-            is_ecology_stale, get_ecology_meta, upsert_stations, upsert_measurements,
-            is_forecast_stale, upsert_forecast,
-        )
-        from .ecology_fetcher import fetch_all_ecology, fetch_all_forecast
-
-        if is_ecology_stale():
-            upsert_stations()
-            upsert_measurements(fetch_all_ecology())
-
-        # Прогноз обновляется раз в 6 часов (независимо от измерений)
-        if is_forecast_stale():
-            upsert_forecast(fetch_all_forecast())
-
-        result = execute_ecology(plan)
-        meta = get_ecology_meta()
-        # Для ECO_STATUS добавляем риски в ответ
-        if plan.operation == "ECO_STATUS":
-            from .ecology_cache import query_risks
-            result["risks"] = query_risks(district_filter=plan.district)
-        return {
-            "query": q,
-            "topic": topic,
-            "topic_name": route_result.name,
-            "confidence": round(route_result.confidence, 3),
-            "operation": plan.operation,
-            "district": plan.district,
-            "sub_district": plan.sub_district,
-            "ecology_meta": {k: str(v) if not isinstance(v, (int, float, str, bool, type(None))) else v
-                             for k, v in meta.items()},
-            **result,
-        }
-
-    # ── Отключения ЖКХ ───────────────────────────────────────────────────────
-    if topic == "power_outages":
-        from .executor import execute_power
-        from .power_cache import is_power_stale, get_power_meta, upsert_outages
-        from .power_scraper import fetch_all_outages
-
-        if is_power_stale():
-            upsert_outages(fetch_all_outages())
-
-        result = execute_power(plan)
-        # Вычисляем те же фильтры, что использует execute_power,
-        # чтобы цифры в шапке совпадали с числами в строках таблицы
-        _raw = plan.extra_filters.get("utility", None)
-        _uf = "электроснабж" if _raw is None else (_raw or None)
-        meta = get_power_meta(utility_filter=_uf, district_filter=plan.district)
-        return {
-            "query": q,
-            "topic": topic,
-            "topic_name": route_result.name,
-            "confidence": round(route_result.confidence, 3),
-            "operation": plan.operation,
-            "district": plan.district,
-            "sub_district": plan.sub_district,
-            "power_meta": {k: str(v) if not isinstance(v, (int, float, str, bool, type(None))) else v
-                           for k, v in meta.items()},
-            **result,
-        }
-
-    # ── Индекс дорожной нагрузки ──────────────────────────────────────────────
-    if topic == "traffic_index":
-        from .traffic_index import get_traffic_index_with_weather
-        ti = get_traffic_index_with_weather()
-        return {
-            "query":      q,
-            "topic":      "traffic_index",
-            "topic_name": route_result.name,
-            "confidence": round(route_result.confidence, 3),
-            "operation":  "TRAFFIC_INDEX",
-            **ti,
-        }
-
-    # ── Маршруты общественного транспорта (из кэша остановок) ────────────────
-    if topic == "transit":
-        import re as _re
-        from .cache import _get_conn, table_exists as _table_exists
-        from .transport_api import DISTRICT_COORDS
-
-        from_district = plan.extra_filters.get("from_district") or ""
-        to_district   = plan.extra_filters.get("to_district") or ""
-
-        if not _table_exists("stops"):
-            return {
-                "query": q, "topic": "transit", "topic_name": route_result.name,
-                "confidence": round(route_result.confidence, 3),
-                "operation": "TRANSIT_ROUTE",
-                "error": "Данные об остановках не загружены",
-                "hint": "POST /update?topic=stops",
-                "connections": [],
-            }
-
-        def _split_routes(marshryt: str) -> list[str]:
-            """Извлекает номера маршрутов из строки вида 'Автобус: 23, 36.Маршрутное такси: 4.'"""
-            if not marshryt:
-                return []
-            return _re.findall(r"\b\d+[а-яёa-z]?\b", marshryt)
-
-        conn = _get_conn()
-        try:
-            def _get_route_stops(kw: str) -> dict[str, list[str]]:
-                if not kw:
-                    return {}
-                rows = conn.execute(
-                    "SELECT OstName, Marshryt FROM topic_stops "
-                    "WHERE AdrDistr ILIKE ? AND Marshryt IS NOT NULL AND Marshryt != ''",
-                    [f"%{kw.split()[0]}%"],
-                ).fetchall()
-                result: dict[str, list[str]] = {}
-                for stop_name, marshryt in rows:
-                    for route in _split_routes(marshryt or ""):
-                        if route not in result:
-                            result[route] = []
-                        if stop_name and stop_name not in result[route]:
-                            result[route].append(stop_name)
-                return result
-
-            from_routes = _get_route_stops(from_district)
-            to_routes   = _get_route_stops(to_district)
-            common = sorted(set(from_routes) & set(to_routes))
-            connections = [
-                {"route": r, "from_stops": from_routes[r][:3], "to_stops": to_routes[r][:3]}
-                for r in common[:20]
-            ]
-
-            from_coords = DISTRICT_COORDS.get(from_district)
-            to_coords   = DISTRICT_COORDS.get(to_district)
-            hint = None
-            if from_coords and to_coords:
-                hint = (
-                    f"https://2gis.ru/{get_city_slug()}/routeSearch/rsType/publictransport/"
-                    f"from/{from_coords[0]},{from_coords[1]}/to/{to_coords[0]},{to_coords[1]}"
-                )
-
-            _opendata_url = get_opendata_base_url() or "opendata"
-            return {
-                "query": q, "topic": "transit", "topic_name": route_result.name,
-                "confidence": round(route_result.confidence, 3),
-                "operation": "TRANSIT_ROUTE",
-                "from": from_district, "to": to_district,
-                "common_routes_count": len(common),
-                "connections": connections,
-                "metro_route": _metro_route_hint(from_district, to_district),
-                "hint": hint,
-                "notice": (
-                    f"⚠️ Данные о маршрутах взяты из открытых данных {get_city_name('genitive')} "
-                    f"({_opendata_url}) и могут быть неполными или устаревшими. "
-                    "Для построения точного маршрута воспользуйтесь приложением 2ГИС или Яндекс.Транспорт."
-                ),
-                "source": f"{_opendata_url} · остановки наземного транспорта (TTL 24ч)",
-            }
-        except Exception as e:
-            log.error(f"Ошибка /ask transit: {e}")
-            return {"query": q, "topic": "transit", "error": str(e), "connections": []}
-        finally:
-            conn.close()
-
-    # ── Камеры фиксации нарушений ПДД (OSM Overpass) ─────────────────────────
-    if topic == "cameras":
-        from .cameras_cache import (
-            query_cameras, count_cameras, get_cameras_meta,
-            upsert_cameras, is_cameras_stale,
-        )
-        from .cameras_fetcher import fetch_cameras
-
-        if is_cameras_stale():
-            fetched = fetch_cameras()
-            if fetched:
-                upsert_cameras(fetched)
-
-        op = plan.operation
-        meta = get_cameras_meta()
-        district = plan.district
-        total = count_cameras(district_filter=district)
-
-        if op == "COUNT":
-            return {
-                "query": q,
-                "topic": topic,
-                "topic_name": route_result.name,
-                "confidence": round(route_result.confidence, 3),
-                "operation": "COUNT",
-                "count": total,
-                "rows": [],
-                "columns": [],
-                "cameras_meta": {
-                    "last_updated": str(meta.get("last_updated") or ""),
-                    "total_rows": meta.get("total_rows", 0),
-                    "source": "OpenStreetMap · Overpass API",
-                },
-            }
-        else:
-            lim = plan.limit or 20
-            off = plan.offset or 0
-            rows = query_cameras(limit=lim, offset=off, district_filter=district)
-            return {
-                "query": q,
-                "topic": topic,
-                "topic_name": route_result.name,
-                "confidence": round(route_result.confidence, 3),
-                "operation": "FILTER",
-                "district": district or "",
-                "count": total,
-                "rows": rows,
-                "columns": ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref", "district"],
-                "coords_enriched": True,
-                "coords_source": "OpenStreetMap (предзагружены)",
-                "cameras_meta": {
-                    "last_updated": str(meta.get("last_updated") or ""),
-                    "total_rows": meta.get("total_rows", 0),
-                    "source": "OpenStreetMap · Overpass API",
-                },
-            }
-
-    # ── Медицинские учреждения (OSM Overpass, TTL 72ч) ────────────────────────
-    if topic == "medical":
-        from .medical_cache import (
-            query_medical, count_medical, group_by_district as _medical_group,
-            get_medical_meta, upsert_medical, is_medical_stale,
-        )
-        from .medical_fetcher import fetch_medical
-
-        if is_medical_stale():
-            fetched = fetch_medical()
-            if fetched:
-                upsert_medical(fetched)
-
-        op = plan.operation
-        meta = get_medical_meta()
-        district = plan.district
-        facility_type = plan.extra_filters.get("facility_type", "") or None
-        emergency_only = plan.extra_filters.get("emergency_only", "") == "1"
-
-        _medical_source = {
-            "last_updated": str(meta.get("last_updated") or ""),
-            "total_rows": meta.get("total_rows", 0),
-            "source": "OpenStreetMap · Overpass API · ODbL",
-            "ttl_hours": 72,
-        }
-
-        if op == "MEDICAL_COUNT":
-            total = count_medical(
-                district_filter=district,
-                facility_type=facility_type,
-                emergency_only=emergency_only,
-            )
-            return {
-                "query": q,
-                "topic": topic,
-                "topic_name": route_result.name,
-                "confidence": round(route_result.confidence, 3),
-                "operation": "COUNT",
-                "count": total,
-                "rows": [],
-                "columns": [],
-                "medical_meta": _medical_source,
-            }
-        elif op == "MEDICAL_GROUP":
-            rows = _medical_group()
-            return {
-                "query": q,
-                "topic": topic,
-                "topic_name": route_result.name,
-                "confidence": round(route_result.confidence, 3),
-                "operation": "GROUP",
-                "rows": rows,
-                "columns": ["район", "количество", "больниц", "поликлиник"],
-                "count": sum(r.get("количество", 0) for r in rows),
-                "medical_meta": _medical_source,
-            }
-        else:  # MEDICAL_LIST (FILTER)
-            lim = plan.limit or 20
-            off = plan.offset or 0
-            rows = query_medical(
-                limit=lim,
-                offset=off,
-                district_filter=district,
-                facility_type=facility_type,
-                emergency_only=emergency_only,
-            )
-            total = count_medical(
-                district_filter=district,
-                facility_type=facility_type,
-                emergency_only=emergency_only,
-            )
-            return {
-                "query": q,
-                "topic": topic,
-                "topic_name": route_result.name,
-                "confidence": round(route_result.confidence, 3),
-                "operation": "FILTER",
-                "district": district or "",
-                "count": total,
-                "rows": rows,
-                "columns": ["name", "type_label", "emergency", "address",
-                            "phone", "district", "_lat", "_lon"],
-                "coords_enriched": True,
-                "coords_source": "OpenStreetMap (предзагружены)",
-                "medical_meta": _medical_source,
-            }
-
-    # ── Тепловые источники (статический GeoJSON) ──────────────────────────────
-    if topic == "heat_sources":
-        from .heat_sources import (
-            query_heat_sources,
-            count_heat_sources,
-            TABLE_COLUMNS,
-        )
-
-        # Определяем фильтры из плана
-        extra = plan.extra_filters or {}
-        operator_group = extra.get("operator_group", "")
-        pilot_only = extra.get("pilot_only", False)
-
-        rows = query_heat_sources(operator_group=operator_group, pilot_only=pilot_only)
-        total = len(rows)
-
-        if plan.operation == "COUNT":
-            return {
-                "query": q,
-                "topic": topic,
-                "topic_name": route_result.name,
-                "confidence": round(route_result.confidence, 3),
-                "operation": "COUNT",
-                "count": total,
-                "rows": [],
-                "columns": [],
-            }
-
-        return {
-            "query": q,
-            "topic": topic,
-            "topic_name": route_result.name,
-            "confidence": round(route_result.confidence, 3),
-            "operation": "FILTER",
-            "count": total,
-            "rows": rows,
-            "columns": TABLE_COLUMNS,
-            "coords_enriched": True,
-            "coords_source": "GeoJSON (статические координаты)",
-            "_skipDistBar": True,
-        }
-
-    # ── Выбросы в атмосферу 2-ТП Воздух (статический JSON) ──────────────────
-    if topic == "emissions":
-        from .emissions import query_emissions, get_emissions_meta, TABLE_COLUMNS as EMIT_COLS
-
-        extra = plan.extra_filters or {}
-        top_n = plan.limit if plan.operation == "TOP_N" else 0
-        rows = query_emissions(top_n=top_n)
-        meta = get_emissions_meta()
-        total = len(rows)
-
-        if plan.operation == "COUNT":
-            return {
-                "query": q,
-                "topic": topic,
-                "topic_name": route_result.name,
-                "confidence": round(route_result.confidence, 3),
-                "operation": "COUNT",
-                "count": total,
-                "rows": [],
-                "columns": [],
-            }
-
-        return {
-            "query": q,
-            "topic": topic,
-            "topic_name": route_result.name,
-            "confidence": round(route_result.confidence, 3),
-            "operation": "FILTER",
-            "count": total,
-            "rows": rows,
-            "columns": EMIT_COLS,
-            "coords_enriched": True,
-            "coords_source": f"2-ТП Воздух {meta.get('year', 2024)} (центроиды МО)",
-            "_skipDistBar": True,
-            "_emissionsView": True,
-            "meta": meta,
-        }
-
-    # ── Стандартные темы opendata ─────────────────────────────────────────────
-    # Данные CSV-тем (парковки, школы, остановки…) доступны только для городов,
-    # у которых включён совместимый opendata-портал (opendata_csv_enabled: true).
-    if not get_feature("opendata_csv_enabled", False):
-        return {
-            "query": q,
-            "topic": topic,
-            "error": (
-                f"Данные по теме «{topic}» недоступны для {get_city_name(case='genitive')}: "
-                "портал открытых данных этого города не подключён."
-            ),
-        }
-
-    if not table_exists(topic):
-        # Данных нет — тихо подгружаем нужную тему прямо сейчас.
-        # Первый запрос займёт 3–8 сек; после этого данные кэшируются на 24 ч.
-        log.info(f"Lazy load: тема '{topic}' не загружена, начинаю подгрузку")
-        from .updater import ensure_fresh
-        if not ensure_fresh(topic):
-            return {
-                "query": q,
-                "topic": topic,
-                "error": "Не удалось загрузить данные. Проверьте доступность opendata.novo-sibirsk.ru",
-            }
-
-    result = execute_plan(plan)
-
-    # ── Геокодирование (опционально) ──────────────────────────────────────────
-    if with_coords and plan.operation in ("FILTER", "TOP_N", "CONSTRUCTION_ACTIVE", "CONSTRUCTION_COMMISSIONED") and result.get("rows"):
-        from .geocoder import geocode_rows
-        result["rows"] = geocode_rows(result["rows"])
-        result["coords_enriched"] = True
-        result["coords_source"] = "2GIS Geocoder (кеш + API)"
-
-    cache_info = load_meta().get(topic, {})
-    cache_info.update(get_table_info(topic))
-
-    return {
-        "query": q,
-        "topic": topic,
-        "topic_name": route_result.name,
-        "confidence": round(route_result.confidence, 3),
-        "operation": plan.operation,
-        "district": plan.district,
-        "sub_district": plan.sub_district,
-        "street": plan.street,
-        "extra_filters": plan.extra_filters,
-        "cache": {
-            "last_updated": cache_info.get("last_updated"),
-            "rows": cache_info.get("rows"),
-        },
-        **result,
-    }
-
-
-@app.get(
-    "/traffic-index",
-    tags=["Запросы"],
-    summary="Индекс дорожной нагрузки (аналитика)",
-    response_description="Синтетический индекс пробок 0–10 с факторами и рекомендациями.",
-)
-def get_traffic_index() -> dict:
-    """
-    Синтетический **индекс дорожной нагрузки** для Новосибирска (0 = пусто, 10 = коллапс).
-
-    Алгоритм учитывает:
-    - **Время суток** — утренний (07:30–09:30) и вечерний (16:30–19:00) час пик
-    - **День недели** — понедельничный эффект (+0.8), пятничный исход (+0.7)
-    - **Официальные праздники 2025–2027** — нерабочие дни, предпраздничные укороченные дни
-    - **Погоду** — снег (+1.5/+2.5), первый осенний снег (+3.0), дождь (+0.8), гололедица (+2.5)
-    - **Городские события** — 1 сентября (+2.0), предновогодняя суета (+2.0)
-    - **Экстремальный мороз** (< −20°C) — снижает трафик (машины не заводятся)
-
-    Погодные данные берутся из кэша Open-Meteo (обновляется каждые 15 мин).
-
-    > ⚠️ Реальные данные о пробках отсутствуют — только аналитическая модель.
-    """
-    from .traffic_index import get_traffic_index_with_weather
-    return get_traffic_index_with_weather()
-
-
-@app.get(
-    "/yandex-traffic",
-    tags=["Запросы"],
-    summary="Яндекс.Пробки — реальный индекс",
-    response_description="Текущий уровень пробок из Яндекс.Карт (0–10).",
-)
-def get_yandex_traffic() -> dict:
-    """
-    Реальный **индекс пробок** из Яндекс.Карт для текущего города.
-
-    Публичный XML API виджета Яндекса, без ключа.
-    Данные обновляются каждые ~2 мин на стороне Яндекса, наш TTL кэша — 3 мин.
-
-    Возвращает: level (0–10), hint (текст), emoji, level_label, city, url.
-    """
-    from .yandex_traffic import fetch_yandex_traffic
-    data = fetch_yandex_traffic()
-    if not data:
-        return {"error": "Яндекс.Пробки недоступны для этого города", "available": False}
-    return {**data, "available": True}
-
-
-# ── Индексы жизни города ──────────────────────────────────────────────────────
-
-def _compute_life_indices(rows: list[dict]) -> dict | None:
-    """Вычисляет индексы водителя, прогулки и коммунального напряжения.
-
-    Параметры загружаются из config/rules/life_indices_rules.yaml.
-    Логика перенесена сюда из computeLifeIndices() в index.html (Фаза 3).
-    """
-    if not rows:
-        return None
-
-    from .rule_engine import rules
-
-    def _avg(lst):
-        return round(sum(lst) / len(lst), 2) if lst else None
-
-    def _min(lst):
-        return round(min(lst), 2) if lst else None
-
-    def _vals(key):
-        return [float(r[key]) for r in rows if r.get(key) is not None]
-
-    avg_t = _avg(_vals("temperature_c"))
-    avg_w = _avg(_vals("wind_speed_ms"))
-    avg_p = _avg(_vals("pm25"))
-    avg_a = _avg(_vals("aqi"))
-    min_t = _min(_vals("temperature_c"))
-
-    cfg = rules.get("life_indices_rules")
-    dr  = cfg.get("driver",  {})
-    wk  = cfg.get("walk",    {})
-    ut  = cfg.get("utility", {})
-
-    # ── Индекс водителя ───────────────────────────────────────────────────────
-    driver = 0
-    if avg_t is not None:
-        bi_min = float(dr.get("temp_black_ice_min", -3.0))
-        bi_max = float(dr.get("temp_black_ice_max",  2.0))
-        if bi_min <= avg_t <= bi_max:
-            driver += int(dr.get("temp_black_ice_score", 5))
-        elif float(dr.get("temp_regular_ice_min", -10.0)) <= avg_t < bi_min:
-            driver += int(dr.get("temp_regular_ice_score", 2))
-        if avg_t < float(dr.get("temp_extreme_cold", -25.0)):
-            driver += int(dr.get("temp_extreme_cold_score", 3))
-        elif avg_t < float(dr.get("temp_severe_cold", -20.0)):
-            driver += int(dr.get("temp_severe_cold_score", 2))
-        elif avg_t < float(dr.get("temp_cold", -10.0)):
-            driver += int(dr.get("temp_cold_score", 1))
-    if avg_w is not None:
-        if avg_w > float(dr.get("wind_strong_ms", 12.0)):
-            driver += int(dr.get("wind_strong_score", 2))
-        elif avg_w > float(dr.get("wind_moderate_ms", 8.0)):
-            driver += int(dr.get("wind_moderate_score", 1))
-    driver = min(10, max(0, round(driver)))
-
-    driver_levels = dr.get("levels", [])
-    driver_label = next((l["label"] for l in driver_levels if driver <= l["max"]), "Крайне опасно")
-
-    # ── Индекс прогулки ───────────────────────────────────────────────────────
-    walk = int(wk.get("start_score", 10))
-    if avg_p is not None:
-        if avg_p > float(wk.get("pm25_high", 35.0)):    walk -= int(wk.get("pm25_high_penalty",   4))
-        elif avg_p > float(wk.get("pm25_medium", 25.0)): walk -= int(wk.get("pm25_medium_penalty", 2))
-        elif avg_p > float(wk.get("pm25_low", 15.0)):    walk -= int(wk.get("pm25_low_penalty",    1))
-    if avg_a is not None:
-        if avg_a > float(wk.get("aqi_very_high", 80)):   walk -= int(wk.get("aqi_very_high_penalty", 3))
-        elif avg_a > float(wk.get("aqi_high", 60)):      walk -= int(wk.get("aqi_high_penalty",      2))
-        elif avg_a > float(wk.get("aqi_medium", 40)):    walk -= int(wk.get("aqi_medium_penalty",    1))
-    if avg_t is not None:
-        if avg_t < float(wk.get("temp_extreme", -25.0)):  walk -= int(wk.get("temp_extreme_penalty", 3))
-        elif avg_t < float(wk.get("temp_cold", -15.0)):   walk -= int(wk.get("temp_cold_penalty",    2))
-        elif avg_t < float(wk.get("temp_chilly", -5.0)):  walk -= int(wk.get("temp_chilly_penalty",  1))
-    if avg_w is not None and avg_w > float(wk.get("wind_threshold_ms", 10.0)):
-        walk -= int(wk.get("wind_penalty", 1))
-    walk = min(10, max(0, round(walk)))
-
-    # Уровни прогулки упорядочены по убыванию min (8→6→4→0) — берём первое совпадение
-    walk_levels = wk.get("levels", [])
-    walk_label  = next((l["label"] for l in walk_levels if walk >= l["min"]), "Рекомендуется остаться дома")
-
-    # ── Индекс коммунального напряжения ───────────────────────────────────────
-    utility = 0
-    if min_t is not None:
-        if min_t < float(ut.get("temp_critical", -30.0)):  utility += int(ut.get("temp_critical_score", 4))
-        elif min_t < float(ut.get("temp_severe", -20.0)):  utility += int(ut.get("temp_severe_score",   3))
-        elif min_t < float(ut.get("temp_cold", -10.0)):    utility += int(ut.get("temp_cold_score",     2))
-        elif min_t < float(ut.get("temp_cool", -5.0)):     utility += int(ut.get("temp_cool_score",     1))
-    if avg_w is not None and avg_p is not None:
-        if avg_w < float(ut.get("smog_wind_threshold_ms", 1.5)) and avg_p > float(ut.get("smog_pm25_threshold", 20.0)):
-            utility += int(ut.get("smog_score", 2))
-    utility = min(10, max(0, round(utility)))
-
-    util_levels = ut.get("levels", [])
-    util_label  = next((l["label"] for l in util_levels if utility <= l["max"]), "Критично")
-
-    return {
-        "driver":  {"score": driver,  "label": driver_label,  "icon": "🚗", "name": "Индекс водителя"},
-        "walk":    {"score": walk,    "label": walk_label,    "icon": "🚶", "name": "Индекс прогулки"},
-        "utility": {"score": utility, "label": util_label,    "icon": "🏗️",  "name": "Коммунальное напряжение"},
-        "inputs":  {"avg_t": avg_t, "avg_w": avg_w, "avg_p": avg_p, "avg_a": avg_a, "min_t": min_t},
-    }
-
-
-@app.get(
-    "/life-indices",
-    tags=["Экология и погода"],
-    summary="Индексы жизни города (водитель / прогулка / коммуналка)",
-)
-def get_life_indices() -> dict:
-    """Три синтетических индекса на основе текущих экологических данных.
-
-    Параметры берутся из **config/rules/life_indices_rules.yaml** —
-    можно изменить пороги и применить через `POST /admin/reload-rules`.
-
-    | Индекс | Шкала | Смысл |
-    |---|---|---|
-    | Водитель | 0–10 (выше = опаснее) | Риск для автомобилиста |
-    | Прогулка | 0–10 (выше = лучше) | Комфорт прогулки на улице |
-    | Коммунальное напряжение | 0–10 (выше = хуже) | Нагрузка на ЖКХ и теплосети |
-    """
-    from .ecology_cache import query_current
-    rows = query_current()
-    result = _compute_life_indices(rows)
-    if result is None:
-        return {"error": "Нет данных экологии", "hint": "POST /update — обновить данные"}
-    return result
-
-
-# ── Управление регламентами ────────────────────────────────────────────────────
-
-@app.post(
-    "/admin/reload-rules",
-    tags=["Администрирование"],
-    summary="Горячая перезагрузка YAML-регламентов",
-)
-def admin_reload_rules() -> dict:
-    """Перечитывает все YAML-файлы из `config/rules/` и пересобирает
-    кэшированные глобалы в traffic_index.py.
-
-    Применяет новые коэффициенты **без перезапуска сервера**.
-    После редактирования YAML-файла вызовите этот эндпоинт чтобы изменения вступили в силу.
-    """
-    from .traffic_index import reload_traffic_rules
-    reloaded = reload_traffic_rules()
-    return {"status": "ok", "reloaded": reloaded}
-
-
-@app.get(
-    "/admin/rules-status",
-    tags=["Администрирование"],
-    summary="Статус кэша YAML-регламентов",
-)
-def admin_rules_status() -> dict:
-    """Показывает, какие YAML-регламенты загружены в память и их версии."""
-    from .rule_engine import rules
-    return rules.status()
-
-
-_RULES_DIR = Path(__file__).parent.parent / "config" / "rules"
-_ALLOWED_RULES = {"traffic_rules", "holiday_calendar", "ecology_rules", "life_indices_rules"}
-
-
-@app.get(
-    "/admin/rules/{name}",
-    tags=["Администрирование"],
-    summary="Получить YAML-регламент по имени",
-)
-def admin_get_rule(name: str) -> dict:
-    """Возвращает содержимое YAML-регламента как текст и как разобранный dict.
-
-    `name` — имя файла без `.yaml`: `traffic_rules`, `holiday_calendar`, `ecology_rules`, `life_indices_rules`.
-    """
-    if name not in _ALLOWED_RULES:
-        raise HTTPException(status_code=404, detail=f"Регламент '{name}' не найден. Доступны: {sorted(_ALLOWED_RULES)}")
-    path = _RULES_DIR / f"{name}.yaml"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Файл {path} не найден на диске")
-    yaml_text = path.read_text(encoding="utf-8")
-    import yaml as _yaml
-    parsed = _yaml.safe_load(yaml_text) or {}
-    return {"name": name, "yaml_text": yaml_text, "parsed": parsed}
-
-
-@app.put(
-    "/admin/rules/{name}",
-    tags=["Администрирование"],
-    summary="Сохранить YAML-регламент и применить без перезапуска",
-)
-async def admin_put_rule(name: str, request: Request) -> dict:
-    """Принимает тело запроса с полем `yaml_text` (строка YAML), валидирует, сохраняет файл
-    и вызывает горячую перезагрузку.
-
-    При ошибке YAML возвращает `400` с описанием синтаксической ошибки.
-    """
-    if name not in _ALLOWED_RULES:
-        raise HTTPException(status_code=404, detail=f"Регламент '{name}' не найден")
-    body = await request.json()
-    yaml_text: str = body.get("yaml_text", "")
-    if not yaml_text.strip():
-        raise HTTPException(status_code=400, detail="Поле yaml_text не может быть пустым")
-
-    import yaml as _yaml
-    try:
-        parsed = _yaml.safe_load(yaml_text)
-    except _yaml.YAMLError as exc:
-        raise HTTPException(status_code=400, detail=f"Синтаксическая ошибка YAML: {exc}")
-
-    if not isinstance(parsed, dict):
-        raise HTTPException(status_code=400, detail="YAML должен быть маппингом (dict) верхнего уровня")
-
-    path = _RULES_DIR / f"{name}.yaml"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml_text, encoding="utf-8")
-
-    from .traffic_index import reload_traffic_rules
-    reloaded = reload_traffic_rules()
-    return {"status": "ok", "saved": name, "reloaded": reloaded}
-
-
-@app.get(
-    "/transit",
-    tags=["Запросы"],
-    summary="Маршруты между районами (открытые данные мэрии)",
-    response_description="Общие маршруты наземного транспорта между двумя районами.",
-)
-def get_transit(
-    from_district: str = Query(
-        ...,
-        description="Район отправления. Например: `Советский район`",
-        examples={"default": {"value": "Советский район"}},
-    ),
-    to_district: str = Query(
-        ...,
-        description="Район назначения. Например: `Дзержинский район`",
-        examples={"default": {"value": "Дзержинский район"}},
-    ),
-) -> dict:
-    """
-    Находит общие маршруты наземного транспорта между двумя районами Новосибирска.
-
-    Использует данные об остановках из [opendata.novo-sibirsk.ru](http://opendata.novo-sibirsk.ru)
-    (тема `stops`, TTL 24ч). **Ключ API не требуется.**
-
-    Для каждого общего маршрута возвращает примеры остановок в районе отправления и назначения.
-    Также включает ссылку для построения точного маршрута в 2ГИС.
-
-    > ⚠️ Данные о маршрутах из открытых данных мэрии могут быть неполными.
-    > Для точного маршрута используйте 2ГИС или Яндекс.Транспорт.
-    """
-    import re
-    from .cache import _get_conn, table_exists
-    from .transport_api import DISTRICT_COORDS
-
-    if not table_exists("stops"):
-        return {
-            "error": "Данные об остановках не загружены",
-            "hint": "POST /update?topic=stops",
-            "connections": [],
-        }
-
-    def split_routes(marshryt: str) -> list[str]:
-        """Извлекает номера маршрутов из строки вида 'Автобус: 23, 36.Маршрутное такси: 4.'"""
-        if not marshryt:
-            return []
-        return _re.findall(r"\b\d+[а-яёa-z]?\b", marshryt)
-
-    conn = _get_conn()
-    try:
-        from_kw = from_district.split()[0]
-        to_kw = to_district.split()[0]
-
-        def get_route_stops(kw: str) -> dict[str, list[str]]:
-            rows = conn.execute(
-                "SELECT OstName, Marshryt FROM topic_stops "
-                "WHERE AdrDistr ILIKE ? AND Marshryt IS NOT NULL AND Marshryt != ''",
-                [f"%{kw}%"],
-            ).fetchall()
-            result: dict[str, list[str]] = {}
-            for stop_name, marshryt in rows:
-                for route in split_routes(marshryt or ""):
-                    if route not in result:
-                        result[route] = []
-                    if stop_name and stop_name not in result[route]:
-                        result[route].append(stop_name)
-            return result
-
-        from_routes = get_route_stops(from_kw)
-        to_routes = get_route_stops(to_kw)
-        common = sorted(set(from_routes) & set(to_routes))
-
-        connections = [
-            {
-                "route": r,
-                "from_stops": from_routes[r][:3],
-                "to_stops": to_routes[r][:3],
-            }
-            for r in common[:20]
-        ]
-
-        from_coords = DISTRICT_COORDS.get(from_district)
-        to_coords = DISTRICT_COORDS.get(to_district)
-        hint = None
-        if from_coords and to_coords:
-            hint = (
-                f"https://2gis.ru/{get_city_slug()}/routeSearch/rsType/publictransport/"
-                f"from/{from_coords[0]},{from_coords[1]}/to/{to_coords[0]},{to_coords[1]}"
-            )
-
-        _od = get_opendata_base_url() or "opendata"
-        return {
-            "from": from_district,
-            "to": to_district,
-            "common_routes_count": len(common),
-            "connections": connections,
-            "hint": hint,
-            "notice": (
-                f"⚠️ Данные о маршрутах взяты из открытых данных {get_city_name('genitive')} "
-                f"({_od}) и могут быть неполными или устаревшими. "
-                "Для построения точного маршрута воспользуйтесь приложением 2ГИС или Яндекс.Транспорт."
-            ),
-            "source": f"{_od} · остановки наземного транспорта (TTL 24ч)",
-        }
-    except Exception as e:
-        log.error(f"Ошибка /transit: {e}")
-        return {"error": str(e), "connections": []}
-    finally:
-        conn.close()
-
-
-@app.get(
-    "/transit/districts",
-    tags=["Запросы"],
-    summary="Транспортная инфраструктура по районам (без ключа API)",
-    response_description="Число остановок наземного транспорта по районам",
-)
-def get_transit_districts() -> dict:
-    """
-    Возвращает число остановок наземного пассажирского транспорта по районам
-    из кэша [opendata.novo-sibirsk.ru](http://opendata.novo-sibirsk.ru).
-
-    **Ключ API не требуется.** Данные берутся из темы `stops` (TTL 24ч).
-
-    Для обновления данных: `POST /update?topic=stops`
-    """
-    from .cache import _get_conn, table_exists
-
-    if not table_exists("stops"):
-        return {
-            "error": "Данные об остановках не загружены",
-            "hint": "POST /update?topic=stops",
-            "rows": [],
-            "total_stops": 0,
-            "count": 0,
-        }
-
-    conn = _get_conn()
-    try:
-        cursor = conn.execute("""
-            SELECT
-                AdrDistr AS district,
-                COUNT(*) AS stops_count
-            FROM topic_stops
-            WHERE AdrDistr IS NOT NULL AND AdrDistr != ''
-            GROUP BY AdrDistr
-            ORDER BY stops_count DESC
-        """)
-        cols = [d[0] for d in cursor.description]
-        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
-        total = sum(r["stops_count"] for r in rows)
-        return {
-            "operation": "TRANSIT_DISTRICTS",
-            "count": len(rows),
-            "total_stops": total,
-            "rows": rows,
-            "columns": cols,
-            "source": "opendata.novo-sibirsk.ru · остановки наземного транспорта",
-        }
-    except Exception as e:
-        log.error(f"Ошибка /transit/districts: {e}")
-        return {"error": str(e), "rows": [], "total_stops": 0, "count": 0}
-    finally:
-        conn.close()
-
-
-@app.get(
-    "/twogis/geocode",
-    tags=["2GIS"],
-    summary="Геокодировать адрес (адрес → координаты)",
-    response_description="Координаты объекта или сообщение о недоступности",
-)
-def get_geocode(
-    q: str = Query(..., description="Адрес для геокодирования. Например: `ул. Красный проспект, 25`"),
-    city: str = Query(get_city_name(), description="Город (префикс к запросу)"),
-) -> dict:
-    """
-    Конвертирует адресную строку в координаты через 2GIS Geocoder API.
-
-    - Результаты кешируются в DuckDB (повторные запросы мгновенны, ключ не нужен).
-    - Если ключ не задан и адрес не в кеше → `available: false`.
-    - Используйте `GET /twogis/geocache-stats` чтобы увидеть размер кеша.
-    """
-    from .geocoder import geocode
-
-    key = _get_twogis_key()
-    result = geocode(q, city)
-
-    if result is None:
-        if not key:
-            return {"available": False, "reason": "2GIS ключ не задан. POST /twogis/key"}
-        return {"available": True, "found": False, "query": q}
-
-    return {
-        "available": True,
-        "found": True,
-        "query": q,
-        "lat": result["lat"],
-        "lon": result["lon"],
-        "full_name": result["full_name"],
-        "source": result["source"],
-    }
-
-
-@app.get(
-    "/twogis/geocache-stats",
-    tags=["2GIS"],
-    summary="Статистика кеша геокодирования",
-)
-def get_geocache_stats() -> dict:
-    """Показывает количество адресов, сохранённых в кеше геокодирования."""
-    from .geocoder import geocode_stats
-    return geocode_stats()
-
-
-@app.get(
-    "/twogis/key",
-    tags=["2GIS"],
-    summary="Текущий ключ 2GIS API",
-    response_description="Ключ (маскированный), источник и статус",
-)
-def get_twogis_key_info() -> dict:
-    """
-    Возвращает информацию о текущем ключе 2GIS API.
-
-    | Поле | Описание |
-    |---|---|
-    | `is_set` | `true` если ключ задан |
-    | `masked` | Маскированное значение вида `2ea1a391...9092` |
-    | `source` | Откуда взят ключ: `env` / `file` / `unset` |
-
-    Для проверки валидности используйте `GET /twogis/validate`.
-    """
-    key = _get_twogis_key()
-    if os.environ.get("TWOGIS_API_KEY", "").strip():
-        source = "env"
-    elif _load_api_keys().get("twogis_key", "").strip():
-        source = "file"
-    else:
-        source = "unset"
-    masked = f"{key[:8]}...{key[-4:]}" if key and len(key) > 12 else (key or "")
-    return {
-        "is_set": bool(key),
-        "masked": masked,
-        "source": source,
-    }
-
-
-@app.post(
-    "/twogis/key",
-    tags=["2GIS"],
-    summary="Сохранить ключ 2GIS API",
-    response_description="Подтверждение сохранения",
-)
-def set_twogis_key(
-    key: str = Query(..., description="API ключ 2GIS. Получить: platform.2gis.ru"),
-) -> dict:
-    """
-    Сохраняет ключ 2GIS API в `data/api_keys.json` и сразу применяет его в текущем процессе.
-
-    - Если переменная окружения `TWOGIS_API_KEY` задана, она имеет приоритет над файлом.
-    - После сохранения вызовите `GET /twogis/validate` для проверки.
-    """
-    key = key.strip()
-    if not key:
-        return {"ok": False, "error": "Ключ не может быть пустым"}
-    keys = _load_api_keys()
-    keys["twogis_key"] = key
-    _save_api_keys(keys)
-    os.environ["TWOGIS_API_KEY"] = key
-    masked = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else key
-    return {"ok": True, "masked": masked, "source": "file"}
-
-
-@app.get(
-    "/twogis/validate",
-    tags=["2GIS"],
-    summary="Проверить валидность ключа 2GIS API",
-    response_description="Результат проверки через Geocoder API",
-)
-def validate_twogis_key(
-    key: str | None = Query(
-        None,
-        description="Ключ для проверки. Если не указан — используется текущий сохранённый.",
-    ),
-) -> dict:
-    """
-    Проверяет ключ 2GIS, выполняя тестовый запрос к Geocoder API
-    (`catalog.api.2gis.com/3.0/items/geocode?q=Новосибирск`).
-
-    | `valid` | Значение |
-    |---|---|
-    | `true` | Ключ рабочий, API отвечает |
-    | `false` | Ключ неверный, истёк или сеть недоступна |
-    """
-    import requests as _req
-
-    check_key = key.strip() if key else _get_twogis_key()
-    if not check_key:
-        return {"valid": False, "error": "Ключ не задан. Сохраните его через POST /twogis/key"}
-    masked = f"{check_key[:8]}...{check_key[-4:]}" if len(check_key) > 12 else check_key
-    try:
-        resp = _req.get(
-            "https://catalog.api.2gis.com/3.0/items/geocode",
-            params={"q": "Новосибирск", "fields": "items.point", "key": check_key},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            total = resp.json().get("result", {}).get("total", 0)
-            return {"valid": True, "masked": masked, "status_code": 200, "geocoder_results": total}
-        elif resp.status_code == 403:
-            return {"valid": False, "masked": masked, "error": "Ключ неверный или истёк", "status_code": 403}
-        else:
-            return {"valid": False, "masked": masked, "error": f"HTTP {resp.status_code}", "status_code": resp.status_code}
-    except Exception as e:
-        return {"valid": False, "masked": masked, "error": str(e)}
-
-
-@app.get("/mapgl-key", include_in_schema=False)
-def get_mapgl_key() -> dict:
-    """Возвращает ключ 2GIS для инициализации MapGL JS на фронтенде."""
-    key = _get_twogis_key()
-    return {"key": key or "", "available": bool(key)}
-
-
-@app.post(
-    "/update",
-    tags=["Управление"],
-    summary="Обновить данные из источника",
-    response_description="Статус обновления по каждой теме: `rows` и `success`",
-    responses={
-        200: {
-            "content": {
-                "application/json": {
-                    "example": {
-                        "updated": {
-                            "parking": {"rows": 2360, "success": True},
-                            "schools": {"rows": 214, "success": True},
-                            "pharmacies": {"rows": 27, "success": True},
-                        }
-                    }
-                }
-            }
-        }
-    },
-)
-def post_update(
-    topic: str | None = Query(
-        None,
-        description=(
-            "ID темы для обновления. Если не указан — обновляются все 10 тем (~1–2 мин).\n\n"
-            "Доступные ID: `parking`, `stops`, `schools`, `kindergartens`, "
-            "`libraries`, `pharmacies`, `sport_grounds`, `sport_orgs`, `culture`, "
-            "`construction_permits`, `construction_commissioned`"
-        ),
-        examples={"default": {"summary": "Конкретная тема", "value": "parking"}},
-    ),
-) -> dict:
-    """
-    Загружает или обновляет данные с [opendata.novo-sibirsk.ru](http://opendata.novo-sibirsk.ru).
-
-    - **Без `topic`** — обновляет все 12 тем (~1–2 минуты, ~4 МБ)
-    - **С `topic`** — обновляет только указанную тему (несколько секунд)
-
-    Данные сохраняются в локальный DuckDB-кэш (`DATA/cache.db`).
-    TTL по умолчанию — 24 часа.
-
-    > **Отключения ЖКХ** (`power_outages`) обновляются автоматически при запросах
-    > через `/ask` (TTL 30 мин). Принудительно в CLI: `bot power update`.
-
-    > **Камеры фиксации** (`cameras`) имеют отдельный эндпоинт: `POST /cameras/update`
-    > (источник — OpenStreetMap Overpass API, TTL 7 дней).
-
-    > **Медицинские учреждения** (`medical`) имеют отдельный эндпоинт: `POST /medical/update`
-    > (источник — OpenStreetMap Overpass API, TTL 72 часа).
-    """
-    from .cli import _do_update
-    from .registry import list_topics
-
-    topics_to_update = [topic] if topic else list_topics()
-    results = {}
-    for t in topics_to_update:
-        rows = _do_update(t)
-        results[t] = {"rows": rows, "success": rows > 0}
-
-    return {"updated": results}
-
-
-# ── Cameras endpoints ─────────────────────────────────────────────────────────
-
-@app.get(
-    "/cameras",
-    tags=["Камеры"],
-    summary="Список камер фиксации нарушений ПДД",
-    response_description="Массив камер с координатами (_lat, _lon) и мета-информацией",
-)
-def get_cameras(
-    limit: int = Query(60, ge=1, le=200, description="Максимум записей в ответе"),
-    district: str | None = Query(None, description="Фильтр по району (например 'Советский')"),
-) -> dict:
-    """
-    Возвращает список стационарных камер фиксации нарушений ПДД в Новосибирске.
-
-    Данные берутся из кеша OSM (Overpass API, тег `highway=speed_camera`).
-    При первом запросе или по истечении TTL (7 дней) кеш обновляется автоматически.
-
-    ### Поля каждой камеры
-
-    | Поле | Тип | Описание |
-    |---|---|---|
-    | `osm_id` | string | ID объекта в OpenStreetMap |
-    | `_lat` | float | Широта |
-    | `_lon` | float | Долгота |
-    | `maxspeed` | string | Ограничение скорости (например `60`) |
-    | `name` | string | Название камеры (если задано в OSM) |
-    | `direction` | string | Направление съёмки в градусах (если задано) |
-    | `ref` | string | Номер / ссылка (если задано) |
-    | `district` | string | Район города (вычисляется по координатам) |
-
-    **Лицензия:** данные OpenStreetMap, ODbL — [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright)
-
-    Эквивалентно запросу: `GET /ask?q=камеры+видеофиксации`
-    """
-    from .cameras_cache import query_cameras, count_cameras, get_cameras_meta, upsert_cameras, is_cameras_stale
-    from .cameras_fetcher import fetch_cameras
-
-    if is_cameras_stale():
-        fetched = fetch_cameras()
-        if fetched:
-            upsert_cameras(fetched)
-
-    rows = query_cameras(limit=limit, district_filter=district)
-    meta = get_cameras_meta()
-    return {
-        "operation": "FILTER",
-        "count": count_cameras(district_filter=district),
-        "rows": rows,
-        "columns": ["osm_id", "_lat", "_lon", "maxspeed", "name", "direction", "ref", "district"],
-        "coords_enriched": True,
-        "coords_source": "OpenStreetMap (предзагружены)",
-        "cameras_meta": {
-            "last_updated": str(meta.get("last_updated") or ""),
-            "total_rows": meta.get("total_rows", 0),
-            "source": "OpenStreetMap · Overpass API · highway=speed_camera",
-            "bbox": "54.70,82.60,55.25,83.40 (Новосибирск)",
-            "license": "ODbL · openstreetmap.org/copyright",
-        },
-    }
-
-
-@app.post(
-    "/cameras/update",
-    tags=["Камеры"],
-    summary="Обновить данные о камерах фиксации нарушений (OSM)",
-    response_description="Статус обновления: rows и success",
-)
-def post_cameras_update() -> dict:
-    """
-    Принудительно обновляет данные о стационарных камерах фиксации нарушений ПДД
-    из OpenStreetMap через Overpass API.
-
-    TTL: 7 дней. При запросах через `/ask?q=камеры` обновление происходит автоматически.
-
-    **Источник:** OpenStreetMap, лицензия ODbL (openstreetmap.org/copyright).
-    """
-    from .cameras_fetcher import fetch_cameras
-    from .cameras_cache import upsert_cameras, count_cameras
-    cameras = fetch_cameras()
-    if not cameras:
-        # Overpass API вернул пустой ответ — оставляем старые данные без изменений
-        existing = count_cameras()
-        return {"updated": {"cameras": {
-            "rows": existing,
-            "success": existing > 0,
-            "warning": "Overpass API недоступен — возвращены кешированные данные",
-        }}}
-    rows = upsert_cameras(cameras)
-    return {"updated": {"cameras": {"rows": rows, "success": rows > 0}}}
-
-
-# ── Medical endpoints ─────────────────────────────────────────────────────────
-
-@app.get(
-    "/medical",
-    tags=["Медицина"],
-    summary="Список медицинских учреждений Новосибирска",
-    response_description="Массив учреждений с координатами (_lat, _lon) и мета-информацией",
-)
-def get_medical(
-    limit: int = Query(50, ge=1, le=200, description="Максимум записей в ответе"),
-    district: str | None = Query(None, description="Фильтр по району (например 'Советский')"),
-    facility_type: str | None = Query(None, description="Тип: hospital или clinic"),
-) -> dict:
-    """
-    Возвращает список больниц и поликлиник Новосибирска из OSM (Overpass API).
-
-    При первом запросе или по истечении TTL (72 часа) кеш обновляется автоматически.
-
-    ### Поля каждого объекта
-
-    | Поле | Тип | Описание |
-    |---|---|---|
-    | `osm_id` | string | ID объекта в OpenStreetMap (n/w-префикс) |
-    | `name` | string | Название учреждения |
-    | `facility_type` | string | `hospital` или `clinic` |
-    | `type_label` | string | Читаемое название типа |
-    | `emergency` | string | Наличие приёмного покоя |
-    | `phone` | string | Телефон (если задан в OSM) |
-    | `address` | string | Адрес (улица + номер дома) |
-    | `district` | string | Район города (вычисляется по координатам) |
-    | `_lat` | float | Широта |
-    | `_lon` | float | Долгота |
-
-    **Лицензия:** данные OpenStreetMap, ODbL — [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright)
-    """
-    from .medical_cache import query_medical, count_medical, get_medical_meta, upsert_medical, is_medical_stale
-    from .medical_fetcher import fetch_medical
-
-    if is_medical_stale():
-        fetched = fetch_medical()
-        if fetched:
-            upsert_medical(fetched)
-
-    rows = query_medical(limit=limit, district_filter=district, type_filter=facility_type)
-    meta = get_medical_meta()
-    return {
-        "operation": "FILTER",
-        "count": count_medical(district_filter=district, type_filter=facility_type),
-        "rows": rows,
-        "columns": ["osm_id", "name", "facility_type", "type_label", "emergency", "phone", "address", "district", "_lat", "_lon"],
-        "coords_enriched": True,
-        "coords_source": "OpenStreetMap (предзагружены)",
-        "medical_meta": {
-            "last_updated": str(meta.get("last_updated") or ""),
-            "total_rows": meta.get("total_rows", 0),
-            "source": "OpenStreetMap · Overpass API · amenity=hospital|clinic",
-            "bbox": "54.70,82.60,55.25,83.40 (Новосибирск)",
-            "license": "ODbL · openstreetmap.org/copyright",
-        },
-    }
-
-
-@app.post(
-    "/medical/update",
-    tags=["Медицина"],
-    summary="Обновить данные о медицинских учреждениях (OSM)",
-    response_description="Статус обновления: rows и success",
-)
-def post_medical_update() -> dict:
-    """
-    Принудительно обновляет данные о больницах и поликлиниках Новосибирска
-    из OpenStreetMap через Overpass API.
-
-    TTL: 72 часа. При запросах через `/ask?q=больницы` обновление происходит автоматически.
-
-    **Источник:** OpenStreetMap, лицензия ODbL (openstreetmap.org/copyright).
-    """
-    from .medical_fetcher import fetch_medical
-    from .medical_cache import upsert_medical, count_medical
-    facilities = fetch_medical()
-    if not facilities:
-        existing = count_medical()
-        return {"updated": {"medical": {
-            "rows": existing,
-            "success": existing > 0,
-            "warning": "Overpass API недоступен — возвращены кешированные данные",
-        }}}
-    rows = upsert_medical(facilities)
-    return {"updated": {"medical": {"rows": rows, "success": rows > 0}}}
-
-
-# ── Ecology endpoints ─────────────────────────────────────────────────────────
-
-_ecology_lock = threading.Lock()
-
-
-def _ecology_auto_update() -> None:
-    """Обновляет данные экологии и прогноза если TTL истёк.
-
-    Защищён threading.Lock() — предотвращает конкурентные записи в DuckDB
-    когда несколько эндпоинтов (/ecology/status, /ecology/risks) вызываются
-    одновременно при загрузке дашборда.
-    """
-    from .ecology_cache import (
-        is_ecology_stale, upsert_stations, upsert_measurements,
-        is_forecast_stale, upsert_forecast,
-    )
-    from .ecology_fetcher import fetch_all_ecology, fetch_all_forecast
-    with _ecology_lock:
-        if is_ecology_stale():
-            upsert_stations()
-            upsert_measurements(fetch_all_ecology())
-        if is_forecast_stale():
-            upsert_forecast(fetch_all_forecast())
-
-
-@app.get(
-    "/ecology/status",
-    tags=["Экология"],
-    summary="Текущее качество воздуха и погода по районам",
-    response_description="Массив измерений: PM2.5, PM10, NO2, AQI, температура, ветер, влажность",
-    responses={
-        200: {
-            "content": {
-                "application/json": {
-                    "example": {
-                        "operation": "ECO_STATUS",
-                        "district": None,
-                        "count": 10,
-                        "measured_at": "2026-03-05T10:15:00+07:00",
-                        "rows": [
-                            {
-                                "district": "Советский район",
-                                "address": "Академгородок",
-                                "pm25": 8.2,
-                                "pm10": 15.1,
-                                "no2": 12.0,
-                                "aqi": 32,
-                                "temperature_c": -5.0,
-                                "wind_speed_ms": 2.1,
-                                "humidity_pct": 78,
-                                "source": "open-meteo-aq",
-                                "measured_at": "2026-03-05T10:15:00+07:00",
-                            }
-                        ],
-                        "columns": ["district", "address", "pm25", "pm10", "no2", "aqi",
-                                    "temperature_c", "wind_speed_ms", "humidity_pct", "source", "measured_at"],
-                        "ecology_meta": {
-                            "last_updated": "2026-03-05T10:15:00+07:00",
-                            "total_records": 80,
-                            "districts_covered": 10,
-                        },
-                    }
-                }
-            }
-        }
-    },
-)
-def get_ecology_status(
-    district: str | None = Query(
-        None,
-        description=(
-            "Фильтр по району. Примеры: `Советский район`, `Центральный район`.\n\n"
-            "Без параметра — возвращаются данные по всем 10 районам Новосибирска."
-        ),
-        examples={"default": {"summary": "Академгородок", "value": "Советский район"}},
-    ),
-) -> dict:
-    """
-    Возвращает текущий снимок качества воздуха и погоды по всем районам (или одному).
-
-    Данные обновляются автоматически если TTL (15 мин) истёк.
-
-    ### Поля каждой записи
-
-    | Поле | Тип | Описание |
-    |---|---|---|
-    | `district` | string | Административный район |
-    | `address` | string | Описание точки мониторинга |
-    | `pm25` | float | PM2.5, мкг/м³ |
-    | `pm10` | float | PM10, мкг/м³ |
-    | `no2` | float | NO2 (диоксид азота), мкг/м³ |
-    | `aqi` | int | Европейский индекс качества воздуха (0–500) |
-    | `temperature_c` | float | Температура воздуха, °C |
-    | `wind_speed_ms` | float | Скорость ветра, м/с |
-    | `humidity_pct` | float | Относительная влажность, % |
-    | `source` | string | Источник: `open-meteo-aq`, `cityair`, `cityair+open-meteo` |
-    | `measured_at` | string | Время измерения (ISO 8601) |
-
-    ### Интерпретация AQI (European AQI)
-
-    | AQI | Категория |
-    |---|---|
-    | 0–20 | Отличный |
-    | 20–40 | Хороший |
-    | 40–60 | Умеренный |
-    | 60–80 | Плохой |
-    | 80–100 | Очень плохой |
-    | >100 | Экстремальный |
-
-    Эквивалентно запросу: `GET /ask?q=качество+воздуха+сейчас`
-    """
-    _ecology_auto_update()
-    from .ecology_cache import query_current, get_ecology_meta
-    rows = query_current(district_filter=district)
-    meta = get_ecology_meta()
-    cols = ["district", "address", "pm25", "pm10", "no2", "aqi",
-            "temperature_c", "wind_speed_ms", "humidity_pct", "source", "measured_at"]
-    return {
-        "operation": "ECO_STATUS",
-        "district": district,
-        "count": len(rows),
-        "measured_at": meta.get("last_updated", ""),
-        "rows": [{k: r.get(k) for k in cols} for r in rows],
-        "columns": cols,
-        "ecology_meta": meta,
-    }
-
-
-@app.get(
-    "/ecology/pdk",
-    tags=["Экология"],
-    summary="Превышения ПДК PM2.5 (порог ВОЗ: 35 мкг/м³)",
-    response_description="Районы с PM2.5 > 35 мкг/м³ за текущие сутки",
-    responses={
-        200: {
-            "content": {
-                "application/json": {
-                    "examples": {
-                        "no_exceedance": {
-                            "summary": "Нет превышений",
-                            "value": {
-                                "operation": "ECO_PDK",
-                                "threshold_pm25": 35.0,
-                                "standard": "WHO Air Quality Guidelines 2021",
-                                "count": 0,
-                                "rows": [],
-                                "columns": ["district", "pm25_max", "pm25_avg", "измерений", "последнее"],
-                            },
-                        },
-                        "has_exceedance": {
-                            "summary": "Есть превышение",
-                            "value": {
-                                "operation": "ECO_PDK",
-                                "threshold_pm25": 35.0,
-                                "count": 1,
-                                "rows": [
-                                    {
-                                        "district": "Ленинский район",
-                                        "pm25_max": 52.3,
-                                        "pm25_avg": 41.7,
-                                        "измерений": 8,
-                                        "последнее": "2026-03-05T09:00:00+07:00",
-                                    }
-                                ],
-                            },
-                        },
-                    }
-                }
-            }
-        }
-    },
-)
-def get_ecology_pdk(
-    district: str | None = Query(
-        None,
-        description="Фильтр по конкретному району. Без параметра — все районы.",
-    ),
-) -> dict:
-    """
-    Возвращает районы, где PM2.5 превысил порог 35 мкг/м³ за текущие сутки.
-
-    Порог 35 мкг/м³ — среднесуточный стандарт ВОЗ (WHO Air Quality Guidelines, 2021).
-    Российский ПДК среднесуточный — 25 мкг/м³.
-
-    ### Поля ответа
-
-    | Поле | Тип | Описание |
-    |---|---|---|
-    | `district` | string | Район с превышением |
-    | `pm25_max` | float | Максимальное зафиксированное значение PM2.5 за сутки |
-    | `pm25_avg` | float | Среднее значение PM2.5 за сутки |
-    | `измерений` | int | Количество снимков за сутки |
-    | `последнее` | string | Время последнего измерения |
-
-    Эквивалентно запросу: `GET /ask?q=превышение+ПДК+PM2.5`
-    """
-    _ecology_auto_update()
-    from .ecology_cache import query_pdk_exceedances
-    rows = query_pdk_exceedances(district_filter=district)
-    cols = ["district", "pm25_max", "pm25_avg", "измерений", "последнее"]
-    return {
-        "operation": "ECO_PDK",
-        "threshold_pm25": 35.0,
-        "standard": "WHO Air Quality Guidelines 2021",
-        "district": district,
-        "count": len(rows),
-        "rows": [{k: r.get(k) for k in cols} for r in rows],
-        "columns": cols,
-        "note": "PM2.5 > 35 мкг/м³ — суточный порог ВОЗ",
-    }
-
-
-@app.get(
-    "/ecology/history",
-    tags=["Экология"],
-    summary="История качества воздуха по дням",
-    response_description="Агрегированные показатели PM2.5, AQI, погоды по дням и районам",
-    responses={
-        200: {
-            "content": {
-                "application/json": {
-                    "example": {
-                        "operation": "ECO_HISTORY",
-                        "days": 7,
-                        "district": "Советский район",
-                        "count": 7,
-                        "rows": [
-                            {
-                                "день": "2026-03-05",
-                                "район": "Советский район",
-                                "pm25_ср": 9.1,
-                                "pm25_макс": 14.2,
-                                "aqi_ср": 28,
-                                "темп_ср": -4.5,
-                                "ветер_ср": 2.3,
-                                "снимков": 24,
-                            }
-                        ],
-                        "columns": ["день", "район", "pm25_ср", "pm25_макс", "aqi_ср",
-                                    "темп_ср", "ветер_ср", "снимков"],
-                    }
-                }
-            }
-        }
-    },
-)
-def get_ecology_history(
-    days: int = Query(
-        7,
-        ge=1,
-        le=7,
-        description="Глубина истории в днях (1–7). История хранится 7 дней.",
-    ),
-    district: str | None = Query(
-        None,
-        description="Фильтр по району. Без параметра — все районы.",
-        examples={"default": {"summary": "Советский район", "value": "Советский район"}},
-    ),
-) -> dict:
-    """
-    Возвращает агрегированные данные о качестве воздуха и погоде по дням.
-
-    Полезно для анализа динамики: «Какой был PM2.5 в Советском районе за неделю?»
-    Поле `ветер_ср` позволяет коррелировать скорость ветра с уровнем PM2.5
-    (слабый ветер → накопление смога).
-
-    ### Поля каждой записи
-
-    | Поле | Тип | Описание |
-    |---|---|---|
-    | `день` | string | Дата (YYYY-MM-DD) |
-    | `район` | string | Административный район |
-    | `pm25_ср` | float | Среднее PM2.5 за день, мкг/м³ |
-    | `pm25_макс` | float | Максимальное PM2.5 за день, мкг/м³ |
-    | `aqi_ср` | float | Средний AQI за день |
-    | `темп_ср` | float | Средняя температура, °C |
-    | `ветер_ср` | float | Средняя скорость ветра, м/с |
-    | `снимков` | int | Количество измерений в день |
-
-    Эквивалентно запросу: `GET /ask?q=динамика+PM2.5+за+неделю`
-    """
-    from .ecology_cache import query_history
-    rows = query_history(district_filter=district, days=days)
-    cols = ["день", "район", "pm25_ср", "pm25_макс", "aqi_ср", "темп_ср", "ветер_ср", "снимков"]
-    return {
-        "operation": "ECO_HISTORY",
-        "days": days,
-        "district": district,
-        "count": len(rows),
-        "rows": [{k: r.get(k) for k in cols} for r in rows],
-        "columns": cols,
-    }
-
-
-@app.post(
-    "/ecology/update",
-    tags=["Экология"],
-    summary="Обновить данные о качестве воздуха и погоде",
-    response_description="Статус обновления: количество загруженных измерений",
-    responses={
-        200: {
-            "content": {
-                "application/json": {
-                    "example": {
-                        "success": True,
-                        "records_loaded": 10,
-                        "districts_covered": 10,
-                        "last_updated": "2026-03-05T10:15:00+07:00",
-                        "source": "open-meteo",
-                    }
-                }
-            }
-        }
-    },
-)
-def post_ecology_update() -> dict:
-    """
-    Принудительно загружает актуальные данные с Open-Meteo (и CityAir если настроен ключ).
-
-    В штатном режиме обновление происходит автоматически при каждом запросе к `/ecology/*`
-    и `/ask` (тема `ecology`) если TTL (15 мин) истёк.
-
-    ### Что происходит
-
-    1. Запрос к [Open-Meteo Air Quality API](https://air-quality-api.open-meteo.com) — PM2.5, PM10, NO2, AQI
-    2. Запрос к [Open-Meteo Forecast API](https://api.open-meteo.com) — температура, ветер, давление
-    3. Опционально: запрос к CityAir API (если задан `CITYAIR_API_KEY` в `.env`)
-    4. Upsert в DuckDB таблицы `fact_measurements` по всем 10 районам
-
-    > CityAir обогащает данные Open-Meteo если API-ключ задан в переменной `CITYAIR_API_KEY`.
-    """
-    from .ecology_fetcher import fetch_all_ecology
-    from .ecology_cache import upsert_stations, upsert_measurements, get_ecology_meta
-    import os
-
-    upsert_stations()
-    records = fetch_all_ecology()
-    count = upsert_measurements(records)
-    meta = get_ecology_meta()
-    has_cityair = bool(os.environ.get("CITYAIR_API_KEY", "").strip())
-    return {
-        "success": count > 0,
-        "records_loaded": count,
-        "districts_covered": meta.get("districts_covered", 0),
-        "last_updated": meta.get("last_updated", ""),
-        "source": "open-meteo+cityair" if has_cityair else "open-meteo",
-    }
-
-
-@app.post(
-    "/power/update",
-    tags=["Управление"],
-    summary="Обновить данные об отключениях ЖКХ",
-    response_description="Статус обновления: количество загруженных записей",
-)
-def post_power_update() -> dict:
-    """
-    Принудительно загружает актуальные данные об отключениях ЖКХ с
-    [051.novo-sibirsk.ru](http://051.novo-sibirsk.ru).
-
-    В штатном режиме обновление происходит автоматически при запросах через `/ask`
-    (тема `power_outages`) если TTL (30 мин) истёк.
-
-    Загружает все типы ресурсов: электроснабжение, теплоснабжение, горячая вода,
-    холодная вода, газоснабжение.
-    """
-    from .power_scraper import fetch_all_outages
-    from .power_cache import upsert_outages, get_power_meta
-
-    records = fetch_all_outages()
-    count = upsert_outages(records)
-    meta = get_power_meta()
-    return {
-        "success": count > 0,
-        "records_loaded": count,
-        "active_houses": meta.get("active_houses", 0),
-        "planned_houses": meta.get("planned_houses", 0),
-        "last_scraped": meta.get("last_scraped", ""),
-        "source": get_feature("power_outages_url", ""),
-    }
-
-
-@app.get(
-    "/ecology/risks",
-    tags=["Экология"],
-    summary="Прескриптивная аналитика: карточки рисков + рекомендации",
-    response_description="Список активных рисков с рекомендациями для горожан и диспетчеров",
-    responses={
-        200: {
-            "content": {
-                "application/json": {
-                    "example": {
-                        "operation": "ECO_RISKS",
-                        "district": None,
-                        "count": 2,
-                        "risks": [
-                            {
-                                "id": "smog_trap",
-                                "scenario": "Экологическая ловушка",
-                                "severity": "warning",
-                                "icon": "🌫️",
-                                "title": "Безветрие блокирует рассеивание выбросов",
-                                "metrics": "Ветер 0.8 м/с · PM2.5 28.3 мкг/м³",
-                                "citizen": "Не открывайте окна ночью...",
-                                "official": "Рассмотреть объявление режима НМУ...",
-                            }
-                        ],
-                        "ecology_meta": {"last_updated": "2026-03-05T10:15:00+07:00"},
-                    }
-                }
-            }
-        }
-    },
-)
-def get_ecology_risks(
-    district: str | None = Query(
-        None,
-        description="Фильтр по району. Без параметра — анализ по всем районам.",
-    ),
-) -> dict:
-    """
-    Прескриптивная аналитика: вычисляет активные риски на основе текущих данных.
-
-    ### Обнаруживаемые сценарии
-
-    | ID | Сценарий | Триггер |
-    |---|---|---|
-    | `smog_trap` | Экологическая ловушка | Ветер < 1.5 м/с + PM2.5 > 20 мкг/м³ |
-    | `pdk` | Превышение нормы ВОЗ | PM2.5 > 35 мкг/м³ |
-    | `ice` | Риск гололёда | Температура от −3°C до +2°C |
-    | `temp_shock` | Температурный шок | Суточная дельта ≤ −15°C |
-    | `severe_cold` | Экстремальный холод | Температура < −20°C |
-
-    ### Поля каждого риска
-
-    | Поле | Описание |
-    |---|---|
-    | `id` | Идентификатор сценария |
-    | `severity` | `warning` или `critical` |
-    | `icon` | Эмодзи-иконка |
-    | `title` | Краткое описание |
-    | `metrics` | Значения, вызвавшие триггер |
-    | `citizen` | Рекомендация для горожанина |
-    | `official` | Рекомендация для диспетчера мэрии |
-
-    Эквивалентно запросу: `GET /ask?q=риски+для+жизни+в+городе`
-    """
-    _ecology_auto_update()
-    from .ecology_cache import query_risks, get_ecology_meta
-    risks = query_risks(district_filter=district)
-    meta = get_ecology_meta()
-    return {
-        "operation": "ECO_RISKS",
-        "district": district,
-        "count": len(risks),
-        "risks": risks,
-        "ecology_meta": meta,
-    }
-
-
-# ── Центр ИИ НГУ ─────────────────────────────────────────────────────────────
-@app.get("/ciinsu", tags=["ЦИИ НГУ"])
-def get_ciinsu(section: str = Query("center", description="center | projects | team | publications | news | contacts")) -> dict:
-    """Данные о Центре искусственного интеллекта НГУ из data/ciinsu/knowledge_base.json."""
-    from .ciinsu import get_section
-    return get_section(section)
-
-
-@app.post("/ciinsu/login", tags=["ЦИИ НГУ"])
-def ciinsu_login(password: str = Form(...)) -> dict:
-    """Авторизация редактора новостей. Возвращает токен при верном пароле."""
-    from .ciinsu import login as _login
-    token = _login(password)
-    if not token:
-        raise HTTPException(status_code=401, detail="Неверный пароль")
-    return {"token": token}
-
-
-@app.get("/ciinsu/news", tags=["ЦИИ НГУ"])
-def list_news() -> list:
-    """Публичный список новостей ЦИИ НГУ (сначала новые)."""
-    from .ciinsu import get_news
-    return get_news()
-
-
-@app.post("/ciinsu/news", tags=["ЦИИ НГУ"])
-async def create_news_post(
-    title: str = Form(...),
-    body: str = Form(...),
-    date: str = Form(""),
-    photo: UploadFile = File(None),
-    x_admin_token: str = Header(None, alias="x-admin-token"),
-) -> dict:
-    """Создать новый пост (требует заголовок X-Admin-Token)."""
-    from .ciinsu import verify_token, create_news as _create
-    if not verify_token(x_admin_token or ""):
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
-    photo_filename = ""
-    if photo and photo.filename:
-        from pathlib import Path as _Path
-        photos_dir = _Path(__file__).parent.parent / "data" / "ciinsu" / "photos"
-        photos_dir.mkdir(parents=True, exist_ok=True)
-        import uuid as _uuid
-        ext = _Path(photo.filename).suffix.lower()
-        photo_filename = _uuid.uuid4().hex[:12] + ext
-        content = await photo.read()
-        (photos_dir / photo_filename).write_bytes(content)
-    return _create(title=title, body=body, photo=photo_filename, date=date)
-
-
-@app.put("/ciinsu/news/{post_id}", tags=["ЦИИ НГУ"])
-async def update_news_post(
-    post_id: str,
-    title: str = Form(None),
-    body: str = Form(None),
-    date: str = Form(None),
-    photo: UploadFile = File(None),
-    x_admin_token: str = Header(None, alias="x-admin-token"),
-) -> dict:
-    """Обновить пост (требует заголовок X-Admin-Token)."""
-    from .ciinsu import verify_token, update_news as _update
-    if not verify_token(x_admin_token or ""):
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
-    photo_filename: str | None = None
-    if photo and photo.filename:
-        from pathlib import Path as _Path
-        photos_dir = _Path(__file__).parent.parent / "data" / "ciinsu" / "photos"
-        photos_dir.mkdir(parents=True, exist_ok=True)
-        import uuid as _uuid
-        ext = _Path(photo.filename).suffix.lower()
-        photo_filename = _uuid.uuid4().hex[:12] + ext
-        content = await photo.read()
-        (photos_dir / photo_filename).write_bytes(content)
-    result = _update(post_id, title=title, body=body, photo=photo_filename, date=date)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Пост не найден")
-    return result
-
-
-@app.delete("/ciinsu/news/{post_id}", tags=["ЦИИ НГУ"])
-def delete_news_post(
-    post_id: str,
-    x_admin_token: str = Header(None, alias="x-admin-token"),
-) -> dict:
-    """Удалить пост (требует заголовок X-Admin-Token)."""
-    from .ciinsu import verify_token, delete_news as _delete
-    if not verify_token(x_admin_token or ""):
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
-    if not _delete(post_id):
-        raise HTTPException(status_code=404, detail="Пост не найден")
-    return {"deleted": post_id}
-
-
-@app.get("/ciinsu/photo/{filename}", tags=["ЦИИ НГУ"], include_in_schema=False)
-def get_photo(filename: str):
-    """Отдаёт загруженное фото."""
-    from pathlib import Path as _Path
-    import re as _re
-    if not _re.match(r'^[\w\-\.]+$', filename):
-        raise HTTPException(status_code=400, detail="Недопустимое имя файла")
-    path = _Path(__file__).parent.parent / "data" / "ciinsu" / "photos" / filename
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Файл не найден")
-    return FileResponse(str(path))
-
-
-@app.get("/news-editor", include_in_schema=False)
-def news_editor_page():
-    """Страница редактора новостей ЦИИ НГУ."""
-    html_file = _STATIC / "news-editor.html"
-    if not html_file.exists():
-        return HTMLResponse("<h1>news-editor.html not found</h1>")
-    content = html_file.read_text(encoding="utf-8")
-    return HTMLResponse(content, headers={"Cache-Control": "no-store"})
-
-
-# ── Dev password ──────────────────────────────────────────────────────────────
-
-import hashlib as _hashlib
-
-_DEV_DEFAULT_HASH = _hashlib.sha256(b"sigma2024").hexdigest()
-
-
-def _hash_pwd(pwd: str) -> str:
-    return _hashlib.sha256(pwd.encode("utf-8")).hexdigest()
-
-
-def _get_dev_hash() -> str:
-    return _load_api_keys().get("dev_password_hash", _DEV_DEFAULT_HASH)
-
-
-def _check_dev_pwd(pwd: str) -> bool:
-    return _hash_pwd(pwd) == _get_dev_hash()
-
-
-def _district_short_label(name: str) -> str:
-    """'Кировский округ' → 'Кировский', 'Советский район' → 'Советский'."""
-    return _re.sub(r"\s+(район|округ|р-н)$", "", name, flags=_re.IGNORECASE)
-
-
-@app.get("/api/city-config", include_in_schema=False)
-def city_config_endpoint():
-    """Возвращает публичные параметры активного города для фронтенда и Studio.
-
-    Используется index.html (подстановка URL в footer/карточках) и studio.html.
-    Поле districts — список {val, label, desc} для динамического построения
-    фильтра по районам (заменяет захардкоженный NSK_DISTRICTS в index.html).
-    """
-    from .city_config import get_city_profile, get_ecology_stations as _eco_st
-    profile = get_city_profile()
-    features = profile.get("features", {})
-    datasets = profile.get("static_datasets", {})
-
-    # Список районов для фронтенда
-    districts_raw = get_districts()
-    sub_districts = get_sub_districts_info()
-    districts_list = [{"val": "", "label": "Весь город", "desc": "Сводные данные по всем районам"}]
-    districts_list += [
-        {"val": name, "label": _district_short_label(name), "desc": ""}
-        for name in districts_raw.keys()
-    ]
-    for sd_name, (parent, _examples) in sub_districts.items():
-        districts_list.append({
-            "val": sd_name,
-            "label": sd_name,
-            "desc": _district_short_label(parent) + " р-н",
-        })
-
-    return {
-        "city_id":    get_city_id(),
-        "city_name":  get_city_name(),
-        "city_name_genitive": get_city_name("genitive"),
-        "city_name_prepositional": get_city_name("prepositional"),
-        "city_slug":  get_city_slug(),
-        "opendata_url": get_opendata_base_url(),
-        "has_opendata_csv": bool(features.get("opendata_csv_enabled", False)),
-        "power_outages_url":  features.get("power_outages_url", ""),
-        "power_outages_base": features.get("power_outages_base", ""),
-        "has_metro":   bool(features.get("has_metro")),
-        "metro_name":  features.get("metro_name", ""),
-        "has_airport": bool(features.get("has_airport")),
-        "airport_name": features.get("airport_name", ""),
-        "airport_iata": features.get("airport_iata", ""),
-        "ecology_stations_count": len(_eco_st()),
-        "districts": districts_list,
-        "static_datasets": {
-            k: {"enabled": bool(v.get("enabled")), "note": v.get("note", "")}
-            for k, v in datasets.items()
-        },
-    }
-
-
-@app.get("/dev-auth", include_in_schema=False)
-def dev_auth(password: str = Query(...)):
-    """Проверить пароль разработчика. Используется UI перед открытием /docs."""
-    return {"valid": _check_dev_pwd(password)}
-
-
-@app.post("/dev-password", include_in_schema=False)
-async def dev_password_change(body: dict):
-    """Изменить пароль разработчика. Тело: {old_password, new_password}."""
-    old_pwd = body.get("old_password", "")
-    new_pwd = body.get("new_password", "")
-    if not _check_dev_pwd(old_pwd):
-        return JSONResponse({"success": False, "detail": "Неверный текущий пароль"}, status_code=403)
-    if len(new_pwd) < 6:
-        return JSONResponse({"success": False, "detail": "Новый пароль слишком короткий"}, status_code=400)
-    keys = _load_api_keys()
-    keys["dev_password_hash"] = _hash_pwd(new_pwd)
-    _save_api_keys(keys)
-    return {"success": True}
-
-
-# ── Data Studio ───────────────────────────────────────────────────────────────
-
-_CONFIG_DIR = Path(__file__).parent.parent / "config"
-_DATA_DIR   = Path(__file__).parent.parent / "data"
-
-
-@app.get("/studio", include_in_schema=False)
-def studio_page():
-    """Data Studio — визуальный интерфейс управления городскими данными."""
-    html_file = _STATIC / "studio.html"
-    if not html_file.exists():
-        return HTMLResponse("<h1>studio.html не найден</h1>", status_code=404)
-    content = html_file.read_text(encoding="utf-8")
-    return HTMLResponse(content, headers={"Cache-Control": "no-store"})
-
-
-@app.get("/studio/api/profiles", include_in_schema=False)
-def studio_profiles():
-    """Список всех city_profile*.yaml с информацией о датасетах."""
-    import yaml as _yaml
-
-    profiles = []
-    for yaml_path in sorted(_CONFIG_DIR.glob("city_profile*.yaml")):
-        try:
-            with open(yaml_path, encoding="utf-8") as f:
-                data = _yaml.safe_load(f)
-            city = data.get("city", {})
-            static_ds = data.get("static_datasets", {})
-
-            datasets_status = []
-            for ds_name, ds_cfg in static_ds.items():
-                enabled = ds_cfg.get("enabled", False)
-                file_rel = ds_cfg.get("file", "")
-                file_exists = False
-                if enabled and file_rel:
-                    file_exists = (Path(__file__).parent.parent / file_rel).exists()
-                datasets_status.append({
-                    "name": ds_name,
-                    "enabled": enabled,
-                    "file": file_rel,
-                    "file_exists": file_exists,
-                })
-
-            profiles.append({
-                "profile_file": yaml_path.name,
-                "city_id": city.get("id", ""),
-                "city_name": city.get("name", ""),
-                "city_name_genitive": city.get("name_genitive", ""),
-                "timezone": city.get("timezone", ""),
-                "utc_offset": city.get("utc_offset", 0),
-                "center": city.get("center", {}),
-                "districts_count": len(data.get("districts", {})),
-                "features": data.get("features", {}),
-                "static_datasets": datasets_status,
-            })
-        except Exception as exc:
-            profiles.append({"profile_file": yaml_path.name, "error": str(exc)})
-
-    return {"profiles": profiles}
-
-
-@app.post("/studio/api/set-active-city", include_in_schema=False)
-def studio_set_active_city(body: dict):
-    """Переключить активный город без перезапуска сервера.
-
-    Body: {"city_id": "omsk"}
-    Меняет os.environ["CITY_PROFILE"] и сбрасывает lru_cache.
-    """
-    import yaml as _yaml
-    from .city_config import get_city_profile as _gcp, get_district_strip_re as _gdsr
-
-    city_id = (body.get("city_id") or "").strip()
-    if not city_id or not _re.match(r'^[\w\-]+$', city_id):
-        raise HTTPException(status_code=400, detail="Недопустимый city_id")
-
-    # Ищем yaml-файл по city_id
-    matched_path = None
-    for p in sorted(_CONFIG_DIR.glob("city_profile*.yaml")):
-        try:
-            with open(p, encoding="utf-8") as f:
-                d = _yaml.safe_load(f)
-            if d and d.get("city", {}).get("id") == city_id:
-                matched_path = p
-                break
-        except Exception:
-            continue
-
-    if not matched_path:
-        raise HTTPException(status_code=404, detail=f"Профиль для '{city_id}' не найден")
-
-    # Имя без расширения — именно так его читает city_config._profile_path()
-    profile_name = matched_path.stem   # e.g. "city_profile_omsk"
-    os.environ["CITY_PROFILE"] = profile_name
-
-    # Сбрасываем все lru_cache из city_config
-    _gcp.cache_clear()
-    try:
-        _gdsr.cache_clear()
-    except Exception:
-        pass
-
-    # Читаем новый профиль (заодно прогреваем кэш)
-    new_profile = _gcp()
-    city_name = new_profile.get("city", {}).get("name", city_id)
-
-    # Обновляем module-level переменные router.py (заданы при импорте, не знают о смене города)
-    try:
-        from . import router as _router
-        from .city_config import get_districts as _gd, get_sub_districts_compiled as _gsdc, get_sub_districts_info as _gsdi
-        _router.DISTRICTS = _gd()
-        _router._SUB_DISTRICTS = _gsdc()
-        _router.SUB_DISTRICTS_INFO = _gsdi()
-    except Exception:
-        pass
-
-    return {"ok": True, "city_id": city_id, "city_name": city_name, "profile_file": matched_path.name}
-
-
-# ── Public city endpoints (для city-switcher в index.html) ───────────────────
-
-@app.get("/api/available-cities", include_in_schema=False)
-def api_available_cities():
-    """Список всех доступных профилей городов для выпадающего меню."""
-    import yaml as _yaml
-    cities = []
-    for p in sorted(_CONFIG_DIR.glob("city_profile*.yaml")):
-        try:
-            with open(p, encoding="utf-8") as f:
-                d = _yaml.safe_load(f)
-            if d and "city" in d:
-                c = d["city"]
-                cities.append({"city_id": c.get("id", ""), "city_name": c.get("name", "")})
-        except Exception:
-            pass
-    return {"cities": cities}
-
-
-@app.post("/api/set-city", include_in_schema=False)
-def api_set_city(body: dict):
-    """Переключить активный город (делегирует studio_set_active_city)."""
-    return studio_set_active_city(body)
-
-
-@app.get("/studio/api/schemas", include_in_schema=False)
-def studio_schemas():
-    """Канонические схемы из canonical_schemas.yaml."""
-    import yaml as _yaml
-
-    schemas_path = _CONFIG_DIR / "canonical_schemas.yaml"
-    if not schemas_path.exists():
-        return {"error": "canonical_schemas.yaml не найден"}
-    with open(schemas_path, encoding="utf-8") as f:
-        schemas = _yaml.safe_load(f)
-    return schemas
-
-
-@app.post("/studio/api/preview", include_in_schema=False)
-async def studio_preview(file: UploadFile = File(...)):
-    """Загрузить CSV/JSON → вернуть {columns, sample[5], format}."""
-    import csv as _csv
-    import tempfile as _tmp
-    import os as _os
-
-    content = await file.read()
-    filename = file.filename or "upload"
-    suffix = Path(filename).suffix.lower()
-
-    with _tmp.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        if suffix in (".json", ".geojson"):
-            raw = json.loads(content)
-            if isinstance(raw, list):
-                source_rows = raw
-            elif isinstance(raw, dict):
-                # GeoJSON FeatureCollection
-                if "features" in raw:
-                    source_rows = [
-                        {
-                            **f.get("properties", {}),
-                            "_lon": (f.get("geometry") or {}).get("coordinates", [None, None])[0],
-                            "_lat": (f.get("geometry") or {}).get("coordinates", [None, None])[1],
-                        }
-                        for f in raw["features"]
-                    ]
-                else:
-                    # Ищем первый list-значение
-                    source_rows = []
-                    for v in raw.values():
-                        if isinstance(v, list) and v:
-                            source_rows = v
-                            break
-                    if not source_rows:
-                        source_rows = [raw]
-            else:
-                source_rows = [raw]
-
-            sample = source_rows[:5]
-            columns = list(sample[0].keys()) if sample else []
-
-        else:
-            # CSV: сначала DuckDB, fallback stdlib
-            try:
-                import duckdb as _ddb
-                con = _ddb.connect()
-                df = con.execute(
-                    f"SELECT * FROM read_csv_auto('{tmp_path}') LIMIT 5"
-                ).fetchdf()
-                columns = list(df.columns)
-                sample = df.to_dict(orient="records")
-                con.close()
-            except Exception:
-                text = content.decode("utf-8-sig", errors="replace")
-                reader = _csv.DictReader(text.splitlines())
-                columns = list(reader.fieldnames or [])
-                sample = [row for row, _ in zip(reader, range(5))]
-
-        return {
-            "filename": filename,
-            "format": suffix.lstrip(".") or "csv",
-            "columns": columns,
-            "sample": sample,
-        }
-    finally:
-        _os.unlink(tmp_path)
-
-
-@app.get("/studio/api/profile-sources", include_in_schema=False)
-def studio_profile_sources(city_id: str = Query(...)):
-    """Возвращает конфиг онлайн-источников для конкретного профиля города.
-
-    Используется вкладкой «Онлайн источники» в Studio.
-    """
-    import yaml as _yaml
-
-    # Ищем YAML по city_id
-    yaml_path = None
-    for p in _CONFIG_DIR.glob("city_profile*.yaml"):
-        try:
-            d = _yaml.safe_load(p.read_text("utf-8"))
-            if d.get("city", {}).get("id") == city_id:
-                yaml_path = p
-                break
-        except Exception:
-            continue
-
-    if not yaml_path:
-        raise HTTPException(status_code=404, detail=f"Профиль '{city_id}' не найден")
-
-    with open(yaml_path, encoding="utf-8") as f:
-        data = _yaml.safe_load(f)
-
-    features = data.get("features", {})
-    return {
-        "city_id": city_id,
-        "profile_file": yaml_path.name,
-        "sources": [
-            {
-                "key":   "opendata_base_url",
-                "label": "Портал открытых данных",
-                "hint":  "Базовый URL городского opendata-портала (используется в ссылках и API docs)",
-                "value": data.get("opendata_base_url", ""),
-                "yaml_path": "top-level",
-            },
-            {
-                "key":   "knowledge_base",
-                "label": "База знаний",
-                "hint":  "URL базы знаний / справочника (опционально)",
-                "value": data.get("knowledge_base", ""),
-                "yaml_path": "top-level",
-            },
-            {
-                "key":   "power_outages_url",
-                "label": "Отключения ЖКХ — страница",
-                "hint":  "Полный URL страницы со списком отключений (аналог 051.novo-sibirsk.ru/sitepages/off.aspx)",
-                "value": features.get("power_outages_url", ""),
-                "yaml_path": "features",
-            },
-            {
-                "key":   "power_outages_base",
-                "label": "Отключения ЖКХ — базовый URL",
-                "hint":  "Корневой URL сайта ЖКХ для построения относительных ссылок (аналог http://051.novo-sibirsk.ru)",
-                "value": features.get("power_outages_base", ""),
-                "yaml_path": "features",
-            },
-        ],
-    }
-
-
-@app.post("/studio/api/test-endpoint", include_in_schema=False)
-async def studio_test_endpoint(request: Request):
-    """Проверяет доступность URL — HTTP HEAD или GET с таймаутом 6 с.
-
-    Body: {"url": "https://..."}
-    Returns: {"ok": bool, "status_code": int|null, "latency_ms": int, "error": str|null}
-    """
-    import time as _time
-
-    body = await request.json()
-    url: str = (body.get("url") or "").strip()
-
-    if not url:
-        raise HTTPException(status_code=400, detail="url обязателен")
-    if not url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="Разрешены только http:// и https:// URL")
-
-    import requests as _req
-    import urllib3 as _urllib3
-    _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)
-
-    _hdrs = {"User-Agent": "CityBot-Studio/1.1"}
-    t0 = _time.monotonic()
-    ssl_warning = None
-    try:
-        try:
-            resp = _req.head(url, timeout=6, allow_redirects=True, headers=_hdrs, verify=True)
-        except _req.exceptions.SSLError:
-            # Российские госсайты часто используют нестандартные сертификаты
-            resp = _req.head(url, timeout=6, allow_redirects=True, headers=_hdrs, verify=False)
-            ssl_warning = "SSL-сертификат сайта не прошёл проверку — сайт доступен, но сертификат ненадёжен"
-        # Некоторые серверы не поддерживают HEAD — пробуем GET с stream
-        if resp.status_code in (405, 501):
-            try:
-                resp = _req.get(url, timeout=6, stream=True, headers=_hdrs, verify=True)
-            except _req.exceptions.SSLError:
-                resp = _req.get(url, timeout=6, stream=True, headers=_hdrs, verify=False)
-                ssl_warning = ssl_warning or "SSL-сертификат не прошёл проверку"
-            resp.close()
-        latency = int((_time.monotonic() - t0) * 1000)
-        return {
-            "ok": resp.status_code < 400,
-            "status_code": resp.status_code,
-            "latency_ms": latency,
-            "error": ssl_warning,
-        }
-    except _req.exceptions.Timeout:
-        return {"ok": False, "status_code": None, "latency_ms": 6000, "error": "Таймаут (>6 с)"}
-    except _req.exceptions.ConnectionError as e:
-        return {"ok": False, "status_code": None, "latency_ms": int((_time.monotonic()-t0)*1000), "error": f"Ошибка соединения: {e}"}
-    except Exception as e:
-        return {"ok": False, "status_code": None, "latency_ms": 0, "error": str(e)}
-
-
-@app.post("/studio/api/save-online-source", include_in_schema=False)
-async def studio_save_online_source(request: Request):
-    """Сохраняет значение онлайн-источника в city_profile*.yaml, сохраняя комментарии.
-
-    Body: {"city_id": "omsk", "key": "opendata_base_url", "value": "https://..."}
-    Поддерживаемые ключи: opendata_base_url, knowledge_base, power_outages_url, power_outages_base.
-    """
-    import yaml as _yaml
-    import re as _re2
-
-    body = await request.json()
-    city_id: str = (body.get("city_id") or "").strip()
-    key: str = (body.get("key") or "").strip()
-    value: str = (body.get("value") or "").strip()
-
-    ALLOWED_KEYS = {"opendata_base_url", "knowledge_base", "power_outages_url", "power_outages_base"}
-    if not city_id or not _re.match(r'^[\w\-]+$', city_id):
-        raise HTTPException(status_code=400, detail="Недопустимый city_id")
-    if key not in ALLOWED_KEYS:
-        raise HTTPException(status_code=400, detail=f"Ключ '{key}' не поддерживается. Допустимые: {sorted(ALLOWED_KEYS)}")
-
-    # Ищем профиль
-    yaml_path = None
-    for p in _CONFIG_DIR.glob("city_profile*.yaml"):
-        try:
-            d = _yaml.safe_load(p.read_text("utf-8"))
-            if d.get("city", {}).get("id") == city_id:
-                yaml_path = p
-                break
-        except Exception:
-            continue
-
-    if not yaml_path:
-        raise HTTPException(status_code=404, detail=f"Профиль '{city_id}' не найден")
-
-    content = yaml_path.read_text("utf-8")
-    escaped_value = value.replace('"', '\\"')
-
-    if key in ("opendata_base_url", "knowledge_base"):
-        # Поле верхнего уровня: ^key: "..." или ^key: ''
-        pattern = rf'^({_re.escape(key)}:\s*).*'
-        replacement = rf'\g<1>"{escaped_value}"'
-        new_content = _re2.sub(pattern, replacement, content, flags=_re2.MULTILINE)
-    else:
-        # Поле внутри features (отступ 2 пробела)
-        pattern = rf'^(  {_re.escape(key)}:\s*).*'
-        replacement = rf'\g<1>"{escaped_value}"'
-        new_content = _re2.sub(pattern, replacement, content, flags=_re2.MULTILINE)
-
-    if new_content == content:
-        # Поле не найдено — добавляем (для features-полей, если их нет)
-        return {"ok": False, "error": f"Поле '{key}' не найдено в {yaml_path.name}. Добавьте его вручную."}
-
-    yaml_path.write_text(new_content, encoding="utf-8")
-    return {"ok": True, "profile_file": yaml_path.name, "key": key, "value": value}
-
-
-@app.post("/studio/api/import", include_in_schema=False)
-async def studio_import(
-    city_id: str = Form(...),
-    dataset_type: str = Form(...),
-    mapping: str = Form(...),   # JSON: {"canonical_field": "source_column"}
-    file: UploadFile = File(...),
-):
-    """Загрузить файл + маппинг → сохранить в data/cities/<city_id>/<dataset_type>.json."""
-    import csv as _csv
-    import tempfile as _tmp
-    import os as _os
-
-    # Валидация city_id / dataset_type: только безопасные символы
-    if not _re.match(r'^[\w\-]+$', city_id) or not _re.match(r'^[\w\-]+$', dataset_type):
-        raise HTTPException(status_code=400, detail="Недопустимые символы в city_id или dataset_type")
-
-    content = await file.read()
-    filename = file.filename or "upload"
-    suffix = Path(filename).suffix.lower()
-    col_map: dict = json.loads(mapping)
-
-    with _tmp.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        # Читаем исходные данные
-        if suffix in (".json", ".geojson"):
-            raw = json.loads(content)
-            if isinstance(raw, list):
-                source_rows = raw
-            elif isinstance(raw, dict):
-                if "features" in raw:
-                    source_rows = [
-                        {
-                            **f.get("properties", {}),
-                            "_lon": (f.get("geometry") or {}).get("coordinates", [None, None])[0],
-                            "_lat": (f.get("geometry") or {}).get("coordinates", [None, None])[1],
-                        }
-                        for f in raw["features"]
-                    ]
-                else:
-                    source_rows = []
-                    for v in raw.values():
-                        if isinstance(v, list) and v:
-                            source_rows = v
-                            break
-                    if not source_rows:
-                        source_rows = [raw]
-            else:
-                source_rows = [raw]
-        else:
-            try:
-                import duckdb as _ddb
-                con = _ddb.connect()
-                df = con.execute(
-                    f"SELECT * FROM read_csv_auto('{tmp_path}')"
-                ).fetchdf()
-                source_rows = df.to_dict(orient="records")
-                con.close()
-            except Exception:
-                text = content.decode("utf-8-sig", errors="replace")
-                source_rows = list(_csv.DictReader(text.splitlines()))
-
-        # Применяем маппинг
-        mapped_rows = []
-        for row in source_rows:
-            mapped = {}
-            for canonical, source_col in col_map.items():
-                if source_col and source_col in row:
-                    mapped[canonical] = row[source_col]
-            if mapped:
-                mapped_rows.append(mapped)
-
-        # Сохраняем
-        out_dir = _DATA_DIR / "cities" / city_id
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_file = out_dir / f"{dataset_type}.json"
-        out_file.write_text(
-            json.dumps({"rows": mapped_rows}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-        return {
-            "success": True,
-            "city_id": city_id,
-            "dataset_type": dataset_type,
-            "rows_imported": len(mapped_rows),
-            "saved_to": str(out_file.relative_to(Path(__file__).parent.parent)),
-        }
-    finally:
-        _os.unlink(tmp_path)
+# ── Include routers ──────────────────────────────────────────────────────────
+
+from .routes.data import router as data_router
+from .routes.ecology import router as ecology_router
+from .routes.transport import router as transport_router
+from .routes.cameras import router as cameras_router
+from .routes.medical import router as medical_router
+from .routes.twogis import router as twogis_router
+from .routes.ciinsu import router as ciinsu_router
+from .routes.studio import router as studio_router
+from .routes.admin import router as admin_router
+
+app.include_router(data_router)
+app.include_router(ecology_router)
+app.include_router(transport_router)
+app.include_router(cameras_router)
+app.include_router(medical_router)
+app.include_router(twogis_router)
+app.include_router(ciinsu_router)
+app.include_router(studio_router)
+app.include_router(admin_router)
 
 
 # ── Статические файлы (tailwind.css, иконки и т.д.) ─────────────────────────

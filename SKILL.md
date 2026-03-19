@@ -32,12 +32,29 @@ bot ask "сколько школ в Советском районе"
 | `planner.py` | Regex-паттерны → операция (COUNT/GROUP/TOP_N/FILTER/POWER_*/ECO_*/…) |
 | `executor.py` | SQL к DuckDB / scrape / external API |
 | `renderer.py` | Rich-вывод в терминале |
-| `api.py` | FastAPI: все HTTP-эндпойнты, startup-хук preloader |
+| `api.py` | FastAPI: app core, CORS, startup events, router includes, `/run-tests` SSE |
+| `routes/` | APIRouter-модули: data, ecology, transport, cameras, medical, twogis, ciinsu, studio, admin |
 | `updater.py` | Тихое обновление без CLI-рендера: lazy load + background preloader |
 | `registry.py` | Загрузка `config/datasets.yaml` |
 | `fetcher.py` | HTTP-загрузка CSV с TTL |
 | `parser.py` | Нормализация CSV (encoding, delimiter) |
 | `cache.py` | DuckDB: хранение opendata-тем (таблицы `topic_*`) |
+
+### Модули routes/ (APIRouter)
+
+| Файл | Эндпойнты | Описание |
+|---|---|---|
+| `routes/data.py` | `/ask`, `/topics`, `/update`, `/power/update` | Главный запрос, темы, обновление |
+| `routes/ecology.py` | `/ecology/*`, `/life-indices` | Экология, ПДК, индексы жизни |
+| `routes/transport.py` | `/transit*`, `/traffic-index`, `/yandex-traffic` | Транспорт, пробки |
+| `routes/cameras.py` | `/cameras*` | Камеры видеофиксации |
+| `routes/medical.py` | `/medical*` | Медучреждения |
+| `routes/twogis.py` | `/twogis/*`, `/mapgl-key` | 2GIS интеграция, геокодер |
+| `routes/ciinsu.py` | `/ciinsu/*`, `/news-editor` | ЦИИ НГУ, редактор новостей |
+| `routes/studio.py` | `/studio/*` | Data Studio для аналитиков |
+| `routes/admin.py` | `/admin/*`, `/api/city-config`, `/dev-auth`, `/api/set-city` | Администрирование, регламенты |
+
+> `api.py` (~900 строк) — app core: создание FastAPI, CORS, `.env` loader, 5 startup events, навигационная панель Swagger UI, `/run-tests` SSE, `include_router()` для всех 9 модулей.
 
 ---
 
@@ -419,6 +436,8 @@ data/
     config.json       — токены (не в git, секрет)
 
 src/
+  api.py              — FastAPI app core (~900 строк)
+  routes/             — APIRouter-модули (9 файлов, см. таблицу выше)
   ciinsu_knowledge_base.json   — KB ЦИИ НГУ (в git, bundled)
   static/
     index.html        — Web UI (SPA)
@@ -481,7 +500,7 @@ config/
 1. Добавить в `Operation` enum в `planner.py`
 2. Добавить паттерн в `make_plan()`
 3. Добавить ветку в `executor.py`
-4. Добавить рендер в `api.py` (и `renderer.py` для CLI)
+4. Добавить рендер в соответствующий `routes/*.py` (и `renderer.py` для CLI)
 
 ---
 
@@ -694,7 +713,7 @@ Wake-word стриппинг в voice handler: `/^(с[ие]гм[ао][!,.]?\s*)/
 
 ## Логирование неотвеченных запросов (Railway)
 
-В `api.py` (без Volume, только stdout):
+В `routes/data.py` (без Volume, только stdout):
 ```python
 import logging
 log = logging.getLogger(__name__)
@@ -868,7 +887,7 @@ curl http://localhost:8000/topics
 
 Кнопка **«Вход для разработчиков 🔒»** в подвале `index.html` → модальный диалог ввода пароля → сессия сохраняется в `sessionStorage('dev_auth_ok')`.
 
-Эндпоинт аутентификации: `GET /dev-auth?password=<value>` → `{valid: true/false}`.
+Эндпоинт аутентификации (`routes/admin.py`): `GET /dev-auth?password=<value>` → `{valid: true/false}`.
 Пароль по умолчанию: `sigma2024`. Хранится как SHA-256 в `data/api_keys.json`.
 
 После входа доступны два интерфейса:

@@ -132,6 +132,5 @@ static_datasets:
     note: "Метро во Владивостоке отсутствует"
 
   airport:
-    enabled: false
-    file: ""
-    note: "Создать data/cities/vladivostok/airport.json"
+    enabled: true
+    file: "data/cities/vladivostok/airport.json"
