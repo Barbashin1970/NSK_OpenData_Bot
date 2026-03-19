@@ -157,3 +157,22 @@ def test_omsk_district_chips_routing(query, expected_topic):
         f"Запрос: {query!r}\n"
         f"Ожидалось: {expected_topic}, получено: {result.topic}"
     )
+
+
+# ── Kemerovo district variants ───────────────────────────────────────────────
+
+@pytest.mark.parametrize("query,expected_topic", [
+    # Кемеровские районы — чипы должны работать для любого города
+    ("больницы в Центральном районе",   "medical"),
+    ("школы в Рудничном районе",        "schools"),
+    ("аптеки в Заводском районе",       "pharmacies"),
+    ("камеры в Кировском районе",       "cameras"),
+])
+def test_kemerovo_district_chips_routing(query, expected_topic):
+    """Чипы с кемеровскими районами маршрутизируются корректно."""
+    result = best_topic(query)
+    assert result is not None, f"Тема не определена для: {query!r}"
+    assert result.topic == expected_topic, (
+        f"Запрос: {query!r}\n"
+        f"Ожидалось: {expected_topic}, получено: {result.topic}"
+    )
