@@ -3846,7 +3846,6 @@ function _renderMap() {
         center: [82.8969, 54.9562], // Речной вокзал — центральная точка метросети
         zoom: 12,
         key: _mapglKey,
-        locale: 'ru',
       });
       return;
     }
@@ -3855,7 +3854,6 @@ function _renderMap() {
       center: [centerLon, centerLat],
       zoom,
       key: _mapglKey,
-      locale: 'ru',
     });
 
     // Popup — показывается по клику на маркер (hover ненадёжен в mapgl canvas)
