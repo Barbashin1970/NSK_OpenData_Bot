@@ -704,6 +704,11 @@ function renderTrafficCompact(data) {
           ${tip ? `<p class="text-xs text-slate-600 leading-snug truncate" title="${esc(tip)}">${esc(tip)}</p>` : ''}
         </div>
       </div>
+      ${data.comparison ? `<div class="px-4 pb-2 flex items-center gap-2 text-xs text-slate-500">
+        <span>Яндекс:</span>
+        <span class="font-semibold">${data.yandex_traffic?.emoji || ''} ${data.comparison.yandex_level}/10</span>
+        <span class="text-slate-400">· ${esc(data.comparison.diff_label)}</span>
+      </div>` : ''}
       ${nextPk ? `<div class="px-4 pb-3 text-xs text-slate-400">⏱ ${esc(nextPk)}</div>` : ''}
     </div>`;
 }
@@ -2693,8 +2698,38 @@ function renderTrafficIndex(data) {
           <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Факторы нагрузки</p>
           <div class="space-y-2">${factorRows}</div>
         </div>` : ''}
+      ${data.comparison ? (() => {
+        const c = data.comparison;
+        const y = data.yandex_traffic || {};
+        const yPct = Math.min(100, Math.round((y.level || 0) / 10 * 100));
+        const yBarColor = yPct < 35 ? 'bg-emerald-500' : yPct < 65 ? 'bg-orange-400' : 'bg-red-500';
+        const diffAbs = Math.abs(c.diff || 0);
+        const diffColor = diffAbs < 1 ? 'text-emerald-600' : diffAbs < 2.5 ? 'text-yellow-600' : 'text-red-600';
+        return `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Сравнение с Яндекс.Пробками</p>
+          <div class="grid grid-cols-2 gap-4 mb-3">
+            <div class="text-center">
+              <p class="text-[10px] text-slate-400 mb-1">Наш индекс</p>
+              <p class="text-3xl font-bold text-slate-700">${c.our_index}</p>
+              <p class="text-xs text-slate-400">аналитика</p>
+            </div>
+            <div class="text-center">
+              <p class="text-[10px] text-slate-400 mb-1">Яндекс.Карты</p>
+              <p class="text-3xl font-bold text-slate-700">${y.emoji || ''} ${y.level}</p>
+              <p class="text-xs text-slate-400">${esc(y.hint || y.level_label || '')}</p>
+            </div>
+          </div>
+          <div class="bg-slate-100 rounded-full h-2 overflow-hidden mb-1">
+            <div class="${yBarColor} h-2 rounded-full transition-all" style="width:${yPct}%"></div>
+          </div>
+          <p class="text-xs text-slate-400 mb-2">Яндекс: ${y.level}/10</p>
+          <p class="text-sm ${diffColor} font-medium text-center">${esc(c.diff_label)}${y.time ? ' · обновлено ' + esc(y.time) : ''}</p>
+          ${y.url ? '<p class="text-xs text-center mt-1"><a href="' + esc(y.url) + '" target="_blank" class="text-blue-500 hover:underline">Открыть на Яндекс.Картах →</a></p>' : ''}
+        </div>`;
+      })() : ''}
       ${nextPeak ? `<p class="text-slate-400 text-xs text-center">⏱ ${esc(nextPeak)}</p>` : ''}
-      <p class="text-slate-400 text-xs text-center">⚠ Аналитический индекс на основе времени, дня недели, праздников и погоды. Не использует данные реального трафика.</p>
+      <p class="text-slate-400 text-xs text-center">⚠ Аналитический индекс на основе времени, дня недели, праздников и погоды. Сравнение с Яндекс.Пробками показано для калибровки модели.</p>
     </div>`;
 }
 

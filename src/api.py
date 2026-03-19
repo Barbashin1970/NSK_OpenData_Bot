@@ -1982,6 +1982,28 @@ def get_traffic_index() -> dict:
     return get_traffic_index_with_weather()
 
 
+@app.get(
+    "/yandex-traffic",
+    tags=["Запросы"],
+    summary="Яндекс.Пробки — реальный индекс",
+    response_description="Текущий уровень пробок из Яндекс.Карт (0–10).",
+)
+def get_yandex_traffic() -> dict:
+    """
+    Реальный **индекс пробок** из Яндекс.Карт для текущего города.
+
+    Публичный XML API виджета Яндекса, без ключа.
+    Данные обновляются каждые ~2 мин на стороне Яндекса, наш TTL кэша — 3 мин.
+
+    Возвращает: level (0–10), hint (текст), emoji, level_label, city, url.
+    """
+    from .yandex_traffic import fetch_yandex_traffic
+    data = fetch_yandex_traffic()
+    if not data:
+        return {"error": "Яндекс.Пробки недоступны для этого города", "available": False}
+    return {**data, "available": True}
+
+
 # ── Индексы жизни города ──────────────────────────────────────────────────────
 
 def _compute_life_indices(rows: list[dict]) -> dict | None:

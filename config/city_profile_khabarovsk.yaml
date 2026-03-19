@@ -10,6 +10,7 @@ city:
   name_genitive: "Хабаровска"
   name_prepositional: "Хабаровске"
   slug: "khabarovsk"
+  yandex_region_id: 76              # Яндекс.Пробки region ID
   timezone: "Asia/Vladivostok"
   utc_offset: 10
 

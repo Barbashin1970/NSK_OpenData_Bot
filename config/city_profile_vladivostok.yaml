@@ -10,6 +10,7 @@ city:
   name_genitive: "Владивостока"
   name_prepositional: "Владивостоке"
   slug: "vladivostok"
+  yandex_region_id: 75              # Яндекс.Пробки region ID
   timezone: "Asia/Vladivostok"
   utc_offset: 10
 

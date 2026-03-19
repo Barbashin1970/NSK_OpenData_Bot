@@ -10,6 +10,7 @@ city:
   name_genitive: "Томска"
   name_prepositional: "Томске"
   slug: "tomsk"
+  yandex_region_id: 67              # Яндекс.Пробки region ID
   timezone: "Asia/Tomsk"
   utc_offset: 7
 

@@ -10,6 +10,7 @@ city:
   name_genitive: "Иркутска"
   name_prepositional: "Иркутске"
   slug: "irkutsk"
+  yandex_region_id: 63              # Яндекс.Пробки region ID
   timezone: "Asia/Irkutsk"
   utc_offset: 8
 

@@ -10,6 +10,7 @@ city:
   name_genitive: "Тюмени"
   name_prepositional: "Тюмени"
   slug: "tyumen"
+  yandex_region_id: 55              # Яндекс.Пробки region ID
   timezone: "Asia/Yekaterinburg"
   utc_offset: 5
 

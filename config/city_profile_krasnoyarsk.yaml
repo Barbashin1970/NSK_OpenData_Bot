@@ -10,6 +10,7 @@ city:
   name_genitive: "Красноярска"
   name_prepositional: "Красноярске"
   slug: "krasnoyarsk"
+  yandex_region_id: 62              # Яндекс.Пробки region ID
   timezone: "Asia/Krasnoyarsk"
   utc_offset: 7
 

@@ -15,6 +15,7 @@ city:
   name_genitive: "Новосибирска"      # родительный:  «данные Новосибирска»
   name_prepositional: "Новосибирске" # предложный:   «в Новосибирске»
   slug: "novosibirsk"                # для 2GIS deep-link URL
+  yandex_region_id: 65              # Яндекс.Пробки region ID
   timezone: "Asia/Novosibirsk"
   utc_offset: 7                      # UTC+7
 

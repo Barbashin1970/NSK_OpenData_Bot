@@ -632,7 +632,7 @@ def get_traffic_index_with_weather() -> dict[str, Any]:
 
     ti = calculate_traffic_index(weather=weather)
 
-    return {
+    result: dict[str, Any] = {
         "index":        ti.index,
         "level":        ti.level,
         "emoji":        ti.emoji,
@@ -659,3 +659,25 @@ def get_traffic_index_with_weather() -> dict[str, Any]:
         ),
         "source": "Аналитическая модель NSK OpenData Bot · Open-Meteo (погода)",
     }
+
+    # Сравнение с Яндекс.Пробками (реальный индекс)
+    try:
+        from .yandex_traffic import fetch_yandex_traffic
+        yt = fetch_yandex_traffic()
+        if yt:
+            result["yandex_traffic"] = yt
+            diff = round(ti.index - yt["level"], 1)
+            result["comparison"] = {
+                "our_index":    ti.index,
+                "yandex_level": yt["level"],
+                "diff":         diff,
+                "diff_label":   (
+                    "совпадает" if abs(diff) < 1.0
+                    else f"наш {'выше' if diff > 0 else 'ниже'} на {abs(diff):.1f}"
+                ),
+                "yandex_hint":  yt.get("hint", ""),
+            }
+    except Exception as e:
+        log.debug("traffic_index: yandex_traffic недоступен: %s", e)
+
+    return result

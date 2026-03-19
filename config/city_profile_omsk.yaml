@@ -14,6 +14,7 @@ city:
   name_genitive: "Омска"
   name_prepositional: "Омске"
   slug: "omsk"                        # для 2GIS deep-link URL
+  yandex_region_id: 66              # Яндекс.Пробки region ID
   timezone: "Asia/Omsk"
   utc_offset: 6                       # UTC+6
 

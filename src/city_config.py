@@ -104,6 +104,11 @@ def get_utc_offset() -> int:
     return get_city_profile()["city"]["utc_offset"]
 
 
+def get_yandex_region_id() -> int | None:
+    """Яндекс region ID для API Яндекс.Пробки. None если не задан."""
+    return get_city_profile()["city"].get("yandex_region_id")
+
+
 # ── География ──────────────────────────────────────────────────────────────────
 
 def get_bbox_overpass() -> str:
