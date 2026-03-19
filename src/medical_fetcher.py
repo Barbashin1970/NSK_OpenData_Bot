@@ -21,15 +21,16 @@ _OVERPASS_MIRRORS = [
     "https://z.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 ]
-_NSK_BBOX = get_bbox_overpass()
 _REQUEST_TIMEOUT = 60
 
-# node + way, out center — для областей (больничный комплекс) берём центроид
-_OVERPASS_QUERY = f"""
+
+def _build_medical_query() -> str:
+    bbox = get_bbox_overpass()
+    return f"""
 [out:json][timeout:55];
 (
-  node["amenity"~"hospital|clinic"]{_NSK_BBOX};
-  way["amenity"~"hospital|clinic"]{_NSK_BBOX};
+  node["amenity"~"hospital|clinic"]{bbox};
+  way["amenity"~"hospital|clinic"]{bbox};
 );
 out center tags;
 """
@@ -45,15 +46,17 @@ def fetch_medical() -> list[dict[str, Any]]:
     """Загружает список медучреждений из OSM Overpass API.
 
     Пробует несколько зеркал при недоступности основного сервера.
+    Bbox берётся из активного city_profile при каждом вызове.
     Возвращает список записей или [] при ошибке.
     """
+    query = _build_medical_query()
     last_err: Exception | None = None
     for url in _OVERPASS_MIRRORS:
         try:
             log.info("Overpass (medical): запрос к %s", url)
             resp = requests.post(
                 url,
-                data={"data": _OVERPASS_QUERY},
+                data={"data": query},
                 timeout=_REQUEST_TIMEOUT,
             )
             resp.raise_for_status()

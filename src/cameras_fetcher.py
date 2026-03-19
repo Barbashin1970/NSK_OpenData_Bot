@@ -24,12 +24,14 @@ _OVERPASS_MIRRORS = [
     "https://z.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
 ]
-_NSK_BBOX = get_bbox_overpass()
 _REQUEST_TIMEOUT = 45
 
-_OVERPASS_QUERY = f"""
+
+def _build_cameras_query() -> str:
+    bbox = get_bbox_overpass()
+    return f"""
 [out:json][timeout:40];
-node["highway"="speed_camera"]{_NSK_BBOX};
+node["highway"="speed_camera"]{bbox};
 out body;
 """
 
@@ -38,15 +40,17 @@ def fetch_cameras() -> list[dict[str, Any]]:
     """Загружает список камер фиксации из OSM Overpass API.
 
     Пробует несколько зеркал при недоступности основного сервера.
+    Bbox берётся из активного city_profile при каждом вызове.
     Возвращает список записей или [] при ошибке.
     """
+    query = _build_cameras_query()
     last_err: Exception | None = None
     for url in _OVERPASS_MIRRORS:
         try:
             log.info("Overpass: запрос к %s", url)
             resp = requests.post(
                 url,
-                data={"data": _OVERPASS_QUERY},
+                data={"data": query},
                 timeout=_REQUEST_TIMEOUT,
             )
             resp.raise_for_status()
@@ -81,7 +85,7 @@ def fetch_cameras() -> list[dict[str, Any]]:
                 "ref":       tags.get("ref", tags.get("int_ref", "")),
             })
 
-        log.info("Overpass API (%s): загружено %d камер в Новосибирске", url, len(cameras))
+        log.info("Overpass API (%s): загружено %d камер", url, len(cameras))
         return cameras
 
     log.error("Overpass API: все зеркала недоступны. Последняя ошибка: %s", last_err)
