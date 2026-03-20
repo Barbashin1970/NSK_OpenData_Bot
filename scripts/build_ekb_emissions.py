@@ -3,7 +3,7 @@
 
 Source: Росприроднадзор, 2-ТП Воздух 2024, Р1_Выбросы_по_МО.
 Entries with same municipality name are merged (summed).
-Output: data/cities/ekaterinburg/emissions_2tp.json
+Output: data/cities/yekaterinburg/emissions_2tp.json
 """
 
 import json

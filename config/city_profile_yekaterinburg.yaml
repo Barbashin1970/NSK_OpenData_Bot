@@ -137,7 +137,7 @@ static_datasets:
 
   emissions:
     enabled: true
-    file: "data/cities/ekaterinburg/emissions_2tp.json"
+    file: "data/cities/yekaterinburg/emissions_2tp.json"
     note: "2-ТП Воздух 2024, Свердловская область, 74 МО"
 
   heat_sources:

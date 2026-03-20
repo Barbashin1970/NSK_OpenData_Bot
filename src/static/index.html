@@ -2031,8 +2031,8 @@ function renderAirport(data) {
       <div class="flex items-center gap-3 px-5 py-4 bg-gradient-to-r from-sky-600 to-sky-500 text-white">
         <span class="text-2xl">✈️</span>
         <div>
-          <div class="font-bold text-lg leading-tight">${esc(info.name || 'Аэропорт Толмачёво')}</div>
-          <div class="text-sky-100 text-sm">${esc(info.iata || 'OVB')} · ${esc(info.icao || 'UNNT')} · ${info.distance_from_center_km || 20} км от центра</div>
+          <div class="font-bold text-lg leading-tight">${esc(info.name || 'Аэропорт')}</div>
+          <div class="text-sky-100 text-sm">${esc(info.iata || '—')} · ${esc(info.icao || '—')} · ${info.distance_from_center_km ? info.distance_from_center_km + ' км от центра' : ''}</div>
         </div>
       </div>
       <div class="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
@@ -2041,7 +2041,7 @@ function renderAirport(data) {
           <div class="text-xs text-slate-400 mt-0.5">пасс./год (2023)</div>
         </div>
         <div class="px-5 py-3 text-center">
-          <div class="text-2xl font-bold text-slate-700">${info.flights_per_day || '~60'}</div>
+          <div class="text-2xl font-bold text-slate-700">${info.flights_per_day || '—'}</div>
           <div class="text-xs text-slate-400 mt-0.5">рейсов/день</div>
         </div>
         <div class="px-5 py-3 text-center">
@@ -2051,8 +2051,8 @@ function renderAirport(data) {
       </div>
       <div class="px-5 py-4 space-y-2">${terminalCards}</div>
       <div class="px-5 pb-4 flex flex-wrap gap-2">
-        ${info.url ? `<a href="${esc(info.url)}" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🌐 tolmachevo.ru</a>` : ''}
-        <span class="text-xs px-3 py-1.5 text-slate-400">Открыт в ${info.opened_year || 1957} · ${info.runways || 2} ВПП</span>
+        ${info.url ? `<a href="${esc(info.url)}" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🌐 ${new URL(info.url).hostname.replace('www.','')}</a>` : ''}
+        <span class="text-xs px-3 py-1.5 text-slate-400">Открыт в ${info.opened_year || '—'} · ${info.runways || '—'} ВПП</span>
       </div>
     </div>`;
 
@@ -2077,7 +2077,7 @@ function renderAirport(data) {
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div class="px-5 py-3 border-b border-slate-100">
         <span class="font-semibold text-slate-700 text-sm">Как добраться из центра</span>
-        <span class="text-xs text-slate-400 ml-2">(~${info.distance_from_center_km || 20} км)</span>
+        <span class="text-xs text-slate-400 ml-2">${info.distance_from_center_km ? `(~${info.distance_from_center_km} км)` : ''}</span>
       </div>
       <div class="px-5 divide-y divide-slate-100">${transportRows}</div>
     </div>`;
@@ -4810,6 +4810,9 @@ async function _setActiveCity(cityId) {
     officialDistrict = '';
     localStorage.removeItem('nsk_official_district');
     localStorage.removeItem('nsk_city_cfg');
+    // Сброс открытого ответа (старый город) — чтобы не было путаницы
+    const _ra = document.getElementById('resultArea');
+    if (_ra) { _ra.innerHTML = ''; _ra.classList.add('hidden'); }
     await loadCityConfig();
     // Перезагрузить дашборд если видим
     const dash = document.getElementById('roleDashboard');
