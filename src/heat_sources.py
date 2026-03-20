@@ -26,13 +26,19 @@ TABLE_COLUMNS = [
 
 
 @lru_cache(maxsize=1)
-def load_heat_sources() -> list[dict]:
-    """Загружает GeoJSON, возвращает список объектов с полями properties + _lat/_lon."""
+def _load_geojson() -> dict:
+    """Загружает GeoJSON целиком (features + metadata)."""
     path = get_heat_sources_path()
     if path is None:
         raise FileNotFoundError("Данные тепловых источников недоступны для этого города (heat_sources не настроен в city_profile)")
     with open(path, encoding="utf-8") as f:
-        fc = json.load(f)
+        return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def load_heat_sources() -> list[dict]:
+    """Загружает GeoJSON, возвращает список объектов с полями properties + _lat/_lon."""
+    fc = _load_geojson()
 
     sources = []
     for feat in fc["features"]:
@@ -44,6 +50,12 @@ def load_heat_sources() -> list[dict]:
 
     log.info(f"Загружено {len(sources)} тепловых источников")
     return sources
+
+
+def get_heat_metadata() -> dict:
+    """Возвращает metadata из GeoJSON (note, insights и пр.)."""
+    fc = _load_geojson()
+    return fc.get("metadata", {})
 
 
 def query_heat_sources(

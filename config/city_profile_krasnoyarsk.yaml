@@ -141,9 +141,9 @@ static_datasets:
     note: "2-ТП Воздух 2024, Красноярский край, 61 МО"
 
   heat_sources:
-    enabled: false
-    file: ""
-    note: "Данные о тепловых источниках Красноярска ещё не добавлены"
+    enabled: true
+    file: "data/cities/krasnoyarsk/heat_sources.geojson"
+    note: "12 объектов Красноярского края (Красноярск 4 + край 4 + Норильск 4), 9 766 Гкал/ч, 5 234 МВт. «Угольная столица» (бурый уголь КАТЭК). Норильск — полностью на газе"
 
   metro:
     enabled: false

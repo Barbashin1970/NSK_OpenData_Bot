@@ -126,9 +126,9 @@ static_datasets:
     published: "2025-03"
 
   heat_sources:
-    enabled: false
-    file: null
-    note: "Газовые котельные — основной источник тепла в макрорайоне"
+    enabled: true
+    file: "data/cities/sbercity/heat_sources.geojson"
+    note: "8 источников тепла/выбросов (энергоцентры СберСити + 4 внешних ТЭЦ/котельных + авто). Без подключения к МОЭК — распределённые газовые энергоцентры"
 
   metro:
     enabled: false

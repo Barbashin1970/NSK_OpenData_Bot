@@ -1287,6 +1287,7 @@ function renderResult(data, query) {
   if      (op === 'COUNT')                     html += renderCount(data);
   else if (op === 'GROUP')                     html += renderGroup(data);
   else if ((op === 'TOP_N' || op === 'FILTER') && data.topic === 'emissions') html += renderEmissions(data);
+  else if ((op === 'TOP_N' || op === 'FILTER') && data.topic === 'heat_sources') html += renderHeatSources(data);
   else if (op === 'TOP_N' || op === 'FILTER')  html += renderTable(data);
   else if (op && op.startsWith('POWER_'))      html += renderPower(data);
   else if (op && op.startsWith('ECO_'))        html += renderEcology(data);
@@ -1342,6 +1343,64 @@ function renderCount(data) {
       ${data.district ? `<div class="text-slate-400 text-sm mt-1">${esc(data.district)}</div>` : ''}
     </div>
   `;
+}
+
+// ─── HEAT SOURCES (тепловые источники) ────────────────────────────────────────
+function renderHeatSources(data) {
+  const meta = data._heatMeta || {};
+  const insights = meta.insights || [];
+  const metaNote = meta.note || '';
+
+  // Render table as usual
+  const tableHtml = renderTable({...data, note: null, _skipDistBar: true});
+
+  // Summary note
+  const noteHtml = metaNote ? `
+    <div class="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-sm text-slate-700">
+      <span class="font-semibold text-orange-700">📋 Справка:</span> ${esc(metaNote)}
+    </div>` : '';
+
+  // Per-row notes (from each feature's "note" property)
+  const rows = data.rows || [];
+  const rowNotes = rows.filter(r => r.note).map(r =>
+    `<div class="flex gap-2 items-start text-sm py-1.5 border-b border-slate-50 last:border-0">
+      <span class="flex-shrink-0 font-semibold text-slate-600">${esc(r.short_name || r.name || '')}</span>
+      <span class="text-slate-500">${esc(r.note)}</span>
+    </div>`
+  ).join('');
+
+  // Insights panel (collapsible)
+  let insightsHtml = '';
+  if (insights.length > 0 || rowNotes) {
+    const insightItems = insights.map(t =>
+      `<li class="text-sm text-slate-600 leading-relaxed">${esc(t)}</li>`
+    ).join('');
+
+    insightsHtml = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <button onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-180')"
+              class="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
+        <span class="font-semibold text-sm text-slate-700">📊 Аналитика и ключевые факты</span>
+        <svg class="chevron w-4 h-4 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <div class="hidden px-5 pb-4 space-y-4">
+        ${insights.length > 0 ? `
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wider text-orange-600 mb-2">Ключевые особенности региона</div>
+            <ul class="space-y-2 list-disc list-inside text-slate-600">${insightItems}</ul>
+          </div>` : ''}
+        ${rowNotes ? `
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wider text-blue-600 mb-2">По каждому объекту</div>
+            <div class="bg-slate-50 rounded-lg px-3 py-2">${rowNotes}</div>
+          </div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  return noteHtml + tableHtml + insightsHtml;
 }
 
 // ─── EMISSIONS ────────────────────────────────────────────────────────────────

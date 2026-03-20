@@ -121,9 +121,9 @@ static_datasets:
     note: "2-ТП Воздух 2024, Иркутская область, 44 МО"
 
   heat_sources:
-    enabled: false
-    file: ""
-    note: "Данные о тепловых источниках Иркутска ещё не добавлены"
+    enabled: true
+    file: "data/cities/irkutsk/heat_sources.geojson"
+    note: "10 объектов Иркутской агломерации (Иркутск 5 + Ангарск 3 + Усолье-Сибирское 1 + Шелехов 1), 8 515 Гкал/ч, 3 046 МВт. Монополия Эн+/Иркутскэнерго. Преобладает бурый уголь"
 
   metro:
     enabled: false

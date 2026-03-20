@@ -123,9 +123,9 @@ static_datasets:
     note: "2-ТП Воздух 2024, Приморский край, 35 МО"
 
   heat_sources:
-    enabled: false
-    file: ""
-    note: "Данные о тепловых источниках Владивостока ещё не добавлены"
+    enabled: true
+    file: "data/cities/vladivostok/heat_sources.geojson"
+    note: "10 объектов Приморского края (Владивосток 5 + Артём 2 + Лучегорск 1 + Уссурийск 1 + Находка 1), 3 731 Гкал/ч, 2 803 МВт. Лидер газификации: все 5 городских объектов на газе"
 
   metro:
     enabled: false

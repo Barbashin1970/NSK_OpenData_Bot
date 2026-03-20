@@ -121,9 +121,9 @@ static_datasets:
     note: "2-ТП Воздух 2024, Хабаровский край, 20 МО"
 
   heat_sources:
-    enabled: false
-    file: ""
-    note: "Данные о тепловых источниках Хабаровска ещё не добавлены"
+    enabled: true
+    file: "data/cities/khabarovsk/heat_sources.geojson"
+    note: "10 объектов (Хабаровск 7 + Комсомольск-на-Амуре 3), 5 496 Гкал/ч, 1 728 МВт. Монополия ДГК/РусГидро. Газ сахалинских месторождений"
 
   metro:
     enabled: false

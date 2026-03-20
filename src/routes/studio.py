@@ -118,8 +118,9 @@ def studio_set_active_city(body: dict):
     except Exception:
         pass
     try:
-        from ..heat_sources import load_heat_sources
+        from ..heat_sources import load_heat_sources, _load_geojson
         load_heat_sources.cache_clear()
+        _load_geojson.cache_clear()
     except Exception:
         pass
     try:

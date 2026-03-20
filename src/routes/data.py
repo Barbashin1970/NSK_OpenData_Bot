@@ -680,6 +680,7 @@ def get_ask(
         from ..heat_sources import (
             query_heat_sources,
             count_heat_sources,
+            get_heat_metadata,
             TABLE_COLUMNS,
         )
 
@@ -702,6 +703,7 @@ def get_ask(
                 "columns": [],
             }
 
+        heat_meta = get_heat_metadata()
         return {
             "query": q,
             "topic": topic,
@@ -714,6 +716,10 @@ def get_ask(
             "coords_enriched": True,
             "coords_source": "GeoJSON (статические координаты)",
             "_skipDistBar": True,
+            "_heatMeta": {
+                "note": heat_meta.get("note", ""),
+                "insights": heat_meta.get("insights", []),
+            },
         }
 
     # ── Выбросы в атмосферу 2-ТП Воздух (статический JSON) ──────────────────
