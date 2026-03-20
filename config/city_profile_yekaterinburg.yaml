@@ -146,9 +146,11 @@ static_datasets:
     note: "Данные о тепловых источниках Екатеринбурга ещё не добавлены"
 
   metro:
-    enabled: false
-    file: ""
-    note: "Создать data/cities/yekaterinburg/metro.json (9 станций, 1 линия)"
+    enabled: true
+    file: "data/cities/yekaterinburg/metro.json"
+    lines_count: 1
+    stations_count: 9
+    opened_year: 1991
 
   airport:
     enabled: true

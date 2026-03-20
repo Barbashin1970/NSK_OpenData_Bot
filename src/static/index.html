@@ -285,21 +285,22 @@ const ECO_INDEX_CITIES = [
   { rank: 2,  city: 'Ханты-Мансийск',   index: 99.89,  total_kg: 18.0,  dust_kg: 1.3,   so2_kg: 0.4,   fuel: 'Газ',                     zone: 'green' },
   { rank: 3,  city: 'Санкт-Петербург',  index: 99.74,  total_kg: 11.9,  dust_kg: 0.6,   so2_kg: 0.3,   fuel: 'Газ',                     zone: 'green' },
   { rank: 4,  city: 'Горно-Алтайск',    index: 99.73,  total_kg: 11.9,  dust_kg: 2.0,   so2_kg: 0.6,   fuel: 'Уголь/Дрова (нет ТЭЦ)',   zone: 'green' },
-  { rank: 5,  city: 'Екатеринбург',     index: 99.37,  total_kg: 14.4,  dust_kg: 1.7,   so2_kg: 0.2,   fuel: 'Газ',                     zone: 'green' },
-  { rank: 6,  city: 'Тюмень',           index: 98.85,  total_kg: 25.6,  dust_kg: 1.3,   so2_kg: 0.8,   fuel: 'Газ',                     zone: 'green' },
-  { rank: 7,  city: 'Владивосток',      index: 98.75,  total_kg: 32.7,  dust_kg: 1.9,   so2_kg: 3.2,   fuel: 'Смешанный (Уголь/Газ)',    zone: 'yellow' },
-  { rank: 8,  city: 'Томск',            index: 97.15,  total_kg: 41.7,  dust_kg: 3.7,   so2_kg: 2.4,   fuel: 'Смешанный',               zone: 'yellow' },
-  { rank: 9,  city: 'Новосибирск',      index: 94.95,  total_kg: 45.5,  dust_kg: 5.3,   so2_kg: 14.6,  fuel: 'Смешанный',               zone: 'orange' },
-  { rank: 10, city: 'Красноярск',       index: 92.78,  total_kg: 85.7,  dust_kg: 9.5,   so2_kg: 16.8,  fuel: 'Уголь + Металлургия',      zone: 'orange' },
-  { rank: 11, city: 'Барнаул',          index: 91.77,  total_kg: 69.7,  dust_kg: 16.5,  so2_kg: 18.3,  fuel: 'Уголь',                   zone: 'orange' },
-  { rank: 12, city: 'Хабаровск',        index: 91.28,  total_kg: 70.8,  dust_kg: 16.2,  so2_kg: 20.9,  fuel: 'Уголь / Мазут',            zone: 'orange' },
-  { rank: 13, city: 'Бийск',            index: 88.89,  total_kg: 95.8,  dust_kg: 26.6,  so2_kg: 23.9,  fuel: 'Уголь',                   zone: 'red' },
-  { rank: 14, city: 'Чита',             index: 88.87,  total_kg: 93.3,  dust_kg: 30.9,  so2_kg: 25.0,  fuel: 'Уголь + Котловина',        zone: 'red' },
-  { rank: 15, city: 'Кемерово',         index: 88.25,  total_kg: 107.4, dust_kg: 25.2,  so2_kg: 25.4,  fuel: 'Уголь + Химия',            zone: 'red' },
-  { rank: 16, city: 'Сургут',           index: 87.74,  total_kg: 164.8, dust_kg: 1.1,   so2_kg: 0.3,   fuel: 'Попутный газ (NOx)',        zone: 'red' },
-  { rank: 17, city: 'Омск',             index: 87.15,  total_kg: 104.4, dust_kg: 19.4,  so2_kg: 35.7,  fuel: 'Уголь + Нефтехимия',       zone: 'red' },
-  { rank: 18, city: 'Иркутск',          index: 79.26,  total_kg: 131.8, dust_kg: 19.1,  so2_kg: 87.0,  fuel: 'Уголь',                   zone: 'red' },
-  { rank: 19, city: 'Нерюнгри',         index: 0.00,   total_kg: 924.6, dust_kg: 280.5, so2_kg: 123.2, fuel: 'Уголь (ТЭЦ + Разрезы)',   zone: 'red' },
+  { rank: 5,  city: 'Сбер-Сити',        index: 99.69,  total_kg: 15.0,  dust_kg: 1.1,   so2_kg: 0.4,   fuel: 'Газовые котельные',        zone: 'green' },
+  { rank: 6,  city: 'Екатеринбург',     index: 99.37,  total_kg: 14.4,  dust_kg: 1.7,   so2_kg: 0.2,   fuel: 'Газ',                     zone: 'green' },
+  { rank: 7,  city: 'Тюмень',           index: 98.85,  total_kg: 25.6,  dust_kg: 1.3,   so2_kg: 0.8,   fuel: 'Газ',                     zone: 'green' },
+  { rank: 8,  city: 'Владивосток',      index: 98.75,  total_kg: 32.7,  dust_kg: 1.9,   so2_kg: 3.2,   fuel: 'Смешанный (Уголь/Газ)',    zone: 'yellow' },
+  { rank: 9,  city: 'Томск',            index: 97.15,  total_kg: 41.7,  dust_kg: 3.7,   so2_kg: 2.4,   fuel: 'Смешанный',               zone: 'yellow' },
+  { rank: 10, city: 'Новосибирск',      index: 94.95,  total_kg: 45.5,  dust_kg: 5.3,   so2_kg: 14.6,  fuel: 'Смешанный',               zone: 'orange' },
+  { rank: 11, city: 'Красноярск',       index: 92.78,  total_kg: 85.7,  dust_kg: 9.5,   so2_kg: 16.8,  fuel: 'Уголь + Металлургия',      zone: 'orange' },
+  { rank: 12, city: 'Барнаул',          index: 91.77,  total_kg: 69.7,  dust_kg: 16.5,  so2_kg: 18.3,  fuel: 'Уголь',                   zone: 'orange' },
+  { rank: 13, city: 'Хабаровск',        index: 91.28,  total_kg: 70.8,  dust_kg: 16.2,  so2_kg: 20.9,  fuel: 'Уголь / Мазут',            zone: 'orange' },
+  { rank: 14, city: 'Бийск',            index: 88.89,  total_kg: 95.8,  dust_kg: 26.6,  so2_kg: 23.9,  fuel: 'Уголь',                   zone: 'red' },
+  { rank: 15, city: 'Чита',             index: 88.87,  total_kg: 93.3,  dust_kg: 30.9,  so2_kg: 25.0,  fuel: 'Уголь + Котловина',        zone: 'red' },
+  { rank: 16, city: 'Кемерово',         index: 88.25,  total_kg: 107.4, dust_kg: 25.2,  so2_kg: 25.4,  fuel: 'Уголь + Химия',            zone: 'red' },
+  { rank: 17, city: 'Сургут',           index: 87.74,  total_kg: 164.8, dust_kg: 1.1,   so2_kg: 0.3,   fuel: 'Попутный газ (NOx)',        zone: 'red' },
+  { rank: 18, city: 'Омск',             index: 87.15,  total_kg: 104.4, dust_kg: 19.4,  so2_kg: 35.7,  fuel: 'Уголь + Нефтехимия',       zone: 'red' },
+  { rank: 19, city: 'Иркутск',          index: 79.26,  total_kg: 131.8, dust_kg: 19.1,  so2_kg: 87.0,  fuel: 'Уголь',                   zone: 'red' },
+  { rank: 20, city: 'Нерюнгри',         index: 0.00,   total_kg: 924.6, dust_kg: 280.5, so2_kg: 123.2, fuel: 'Уголь (ТЭЦ + Разрезы)',   zone: 'red' },
 ];
 
 // ─── Role-specific chips ───────────────────────────────────────────────────────
@@ -1476,7 +1477,7 @@ function renderEcoIndex() {
         <span class="text-2xl">🏙️</span>
         <div class="flex-1">
           <div class="font-semibold text-slate-800">Экологический рейтинг городов России</div>
-          <div class="text-xs text-slate-500">Удельная токсичная нагрузка на жителя · 2-ТП Воздух 2024 · 19 городов</div>
+          <div class="text-xs text-slate-500">Удельная токсичная нагрузка на жителя · 2-ТП Воздух 2024 · 20 территорий</div>
         </div>
       </div>
       <div class="px-5 py-2 text-xs text-slate-500 bg-slate-50 border-b border-slate-100">
@@ -3230,7 +3231,7 @@ function renderTopics(topics) {
          onclick="showEcoIndex()">
       <div class="flex justify-between items-start mb-2">
         <span class="text-2xl">🏙️</span>
-        <span class="bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full text-xs">19 городов</span>
+        <span class="bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full text-xs">20 территорий</span>
       </div>
       <div class="font-semibold text-sm text-slate-800 leading-tight">Рейтинг городов</div>
       <div class="text-xs text-slate-500 mt-1">Экологический индекс · чистота воздуха</div>
@@ -3264,8 +3265,37 @@ function renderTopics(topics) {
   `;
   // ── [/PUZZLE GAME] ─────────────────────────────────────────────────────────
 
-  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Камеры → Медицина → Тепло → Выбросы → Игра → остальные датасеты
-  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + camerasCard + medicalCard + heatSourcesCard + emissionsCard + ecoIndexCard + gameCard + cards;
+  // ── Карточка Метро (если has_metro + metro dataset) ──────────────────────────
+  const _metroLines = _cityCfg?.metro_lines || _cityCfg?.static_datasets?.metro?.lines_count || 0;
+  const _metroStations = _cityCfg?.metro_stations || _cityCfg?.static_datasets?.metro?.stations_count || 0;
+  const metroCard = (_cityCfg?.has_metro && _dsAvail('metro')) ? `
+    <div class="topic-card bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 cursor-pointer hover:border-blue-400 hover:shadow-md"
+         onclick="setQuery('${esc(_metroQ)}')">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">🚇</span>
+        <span class="bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-full text-xs">${_metroLines} лин. · ${_metroStations} ст.</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">${esc(_metroName)}</div>
+      <div class="text-xs text-slate-500 mt-1">Схема · станции · пересадки</div>
+    </div>
+  ` : '';
+
+  // ── Карточка Аэропорт (если has_airport + airport dataset) ─────────────────
+  const _airIata = _cityCfg?.airport_iata || '';
+  const airportCard = (_cityCfg?.has_airport && _dsAvail('airport')) ? `
+    <div class="topic-card bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-200 rounded-2xl p-4 cursor-pointer hover:border-sky-400 hover:shadow-md"
+         onclick="setQuery('${esc(_airportQ)}')">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">✈️</span>
+        <span class="bg-sky-100 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded-full text-xs">${esc(_airIata)}</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">${esc(_airportName)}</div>
+      <div class="text-xs text-slate-500 mt-1">Терминалы · рейсы · транспорт</div>
+    </div>
+  ` : '';
+
+  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Метро → Аэропорт → Камеры → Медицина → Тепло → Выбросы → Рейтинг → Игра → остальные датасеты
+  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + metroCard + airportCard + camerasCard + medicalCard + heatSourcesCard + emissionsCard + ecoIndexCard + gameCard + cards;
 }
 
 // ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────

@@ -177,6 +177,8 @@ def city_config_endpoint():
         "has_airport": bool(features.get("has_airport")),
         "airport_name": features.get("airport_name", ""),
         "airport_iata": features.get("airport_iata", ""),
+        "metro_lines":    datasets.get("metro", {}).get("lines_count", 0),
+        "metro_stations": datasets.get("metro", {}).get("stations_count", 0),
         "ecology_stations_count": len(_eco_st()),
         "districts": districts_list,
         "static_datasets": {
