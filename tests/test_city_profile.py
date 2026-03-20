@@ -8,6 +8,7 @@
 """
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -263,3 +264,112 @@ class TestCityDatasetContents:
             for key in required:
                 assert key in props, \
                     f"[{name}] heat_sources: features[{i}].properties нет '{key}'"
+
+
+# ── Тест: смена города сбрасывает кэш выбросов ──────────────────────────────
+
+def _emissions_cities() -> list[tuple[str, str]]:
+    """Возвращает [(city_id, profile_stem), ...] для городов с включёнными выбросами."""
+    result = []
+    for p in sorted(_CONFIG_DIR.glob("city_profile*.yaml")):
+        with open(p, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        ds = data.get("static_datasets", {}).get("emissions", {})
+        if ds.get("enabled") and ds.get("file"):
+            city_id = data.get("city", {}).get("id", "")
+            result.append((city_id, p.stem))
+    return result
+
+
+_EMISSION_CITIES = _emissions_cities()
+
+
+@pytest.mark.skipif(len(_EMISSION_CITIES) < 2, reason="Нужно ≥ 2 города с выбросами")
+class TestCitySwitchEmissionsCache:
+    """При смене города load_emissions() должен возвращать данные нового города."""
+
+    def test_emissions_data_changes_on_city_switch(self):
+        from src.city_config import get_city_profile
+        from src.emissions import load_emissions
+
+        city_a_id, city_a_profile = _EMISSION_CITIES[0]
+        city_b_id, city_b_profile = _EMISSION_CITIES[1]
+
+        old_env = os.environ.get("CITY_PROFILE")
+        try:
+            # Загружаем выбросы города A
+            os.environ["CITY_PROFILE"] = city_a_profile
+            get_city_profile.cache_clear()
+            load_emissions.cache_clear()
+            data_a = load_emissions()
+
+            # Переключаемся на город B
+            os.environ["CITY_PROFILE"] = city_b_profile
+            get_city_profile.cache_clear()
+            load_emissions.cache_clear()
+            data_b = load_emissions()
+
+            # Данные должны отличаться
+            names_a = {r["name"] for r in data_a}
+            names_b = {r["name"] for r in data_b}
+            assert names_a != names_b, (
+                f"Выбросы {city_a_id} и {city_b_id} идентичны — "
+                f"кэш не сбросился или файлы совпадают"
+            )
+        finally:
+            # Восстановить ENV
+            if old_env is not None:
+                os.environ["CITY_PROFILE"] = old_env
+            else:
+                os.environ.pop("CITY_PROFILE", None)
+            get_city_profile.cache_clear()
+            load_emissions.cache_clear()
+
+    def test_set_city_endpoint_clears_emissions_cache(self):
+        """POST /api/set-city должен сбросить кэш load_emissions."""
+        from fastapi.testclient import TestClient
+        from src.api import app
+        from src.city_config import get_city_profile, get_districts, \
+            get_sub_districts_compiled, get_sub_districts_info
+        from src.emissions import load_emissions
+        from src import router as _router
+
+        client = TestClient(app)
+
+        city_a_id, city_a_profile = _EMISSION_CITIES[0]
+        city_b_id, city_b_profile = _EMISSION_CITIES[1]
+
+        old_env = os.environ.get("CITY_PROFILE")
+        old_districts = _router.DISTRICTS
+        old_sub_districts = _router._SUB_DISTRICTS
+        old_sub_info = _router.SUB_DISTRICTS_INFO
+        try:
+            # Устанавливаем город A
+            os.environ["CITY_PROFILE"] = city_a_profile
+            get_city_profile.cache_clear()
+            load_emissions.cache_clear()
+            data_a = load_emissions()
+
+            # Переключаемся через API
+            resp = client.post("/api/set-city", json={"city_id": city_b_id})
+            assert resp.status_code == 200
+
+            # load_emissions() должен вернуть данные города B
+            data_after = load_emissions()
+            names_a = {r["name"] for r in data_a}
+            names_after = {r["name"] for r in data_after}
+            assert names_a != names_after, (
+                f"После set-city({city_b_id}) выбросы не изменились — "
+                f"кэш load_emissions не сброшен"
+            )
+        finally:
+            if old_env is not None:
+                os.environ["CITY_PROFILE"] = old_env
+            else:
+                os.environ.pop("CITY_PROFILE", None)
+            get_city_profile.cache_clear()
+            load_emissions.cache_clear()
+            # Восстановить глобальное состояние router
+            _router.DISTRICTS = old_districts
+            _router._SUB_DISTRICTS = old_sub_districts
+            _router.SUB_DISTRICTS_INFO = old_sub_info

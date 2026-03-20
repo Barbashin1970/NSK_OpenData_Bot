@@ -111,6 +111,28 @@ def studio_set_active_city(body: dict):
     except Exception:
         pass
 
+    # Сбросить кэши статических датасетов (emissions, heat_sources, metro, airport)
+    try:
+        from ..emissions import load_emissions
+        load_emissions.cache_clear()
+    except Exception:
+        pass
+    try:
+        from ..heat_sources import load_heat_sources
+        load_heat_sources.cache_clear()
+    except Exception:
+        pass
+    try:
+        from ..metro_data import load_metro_stations
+        load_metro_stations.cache_clear()
+    except Exception:
+        pass
+    try:
+        from ..airport_data import load_airport_data
+        load_airport_data.cache_clear()
+    except Exception:
+        pass
+
     new_profile = _gcp()
     city_name = new_profile.get("city", {}).get("name", city_id)
 
