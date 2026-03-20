@@ -287,6 +287,9 @@ def _detect_utility(q: str) -> str:
         return "cold_water"
     if any(re.search(r"(?<![а-яёa-z])" + re.escape(m), q) for m in _GAS_PRIMARY):
         return "gas"
+    # «отключение газа», «ремонт газа» — stem «газ» + контекст отключений
+    if re.search(r"(?<![а-яёa-z])газ(?:а|у|ом|е)?(?:\s|$)", q) and any(m in q for m in _POWER_CONTEXT):
+        return "gas"
     if any(m in q for m in _POWER_PRIMARY) or "обесточ" in q:
         return "electricity"
     return "all"
@@ -303,7 +306,7 @@ def _route_power(q: str) -> "RouteResult | None":
     )
     has_gas         = any(
         re.search(r"(?<![а-яёa-z])" + re.escape(m), q) for m in _GAS_PRIMARY
-    )
+    ) or bool(re.search(r"(?<![а-яёa-z])газ(?:а|у|ом|е)?(?:\s|$)", q))
     # «отключения ЖКХ» без уточнения типа
     has_utility     = any(m in q for m in _UTILITY_OUTAGE_PRIMARY)
 
