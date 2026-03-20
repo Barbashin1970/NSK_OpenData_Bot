@@ -1,0 +1,324 @@
+{
+  "type": "FeatureCollection",
+  "name": "spb_heat_sources_v1",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "date": "2026-03-20",
+    "project": "NSK OpenData Bot — тепловые источники СПб и ЛО",
+    "operators": [
+      "ТГК-1 (ПАО «ТГК-1»)",
+      "Интер РАО",
+      "МУП ЖКХ"
+    ],
+    "total_objects": 13,
+    "coordinate_system": "WGS84",
+    "note": "Все ТЭЦ СПб и ЛО работают на природном газе (мазут — аварийный резерв). Суммарная мощность ~12 113 Гкал/ч."
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.3970, 59.8406]},
+      "properties": {
+        "id": "spb_southern_chp",
+        "name": "Южная ТЭЦ",
+        "short_name": "Южная ТЭЦ",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ТЭЦ",
+        "fuel": "Газ, мазут",
+        "address": "Софийская ул., 96",
+        "district": "Фрунзенский / Московский",
+        "thermal_gcal_h": 2353,
+        "electric_mw": 1207,
+        "year_built": 1978,
+        "network_zone": "Юг СПб",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "Крупнейшая ТЭЦ Санкт-Петербурга. 2353 Гкал/ч, 1207 МВт."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.2740, 59.8653]},
+      "properties": {
+        "id": "spb_avtovo_chp",
+        "name": "Автовская ТЭЦ (ТЭЦ-15)",
+        "short_name": "Автовская ТЭЦ",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ТЭЦ",
+        "fuel": "Газ, мазут",
+        "address": "Броневая ул., 6",
+        "district": "Кировский / Красносельский",
+        "thermal_gcal_h": 1809,
+        "electric_mw": 328,
+        "year_built": 1956,
+        "network_zone": "Юго-запад СПб",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "Вторая по мощности ТЭЦ СПб. Обслуживает Кировский и Красносельский районы."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.3860, 59.9206]},
+      "properties": {
+        "id": "spb_central_chp",
+        "name": "Центральная ТЭЦ (ст. №1 и №2)",
+        "short_name": "Центральная ТЭЦ",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ТЭЦ",
+        "fuel": "Газ, мазут",
+        "address": "Новгородская ул., 11 / наб. Обводного кан., 76",
+        "district": "Центральный / Адмиралтейский",
+        "thermal_gcal_h": 1380,
+        "electric_mw": 123,
+        "year_built": 1897,
+        "network_zone": "Центр СПб",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "Старейшая ТЭЦ Петербурга (1897). Два энергоблока: ст. №1 и ст. №2."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.4920, 59.8899]},
+      "properties": {
+        "id": "spb_right_bank_chp",
+        "name": "Правобережная ТЭЦ",
+        "short_name": "Правобережная ТЭЦ",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ТЭЦ",
+        "fuel": "Газ, мазут",
+        "address": "Октябрьская наб., 108",
+        "district": "Невский",
+        "thermal_gcal_h": 1303,
+        "electric_mw": 643,
+        "year_built": 2006,
+        "network_zone": "Правый берег Невы",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "Новейшая ТЭЦ ТГК-1 в СПб (2006). Парогазовые установки."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.4680, 60.0601]},
+      "properties": {
+        "id": "spb_northern_chp",
+        "name": "Северная ТЭЦ",
+        "short_name": "Северная ТЭЦ",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ТЭЦ",
+        "fuel": "Газ, мазут",
+        "address": "пос. Новое Девяткино",
+        "district": "Всеволожский р-н ЛО",
+        "thermal_gcal_h": 1208,
+        "electric_mw": 500,
+        "year_built": 1975,
+        "network_zone": "Север СПб / ЛО",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "Расположена в Ленобласти (Девяткино), обслуживает северные районы СПб."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.2430, 59.9251]},
+      "properties": {
+        "id": "spb_vasilyevsky_chp",
+        "name": "Василеостровская ТЭЦ",
+        "short_name": "Василеостровская ТЭЦ",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ТЭЦ",
+        "fuel": "Газ, мазут",
+        "address": "Кожевенная линия, 33",
+        "district": "Василеостровский",
+        "thermal_gcal_h": 1133,
+        "electric_mw": 135,
+        "year_built": 1932,
+        "network_zone": "Васильевский остров",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "Основной источник тепла для Василеостровского района."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.3130, 60.0533]},
+      "properties": {
+        "id": "spb_vyborg_chp",
+        "name": "Выборгская ТЭЦ",
+        "short_name": "Выборгская ТЭЦ",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ТЭЦ",
+        "fuel": "Газ",
+        "address": "ул. Жукова, 26",
+        "district": "Выборгский",
+        "thermal_gcal_h": 953,
+        "electric_mw": 250.5,
+        "year_built": 1954,
+        "network_zone": "Выборгский р-н",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "Обслуживает Выборгский район. Работает только на газе (без мазутного резерва)."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.4510, 59.8841]},
+      "properties": {
+        "id": "spb_pervomay_chp",
+        "name": "Первомайская ТЭЦ",
+        "short_name": "Первомайская ТЭЦ",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ТЭЦ",
+        "fuel": "Газ, мазут",
+        "address": "Корабельная ул., 4",
+        "district": "Невский / Фрунзенский",
+        "thermal_gcal_h": 928,
+        "electric_mw": 360,
+        "year_built": 1957,
+        "network_zone": "Невский / Фрунзенский",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "Обслуживает юго-восток города: Невский и Фрунзенский районы."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.1310, 60.0029]},
+      "properties": {
+        "id": "spb_nw_chp",
+        "name": "Северо-Западная ТЭЦ",
+        "short_name": "Северо-Западная ТЭЦ",
+        "operator": "Интер РАО",
+        "operator_inn": "2320108030",
+        "operator_group": "Интер РАО",
+        "type": "ТЭЦ (ПГУ)",
+        "fuel": "Газ",
+        "address": "Конная Лахта, д. 34",
+        "district": "Приморский",
+        "thermal_gcal_h": 250,
+        "electric_mw": 900,
+        "year_built": 2000,
+        "network_zone": "Приморский р-н",
+        "contacts": {"web": "interrao.ru"},
+        "digitalization_status": "АСКУЭ",
+        "note": "Парогазовая установка (ПГУ). Интеграция АСКУЭ ведётся."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.1550, 59.8406]},
+      "properties": {
+        "id": "spb_sw_chp",
+        "name": "Юго-Западная ТЭЦ",
+        "short_name": "Юго-Западная ТЭЦ",
+        "operator": "Интер РАО / ЭЛ5",
+        "operator_inn": "2320108030",
+        "operator_group": "Интер РАО",
+        "type": "ТЭЦ (ПГУ)",
+        "fuel": "Газ",
+        "address": "ул. Доблести, 1",
+        "district": "Красносельский",
+        "thermal_gcal_h": 400,
+        "electric_mw": 500,
+        "year_built": 2011,
+        "network_zone": "Красносельский р-н",
+        "contacts": {"web": "interrao.ru"},
+        "digitalization_status": "АСКУЭ",
+        "note": "Парогазовая установка (ПГУ-450). Интеграция АСКУЭ ведётся."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [28.5960, 59.3734]},
+      "properties": {
+        "id": "lo_kingisepp_chp",
+        "name": "ТЭЦ Кингисепп",
+        "short_name": "ТЭЦ Кингисепп",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ТЭЦ",
+        "fuel": "Газ",
+        "address": "г. Кингисепп, ЛО",
+        "district": "Кингисеппский р-н ЛО",
+        "thermal_gcal_h": 180,
+        "electric_mw": 144,
+        "year_built": 1961,
+        "network_zone": "Кингисепп ЛО",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "ТЭЦ в Кингисеппе, Ленинградская область."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [30.7770, 59.8514]},
+      "properties": {
+        "id": "lo_dubrovka_gres",
+        "name": "Дубровская ГРЭС (Невская ТЭС)",
+        "short_name": "Дубровская ГРЭС",
+        "operator": "ПАО «ТГК-1»",
+        "operator_inn": "7841312071",
+        "operator_group": "ТГК-1",
+        "type": "ГРЭС",
+        "fuel": "Газ",
+        "address": "пос. Дубровка, ЛО",
+        "district": "Кировский р-н ЛО",
+        "thermal_gcal_h": 140,
+        "electric_mw": 192,
+        "year_built": 1933,
+        "network_zone": "Кировский р-н ЛО",
+        "contacts": {"web": "tgc1.ru"},
+        "digitalization_status": "нет",
+        "note": "Одна из старейших электростанций Ленобласти (1933)."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [33.5120, 59.6451]},
+      "properties": {
+        "id": "lo_tikhvin_chp",
+        "name": "Тихвинская ТЭЦ",
+        "short_name": "Тихвинская ТЭЦ",
+        "operator": "МУП ЖКХ",
+        "operator_inn": null,
+        "operator_group": "МУП ЖКХ",
+        "type": "ТЭЦ/котельная",
+        "fuel": "Газ",
+        "address": "г. Тихвин, ЛО",
+        "district": "Тихвинский р-н ЛО",
+        "thermal_gcal_h": 76,
+        "electric_mw": null,
+        "year_built": 1960,
+        "network_zone": "Тихвин ЛО",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Муниципальная котельная-ТЭЦ в Тихвине."
+      }
+    }
+  ]
+}

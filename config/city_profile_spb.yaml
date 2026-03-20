@@ -233,9 +233,9 @@ static_datasets:
     note: "2-ТП Воздух 2024, Росприроднадзор. 18 районов, 66 939.9 т/год"
 
   heat_sources:
-    enabled: false
-    file: ""
-    note: "Данные о тепловых источниках Санкт-Петербурга ещё не добавлены"
+    enabled: true
+    file: "data/cities/spb/heat_sources.geojson"
+    note: "13 ТЭЦ/ГРЭС СПб и Ленобласти. Все на газе. Суммарно ~12 113 Гкал/ч"
 
   metro:
     enabled: true
