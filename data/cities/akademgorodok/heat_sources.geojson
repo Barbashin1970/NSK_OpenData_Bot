@@ -39,7 +39,7 @@
   "features": [
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [83.0850, 54.8560]},
+      "geometry": {"type": "Point", "coordinates": [83.0764, 54.7906]},
       "properties": {
         "id": "academ_ts1",
         "name": "Тепловая станция №1 ФГУП «УЭВ» (Речкуновка)",
@@ -62,7 +62,7 @@
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [83.1130, 54.8420]},
+      "geometry": {"type": "Point", "coordinates": [83.1194, 54.8729]},
       "properties": {
         "id": "academ_ts2",
         "name": "Тепловая станция №2 ФГУП «УЭВ» (мкр. Щ)",
@@ -85,7 +85,7 @@
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [83.0970, 54.8530]},
+      "geometry": {"type": "Point", "coordinates": [83.0930, 54.8465]},
       "properties": {
         "id": "academ_inst_boilers",
         "name": "Ведомственные котельные институтов СО РАН",
@@ -108,7 +108,7 @@
     },
     {
       "type": "Feature",
-      "geometry": {"type": "Point", "coordinates": [83.1250, 54.8300]},
+      "geometry": {"type": "Point", "coordinates": [83.1095, 54.8580]},
       "properties": {
         "id": "academ_mup_energiya",
         "name": "Котельная МУП «Энергия» (Софийская)",
