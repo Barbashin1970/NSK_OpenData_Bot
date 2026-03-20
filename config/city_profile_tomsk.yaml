@@ -113,9 +113,9 @@ knowledge_base: ""
 static_datasets:
 
   emissions:
-    enabled: false
-    file: ""
-    note: "Скачать 2-ТП Воздух по Томской области с rpn.gov.ru, конвертировать в JSON"
+    enabled: true
+    file: "data/cities/tomsk/emissions_2tp.json"
+    note: "2-ТП Воздух 2024, Томская область, 20 МО"
 
   heat_sources:
     enabled: false

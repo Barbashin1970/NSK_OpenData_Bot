@@ -102,9 +102,9 @@ knowledge_base: ""
 static_datasets:
 
   emissions:
-    enabled: false
-    file: ""
-    note: "Скачать 2-ТП Воздух по Тюменской области с rpn.gov.ru"
+    enabled: true
+    file: "data/cities/tyumen/emissions_2tp.json"
+    note: "2-ТП Воздух 2024, Тюменская область (без ХМАО и ЯНАО), 26 МО"
 
   heat_sources:
     enabled: false

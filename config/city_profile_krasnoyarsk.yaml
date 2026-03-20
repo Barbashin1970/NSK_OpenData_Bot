@@ -136,9 +136,9 @@ knowledge_base: ""
 static_datasets:
 
   emissions:
-    enabled: false
-    file: ""
-    note: "Скачать 2-ТП Воздух по Красноярскому краю с rpn.gov.ru"
+    enabled: true
+    file: "data/cities/krasnoyarsk/emissions_2tp.json"
+    note: "2-ТП Воздух 2024, Красноярский край, 61 МО"
 
   heat_sources:
     enabled: false
