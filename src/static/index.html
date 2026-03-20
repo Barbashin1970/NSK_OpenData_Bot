@@ -1239,13 +1239,32 @@ async function ask() {
 
   setLoading(q);
 
+  // Академгородок: запросы по ЖКХ и экологии проксируются в Новосибирск (Советский район)
+  const isAcadem = _cityCfg?.city_id === 'akademgorodok';
+  const ql = q.toLowerCase();
+  const isPowerEco = isAcadem && /отключен|нет\s+(горяч|холодн|воды|газ|свет|электр)|аварий|жкх|тепл.{0,5}(нет|откл)|экологи|воздух|pm2|пдк|aqi|загрязн|выброс/i.test(ql);
+
   try {
-    const resp = await fetch('/ask?q=' + encodeURIComponent(q));
+    let realQ = q;
+    if (isPowerEco) {
+      // Переключаемся на НСК, добавляем район
+      await fetch('/api/set-city', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({city_id:'novosibirsk'}) });
+      if (!/советск/i.test(q)) realQ = q + ' в Советском районе';
+    }
+    const resp = await fetch('/ask?q=' + encodeURIComponent(realQ));
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    if (isPowerEco) {
+      // Переключаемся обратно на Академгородок
+      await fetch('/api/set-city', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({city_id:'akademgorodok'}) });
+      data._academProxy = true;
+    }
     renderResult(data, q);
     document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
+    if (isPowerEco) {
+      fetch('/api/set-city', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({city_id:'akademgorodok'}) });
+    }
     showError('Ошибка соединения с сервером. Проверьте, что бот запущен: <code class="bg-red-100 px-1 rounded">bot serve</code>');
   }
 }
@@ -1347,7 +1366,14 @@ function renderResult(data, query) {
   el.className = 'fade-in space-y-4';
   const op = data.operation;
 
-  let html = metaHeader(data);
+  let html = '';
+  if (data._academProxy) {
+    html += `<div class="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 flex items-center gap-2 text-sm text-emerald-800">
+      <span>🌿</span>
+      <span>Данные по <b>Советскому району Новосибирска</b> (зона Академгородка)</span>
+    </div>`;
+  }
+  html += metaHeader(data);
 
   if      (op === 'COUNT')                     html += renderCount(data);
   else if (op === 'GROUP')                     html += renderGroup(data);
@@ -1856,17 +1882,17 @@ let _tblSeq = 0;
 
 // ─── District helpers for table filter bar ───────────────────────────────────
 function _stripDistrictFromQuery(q) {
-  // Strip district mentions using the same stems as router.py DISTRICTS
-  const stems = [
-    'дзержинск','железнодорожн','заельцовск','заельцов',
-    'калининск','кировск','ленинск','октябрьск',
-    'первомайск','советск','централь','центр','кольцов',
-    'академгородк','шлюз',
-  ];
+  // Build stems dynamically from current city's NSK_DISTRICTS
   let s = q;
-  for (const stem of stems) {
+  for (const d of NSK_DISTRICTS) {
+    if (!d.val) continue;
+    // Use first 5+ chars of label as stem (handles all declensions)
+    const stem = d.label.replace(/[иы]й$/, '').replace(/ое$/, '').replace(/ая$/, '');
+    if (stem.length < 3) continue;
     s = s.replace(new RegExp('\\s*(в\\s+)?' + stem + '[а-яёa-z]*\\s*(район[еа]?|р-не?|округ[еа]?)?', 'gi'), ' ');
   }
+  // Also strip sub-district names (Академгородок, Шлюз, Кольцово, etc.)
+  s = s.replace(/\s*(в\s+)?(?:академгородк|шлюз|кольцов)[а-яёa-z]*\s*/gi, ' ');
   return s.replace(/\s+/g, ' ').trim();
 }
 
@@ -3804,18 +3830,31 @@ async function fetchPage(offset) {
   const q = _pageQuery;
   if (!q) return;
   _pageOffset = offset;
-  _resetMap();   // сбросить стейт карты — новая страница, новые строки
+  _resetMap();
   document.getElementById('loadingState').className = 'flex items-center gap-3 text-slate-500 text-sm';
   document.getElementById('loadingText').textContent = `Загружаю страницу…`;
   document.getElementById('resultArea').className = 'hidden';
+
+  const isAcadem = _cityCfg?.city_id === 'akademgorodok';
+  const isPowerEco = isAcadem && /отключен|нет\s+(горяч|холодн|воды|газ|свет|электр)|аварий|жкх|тепл.{0,5}(нет|откл)|экологи|воздух|pm2|пдк|aqi|загрязн|выброс/i.test(q.toLowerCase());
   try {
-    const url = `/ask?q=${encodeURIComponent(q)}&offset=${offset}&page_size=${_pageSize}`;
+    let realQ = q;
+    if (isPowerEco) {
+      await fetch('/api/set-city', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({city_id:'novosibirsk'}) });
+      if (!/советск/i.test(q)) realQ = q + ' в Советском районе';
+    }
+    const url = `/ask?q=${encodeURIComponent(realQ)}&offset=${offset}&page_size=${_pageSize}`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    if (isPowerEco) {
+      await fetch('/api/set-city', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({city_id:'akademgorodok'}) });
+      data._academProxy = true;
+    }
     document.getElementById('loadingState').className = 'hidden';
     renderResult(data, q);
   } catch (e) {
+    if (isPowerEco) fetch('/api/set-city', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({city_id:'akademgorodok'}) });
     showError('Ошибка загрузки страницы.');
   }
 }
