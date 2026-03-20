@@ -153,9 +153,9 @@ static_datasets:
     published: "2025-03"
 
   heat_sources:
-    enabled: false
-    file: null
-    note: "СГК работает в Кузбассе (sibgenco.ru). Подготовить GeoJSON по аналогии с nsk_heat_sources_v1.geojson"
+    enabled: true
+    file: "data/cities/kemerovo/heat_sources.geojson"
+    note: "14 объектов Кузбасса (Кемерово 6 + Новокузнецк 5 + другие 3), 7 363 Гкал/ч, 1 807 МВт. 100% угольная генерация"
 
   metro:
     enabled: false

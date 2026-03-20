@@ -1,0 +1,235 @@
+{
+  "type": "FeatureCollection",
+  "name": "omsk_heat_sources_v1",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "date": "2026-03-20",
+    "project": "NSK OpenData Bot — тепловые источники Омска",
+    "operators": [
+      "ТГК-11 (Интер РАО)",
+      "Омск РТС (ТГК-11)",
+      "Газпромнефть-ОНПЗ",
+      "ПАО «Омский каучук»",
+      "АО «Тепловая компания»",
+      "ООО «Малая генерация»"
+    ],
+    "total_objects": 9,
+    "coordinate_system": "WGS84",
+    "note": "9 объектов, 5 520 Гкал/ч, 1 685 МВт. Три угольные ТЭЦ — главная причина высоких выбросов (SO₂ 39 637 т/год). Монополист ТГК-11 (61%+ рынка). ТЭЦ-3 — единственная «зелёная» станция (полностью на газе с 1990 г.)."
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [73.2750, 54.9850]},
+      "properties": {
+        "id": "omsk_chp5",
+        "name": "Омская ТЭЦ-5",
+        "short_name": "ТЭЦ-5",
+        "operator": "ТГК-11 (Интер РАО)",
+        "operator_inn": "5406246799",
+        "operator_group": "ТГК-11",
+        "type": "ТЭЦ",
+        "fuel": "Уголь + мазут",
+        "address": "ул. 3-я Молодёжная, 1",
+        "district": "Кировский",
+        "thermal_gcal_h": 1763,
+        "electric_mw": 735,
+        "year_built": 1980,
+        "network_zone": "Кировский АО",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Крупнейшая ТЭЦ Омска. Работает на экибастузском угле (зольность до 40%), главный источник SO₂."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [73.4300, 54.9200]},
+      "properties": {
+        "id": "omsk_chp3",
+        "name": "Омская ТЭЦ-3",
+        "short_name": "ТЭЦ-3",
+        "operator": "ТГК-11 (Интер РАО)",
+        "operator_inn": "5406246799",
+        "operator_group": "ТГК-11",
+        "type": "ТЭЦ + ПГУ",
+        "fuel": "Газ + мазут",
+        "address": "ул. Нефтезаводская, 46",
+        "district": "Советский",
+        "thermal_gcal_h": 1132,
+        "electric_mw": 445,
+        "year_built": 1954,
+        "network_zone": "Советский АО",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Единственная «зелёная» станция города: с 1990 г. полностью на газе, ПГУ-блок на турбинах GE LM2500+G4."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [73.3800, 54.9500]},
+      "properties": {
+        "id": "omsk_chp4",
+        "name": "Омская ТЭЦ-4",
+        "short_name": "ТЭЦ-4",
+        "operator": "ТГК-11 (Интер РАО)",
+        "operator_inn": "5406246799",
+        "operator_group": "ТГК-11",
+        "type": "ТЭЦ",
+        "fuel": "Уголь + газ + мазут",
+        "address": "ул. Химиков, 10",
+        "district": "Советский / Центральный",
+        "thermal_gcal_h": 900,
+        "electric_mw": 385,
+        "year_built": 1965,
+        "network_zone": "Советский / Центральный",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Работает на экибастузском угле. Запланирована замена электрофильтров к концу 2026 г."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [73.4250, 54.9150]},
+      "properties": {
+        "id": "omsk_onpz_boiler",
+        "name": "Котельная Омского НПЗ",
+        "short_name": "Котельная ОНПЗ",
+        "operator": "Газпромнефть-ОНПЗ",
+        "operator_inn": "5501023608",
+        "operator_group": "Газпромнефть",
+        "type": "Промкотельная / ТЭС",
+        "fuel": "Заводской газ + мазут",
+        "address": "ул. Нефтезаводская, 2А",
+        "district": "Советский (НПЗ)",
+        "thermal_gcal_h": 600,
+        "electric_mw": 120,
+        "year_built": 1955,
+        "network_zone": "Советский АО (НПЗ)",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Крупнейшая промышленная котельная (600 Гкал/ч). Сжигает попутный нефтезаводской газ и мазут. Один из главных источников ЛОС."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [73.3650, 54.9700]},
+      "properties": {
+        "id": "omsk_chp2",
+        "name": "ТЭЦ-2 (бывш. Омская ТЭЦ-2)",
+        "short_name": "ТЭЦ-2",
+        "operator": "Омск РТС (ТГК-11)",
+        "operator_inn": "5503239525",
+        "operator_group": "ТГК-11",
+        "type": "Котельная-ТЭЦ",
+        "fuel": "Газ",
+        "address": "ул. 10 лет Октября, 85",
+        "district": "Центральный",
+        "thermal_gcal_h": 385,
+        "electric_mw": null,
+        "year_built": 1943,
+        "network_zone": "Центральный АО",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Старейшая станция Омска (1943). Работает как котельная-ТЭЦ на газе."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [73.2900, 54.9750]},
+      "properties": {
+        "id": "omsk_kirov_boiler",
+        "name": "Кировская районная котельная",
+        "short_name": "Кировская котельная",
+        "operator": "Омск РТС (ТГК-11)",
+        "operator_inn": "5503239525",
+        "operator_group": "ТГК-11",
+        "type": "Газовая котельная",
+        "fuel": "Газ",
+        "address": "ул. Кирова, 19",
+        "district": "Кировский",
+        "thermal_gcal_h": 350,
+        "electric_mw": null,
+        "year_built": 1965,
+        "network_zone": "Кировский АО",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Районная газовая котельная Кировского АО."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [73.3850, 54.9450]},
+      "properties": {
+        "id": "omsk_kauchuk_boiler",
+        "name": "Котельная «Омский каучук»",
+        "short_name": "Котельная Омский каучук",
+        "operator": "ПАО «Омский каучук»",
+        "operator_inn": "5501023085",
+        "operator_group": "Омский каучук",
+        "type": "Промкотельная",
+        "fuel": "Газ",
+        "address": "ул. Химиков, 35",
+        "district": "Советский (химпром)",
+        "thermal_gcal_h": 180,
+        "electric_mw": null,
+        "year_built": 1960,
+        "network_zone": "Советский АО (химпром)",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Промышленная котельная химического предприятия."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [73.3200, 54.9600]},
+      "properties": {
+        "id": "omsk_teplovaya_boiler",
+        "name": "Котельная АО «Тепловая компания»",
+        "short_name": "Котельная Тепловая компания",
+        "operator": "АО «Тепловая компания»",
+        "operator_inn": "5503095498",
+        "operator_group": "Тепловая компания",
+        "type": "Газовая котельная",
+        "fuel": "Газ",
+        "address": "ул. 22 Декабря, 78",
+        "district": "Октябрьский",
+        "thermal_gcal_h": 120,
+        "electric_mw": null,
+        "year_built": 1975,
+        "network_zone": "Октябрьский АО",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Газовая котельная Октябрьского АО."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [73.4300, 54.9200]},
+      "properties": {
+        "id": "omsk_malaya_gen",
+        "name": "Котельная «Малая генерация»",
+        "short_name": "Малая генерация",
+        "operator": "ООО «Малая генерация»",
+        "operator_inn": null,
+        "operator_group": "Малая генерация",
+        "type": "Газовая котельная",
+        "fuel": "Газ",
+        "address": "ул. Нефтезаводская, 46",
+        "district": "Советский",
+        "thermal_gcal_h": 90,
+        "electric_mw": null,
+        "year_built": 2000,
+        "network_zone": "Советский АО (площ. ТЭЦ-3)",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Газовая котельная на площадке ТЭЦ-3."
+      }
+    }
+  ]
+}

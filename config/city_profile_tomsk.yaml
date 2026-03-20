@@ -118,9 +118,9 @@ static_datasets:
     note: "2-ТП Воздух 2024, Томская область, 20 МО"
 
   heat_sources:
-    enabled: false
-    file: ""
-    note: "Данные о тепловых источниках Томска ещё не добавлены"
+    enabled: true
+    file: "data/cities/tomsk/heat_sources.geojson"
+    note: "9 объектов, 4 272 Гкал/ч, 934.7 МВт. Смешанное топливо: ГРЭС-2 и Северская ТЭЦ — уголь+газ"
 
   metro:
     enabled: false

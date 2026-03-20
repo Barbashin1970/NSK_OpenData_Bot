@@ -1,0 +1,234 @@
+{
+  "type": "FeatureCollection",
+  "name": "tomsk_heat_sources_v1",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "date": "2026-03-20",
+    "project": "NSK OpenData Bot — тепловые источники Томска",
+    "operators": [
+      "АО «Томская генерация» (Интер РАО)",
+      "АО ОТЭК (Росатом)",
+      "АО «ТомскРТС»",
+      "ФГУП «Микроген»",
+      "АО «Аграрная Группа МП»"
+    ],
+    "total_objects": 9,
+    "coordinate_system": "WGS84",
+    "note": "9 объектов, 4 272 Гкал/ч, 934.7 МВт. Смешанное топливо: ГРЭС-2 и Северская ТЭЦ — уголь+газ, остальные — газ. Монополия Томская генерация (Интер РАО)."
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [84.8870, 56.6040]},
+      "properties": {
+        "id": "tomsk_severskaya_chp",
+        "name": "Северская ТЭЦ (ТЭЦ СХК)",
+        "short_name": "Северская ТЭЦ",
+        "operator": "АО ОТЭК (Росатом)",
+        "operator_inn": "7706196610",
+        "operator_group": "ОТЭК (Росатом)",
+        "type": "ТЭЦ",
+        "fuel": "Уголь + газ",
+        "address": "пр. Коммунистический, 1, Северск",
+        "district": "г. Северск (15 км)",
+        "thermal_gcal_h": 1714,
+        "electric_mw": 449,
+        "year_built": 1953,
+        "network_zone": "Северск — Томск (север)",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Крупнейший источник тепла региона (1 714 Гкал/ч). Закрытый город Северск, структура Росатома. Снабжает северные районы Томска по длинной тепломагистрали."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [84.9530, 56.4880]},
+      "properties": {
+        "id": "tomsk_gres2",
+        "name": "Томская ГРЭС-2",
+        "short_name": "ГРЭС-2",
+        "operator": "АО «Томская генерация» (Интер РАО)",
+        "operator_inn": "7017351521",
+        "operator_group": "Томская генерация",
+        "type": "ГРЭС/ТЭЦ",
+        "fuel": "Уголь + газ",
+        "address": "пр. Кирова, 36",
+        "district": "Центральный",
+        "thermal_gcal_h": 815,
+        "electric_mw": 331,
+        "year_built": 1945,
+        "network_zone": "Центр Томска",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Вторая по мощности станция. Работает с 1945 года на угле и газе."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [84.9200, 56.4750]},
+      "properties": {
+        "id": "tomsk_chp1",
+        "name": "Томская ТЭЦ-1 (ГТУ-ТЭЦ)",
+        "short_name": "ТЭЦ-1",
+        "operator": "АО «Томская генерация» (Интер РАО)",
+        "operator_inn": "7017351521",
+        "operator_group": "Томская генерация",
+        "type": "ГТУ + котельная",
+        "fuel": "Газ",
+        "address": "ул. Угрюмова А., 2",
+        "district": "Кировский",
+        "thermal_gcal_h": 795,
+        "electric_mw": 14.7,
+        "year_built": 1973,
+        "network_zone": "Кировский р-н",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Уникальный объект: изначально (1973) пиково-резервная котельная, статус электростанции с 2012 г. после монтажа ГТУ 14.7 МВт."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [84.8900, 56.5500]},
+      "properties": {
+        "id": "tomsk_chp3",
+        "name": "Томская ТЭЦ-3",
+        "short_name": "ТЭЦ-3",
+        "operator": "АО «Томская генерация» (Интер РАО)",
+        "operator_inn": "7017351521",
+        "operator_group": "Томская генерация",
+        "type": "ТЭЦ",
+        "fuel": "Газ",
+        "address": "Кузовлевский тракт, 2Б",
+        "district": "Северный",
+        "thermal_gcal_h": 780,
+        "electric_mw": 140,
+        "year_built": 1988,
+        "network_zone": "Северная часть Томска",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Расположена в 17 км от центра, рядом с площадкой Томского нефтехимического завода. Обеспечивает север Томска по тепломагистрали №12."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [84.9680, 56.4700]},
+      "properties": {
+        "id": "tomsk_vodyanaya",
+        "name": "Котельная ТомскРТС (Водяная)",
+        "short_name": "Котельная Водяная",
+        "operator": "АО «ТомскРТС»",
+        "operator_inn": "7017351800",
+        "operator_group": "ТомскРТС",
+        "type": "Газовая котельная",
+        "fuel": "Газ",
+        "address": "ул. Водяная, 80",
+        "district": "Советский",
+        "thermal_gcal_h": 87,
+        "electric_mw": null,
+        "year_built": 1990,
+        "network_zone": "Советский р-н",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Газовая котельная Советского района."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [85.0200, 56.4300]},
+      "properties": {
+        "id": "tomsk_zonalnaya",
+        "name": "Котельная Зональная Станция",
+        "short_name": "Котельная Зональная",
+        "operator": "АО «ТомскРТС»",
+        "operator_inn": "7017351800",
+        "operator_group": "ТомскРТС",
+        "type": "Газовая котельная",
+        "fuel": "Газ",
+        "address": "пос. Зональная Ст., Полевая 23/1",
+        "district": "Томский р-н",
+        "thermal_gcal_h": 45,
+        "electric_mw": null,
+        "year_built": 1988,
+        "network_zone": "пос. Зональная Станция",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Котельная посёлка Зональная Станция, Томский район."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [84.9500, 56.4600]},
+      "properties": {
+        "id": "tomsk_virion",
+        "name": "Котельная НПО «Вирион»",
+        "short_name": "Котельная Вирион",
+        "operator": "ФГУП «Микроген» (Минздрав)",
+        "operator_inn": "7722292838",
+        "operator_group": "Микроген",
+        "type": "Промкотельная",
+        "fuel": "Газ",
+        "address": "ул. Р. Люксембург, 180",
+        "district": "Октябрьский",
+        "thermal_gcal_h": 18,
+        "electric_mw": null,
+        "year_built": 1980,
+        "network_zone": "Октябрьский р-н",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Промышленная котельная фармпроизводства НПО «Вирион»."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [84.9350, 56.4950]},
+      "properties": {
+        "id": "tomsk_kutuzova",
+        "name": "Котельная ТомскРТС (Кутузова)",
+        "short_name": "Котельная Кутузова",
+        "operator": "АО «ТомскРТС»",
+        "operator_inn": "7017351800",
+        "operator_group": "ТомскРТС",
+        "type": "Газовая котельная",
+        "fuel": "Газ",
+        "address": "ул. Кутузова, 11/2",
+        "district": "Ленинский",
+        "thermal_gcal_h": 13,
+        "electric_mw": null,
+        "year_built": 1985,
+        "network_zone": "Ленинский р-н",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Малая газовая котельная Ленинского района."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [84.9100, 56.4400]},
+      "properties": {
+        "id": "tomsk_agrarnaya",
+        "name": "Котельная Аграрная Группа МП",
+        "short_name": "Котельная Аграрная",
+        "operator": "АО «Аграрная Группа МП»",
+        "operator_inn": "7017138520",
+        "operator_group": "Аграрная Группа",
+        "type": "Промкотельная",
+        "fuel": "Газ",
+        "address": "ул. Нижняя Луговая, 16",
+        "district": "Томский р-н",
+        "thermal_gcal_h": 5,
+        "electric_mw": null,
+        "year_built": 1995,
+        "network_zone": "Томский р-н",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Промышленная котельная агропромышленного предприятия."
+      }
+    }
+  ]
+}

@@ -152,9 +152,9 @@ static_datasets:
     published: "2025-03"
 
   heat_sources:
-    enabled: false
-    file: null
-    note: "СГК работает в Омске (sibgenco.ru). Подготовить GeoJSON по аналогии с nsk_heat_sources_v1.geojson"
+    enabled: true
+    file: "data/cities/omsk/heat_sources.geojson"
+    note: "9 объектов, 5 520 Гкал/ч, 1 685 МВт. Три угольные ТЭЦ (ТГК-11). ТЭЦ-3 — газ"
 
   metro:
     enabled: false
