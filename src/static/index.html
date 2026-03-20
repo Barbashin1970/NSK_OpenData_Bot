@@ -1220,8 +1220,71 @@ async function _showRisksView() {
         </div>
       </div>`;
   } catch(e) {
-    document.getElementById('resultArea').innerHTML =
-      '<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка загрузки данных о выбросах</div>';
+    // Выбросы недоступны (напр. Академгородок) — показываем экологические риски
+    try {
+      const [statusR, risksR] = await Promise.all([
+        fetch('/ecology/status'),
+        fetch('/ecology/risks'),
+      ]);
+      const statusData = await statusR.json();
+      const risksData  = await risksR.json();
+      const stations   = statusData.stations || [];
+      const risks      = risksData.risks || [];
+
+      const avgAqi  = stations.length ? Math.round(stations.reduce((s,r) => s + (r.aqi||0), 0) / stations.length) : null;
+      const avgPm25 = stations.length ? (stations.reduce((s,r) => s + (r.pm25||0), 0) / stations.length).toFixed(1) : null;
+      const c = avgAqi != null ? aqiColor(avgAqi) : { bg:'bg-slate-100', text:'text-slate-600', label:'—' };
+
+      const riskCards = risks.length ? risks.map(r => {
+        const isCrit = r.severity === 'critical';
+        return `
+          <div class="flex items-center gap-3 px-4 py-3 rounded-xl border
+            ${isCrit ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}">
+            <span class="text-xl flex-shrink-0">${r.icon||'⚠️'}</span>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold ${isCrit ? 'text-red-700' : 'text-amber-700'} leading-tight">${esc(r.title)}</div>
+              <div class="text-xs ${isCrit ? 'text-red-600' : 'text-amber-600'} mt-0.5">${esc(r.metrics || '')}</div>
+            </div>
+            <span class="text-xs font-bold ${isCrit ? 'text-red-600' : 'text-amber-600'} whitespace-nowrap">
+              ${isCrit ? '🔴 Критично' : '🟡 Внимание'}
+            </span>
+          </div>`;
+      }).join('') : `
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+          <span class="text-xl">✅</span>
+          <p class="text-sm text-emerald-700 font-semibold mt-1">Рисков не обнаружено</p>
+          <p class="text-xs text-emerald-600 mt-0.5">Текущие показатели воздуха и погоды в пределах нормы</p>
+        </div>`;
+
+      el.innerHTML = `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="bg-gradient-to-r from-sky-50 to-emerald-50 border-b border-slate-200 px-5 py-3.5 flex items-center gap-3">
+            <span class="text-2xl">🍃</span>
+            <div>
+              <div class="font-semibold text-slate-800">Экологическая обстановка</div>
+              <div class="text-xs text-slate-500">Качество воздуха и активные риски</div>
+            </div>
+            ${avgAqi != null ? `<span class="ml-auto ${c.bg} ${c.text} text-sm font-bold px-3 py-1 rounded-full">AQI ${avgAqi}</span>` : ''}
+          </div>
+          <div class="p-4 space-y-3">
+            ${avgPm25 != null ? `
+              <div class="flex items-center gap-4 text-sm text-slate-700">
+                <span>PM2.5 ср. <strong>${avgPm25} мкг/м³</strong></span>
+                <span class="${c.text} font-medium">${c.label}</span>
+              </div>` : ''}
+            <div class="space-y-2">${riskCards}</div>
+          </div>
+          <div class="px-4 py-2.5 border-t border-slate-100 text-xs text-slate-400 flex items-center gap-3">
+            <span>Данные: Open-Meteo</span>
+            <button onclick="askNow('качество воздуха в городе')"
+              class="ml-auto text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors whitespace-nowrap">
+              Подробнее по районам →
+            </button>
+          </div>
+        </div>`;
+    } catch(e2) {
+      el.innerHTML = '<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка загрузки экологических данных</div>';
+    }
   }
 }
 
@@ -2158,6 +2221,132 @@ function renderConstructionCount(data) {
     </div>`;
 }
 
+// ─── METRO MAP FULLSCREEN VIEWER ──────────────────────────────────────────────
+function _openMetroMap(src, title) {
+  // Remove existing overlay if any
+  document.getElementById('_metroOverlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = '_metroOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.92);display:flex;flex-direction:column;touch-action:none';
+
+  // Header bar
+  const header = document.createElement('div');
+  header.style.cssText = 'flex-shrink:0;display:flex;align-items:center;padding:12px 16px;gap:12px';
+  header.innerHTML = `
+    <span style="color:#fff;font-weight:600;font-size:14px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🚇 ${title}</span>
+    <span style="color:rgba(255,255,255,0.5);font-size:11px" id="_metroZoomLabel">100%</span>
+    <button onclick="document.getElementById('_metroOverlay').remove()"
+      style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>`;
+  overlay.appendChild(header);
+
+  // Scrollable container
+  const container = document.createElement('div');
+  container.style.cssText = 'flex:1;overflow:auto;-webkit-overflow-scrolling:touch;display:flex;align-items:center;justify-content:center';
+  overlay.appendChild(container);
+
+  // Image wrapper (for transform)
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'transform-origin:center center;transition:transform 0.1s ease-out;min-width:100%;min-height:100%;display:flex;align-items:center;justify-content:center';
+  container.appendChild(wrapper);
+
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = title;
+  img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;user-select:none;-webkit-user-drag:none';
+  img.draggable = false;
+  wrapper.appendChild(img);
+
+  // Zoom state
+  let scale = 1;
+  const MIN_SCALE = 1, MAX_SCALE = 5;
+  const zoomLabel = () => { const el = document.getElementById('_metroZoomLabel'); if (el) el.textContent = Math.round(scale * 100) + '%'; };
+
+  // Desktop: mouse wheel zoom
+  container.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale + delta));
+    if (scale <= 1) {
+      // Reset to fit
+      img.style.maxWidth = '100%'; img.style.maxHeight = '100%';
+      img.style.width = ''; img.style.height = '';
+      wrapper.style.transform = '';
+      wrapper.style.minWidth = '100%'; wrapper.style.minHeight = '100%';
+    } else {
+      // Scale up: use native resolution
+      img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
+      img.style.width = (scale * 100) + '%'; img.style.height = 'auto';
+      wrapper.style.minWidth = ''; wrapper.style.minHeight = '';
+    }
+    zoomLabel();
+  }, { passive: false });
+
+  // Mobile: pinch-to-zoom
+  let _touches = [], _lastDist = 0, _startScale = 1;
+  container.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      _lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      _startScale = scale;
+    }
+  }, { passive: true });
+  container.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, _startScale * (dist / _lastDist)));
+      if (scale <= 1) {
+        img.style.maxWidth = '100%'; img.style.maxHeight = '100%';
+        img.style.width = ''; img.style.height = '';
+        wrapper.style.minWidth = '100%'; wrapper.style.minHeight = '100%';
+      } else {
+        img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
+        img.style.width = (scale * 100) + '%'; img.style.height = 'auto';
+        wrapper.style.minWidth = ''; wrapper.style.minHeight = '';
+      }
+      zoomLabel();
+    }
+  }, { passive: false });
+
+  // Double-tap to toggle zoom (mobile) / double-click (desktop)
+  let _lastTap = 0;
+  container.addEventListener('click', e => {
+    const now = Date.now();
+    if (now - _lastTap < 350) {
+      // Toggle between 1x and 2.5x
+      scale = scale > 1.5 ? 1 : 2.5;
+      if (scale <= 1) {
+        img.style.maxWidth = '100%'; img.style.maxHeight = '100%';
+        img.style.width = ''; img.style.height = '';
+        wrapper.style.minWidth = '100%'; wrapper.style.minHeight = '100%';
+      } else {
+        img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
+        img.style.width = (scale * 100) + '%'; img.style.height = 'auto';
+        wrapper.style.minWidth = ''; wrapper.style.minHeight = '';
+        // Scroll to tap position
+        const rect = container.getBoundingClientRect();
+        const rx = (e.clientX - rect.left) / rect.width;
+        const ry = (e.clientY - rect.top) / rect.height;
+        requestAnimationFrame(() => {
+          container.scrollLeft = (container.scrollWidth - rect.width) * rx;
+          container.scrollTop  = (container.scrollHeight - rect.height) * ry;
+        });
+      }
+      zoomLabel();
+    }
+    _lastTap = now;
+  });
+
+  // Escape to close
+  const _escHandler = e => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', _escHandler); } };
+  document.addEventListener('keydown', _escHandler);
+
+  // Click overlay background to close (not on image)
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  document.body.appendChild(overlay);
+}
+
 // ─── METRO ────────────────────────────────────────────────────────────────────
 function renderMetro(data) {
   const info   = data.info || {};
@@ -2188,9 +2377,10 @@ function renderMetro(data) {
   ).join('<div class="border-t border-slate-100"></div>');
 
   // Subtitle changes with active filter
-  const linesSubtitle = _activeLine === '1' ? 'Линия 1 — Дзержинская (синяя)'
-                      : _activeLine === '2' ? 'Линия 2 — Ленинская (красная)'
-                      : `${info.lines_count || 2} линии · ${totalCount} станций`;
+  const lineIds = Object.keys(lines);
+  const linesSubtitle = _activeLine !== 'all' && lines[_activeLine]
+    ? `Линия ${_activeLine} — ${lines[_activeLine].name} (${lines[_activeLine].color_name || ''})`
+    : `${info.lines_count || lineIds.length} лини${(info.lines_count||lineIds.length) > 4 ? 'й' : 'и'} · ${totalCount} станций`;
 
   // Button styles: active gets filled, inactive gets outline only
   const _ba = 'text-xs px-3 py-1.5 rounded-xl border font-medium transition-colors';
@@ -2198,12 +2388,36 @@ function renderMetro(data) {
   const btnAll = _activeLine === 'all'
     ? `${_ba} bg-slate-700 text-white border-slate-700`
     : `${_bi} hover:border-slate-500 hover:text-slate-700`;
-  const btnL1 = _activeLine === '1'
-    ? `${_ba} bg-blue-600 text-white border-blue-600`
-    : `${_bi} hover:border-blue-400 hover:text-blue-600`;
-  const btnL2 = _activeLine === '2'
-    ? `${_ba} bg-red-600 text-white border-red-600`
-    : `${_bi} hover:border-red-400 hover:text-red-600`;
+
+  // Dynamic line buttons from lines data
+  const lineButtons = lineIds.map(id => {
+    const ln = lines[id];
+    const color = ln.color || '#2563eb';
+    const isActive = _activeLine === id;
+    const cls = isActive
+      ? `${_ba} text-white border-transparent` : _bi;
+    const style = isActive ? `style="background:${color};border-color:${color}"` : '';
+    const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:2px"></span>`;
+    return `<button onclick="askNow('станции метро линия ${id}')" class="${cls}" ${style}>${dot} Линия ${id}</button>`;
+  }).join('\n        ');
+
+  // Metro map image: city-specific path
+  const _cityId = _cityCfg?.city_id || 'novosibirsk';
+  const _metroMapSrc = `/static/${_cityId}_metro_map.jpg`;
+
+  // Note line (bridge etc.) — only if explicitly present in data
+  const noteLine = info.bridge_length_m
+    ? `<div class="px-5 pb-3 text-xs text-slate-400">Метромост через реку Обь — ${fmt(info.bridge_length_m)} м (открытая эстакада)</div>`
+    : info.note ? `<div class="px-5 pb-3 text-xs text-slate-400">${esc(info.note)}</div>` : '';
+
+  // Fare display: token price if available (SPB)
+  const fareText = info.fare_token_rub
+    ? `${info.fare_rub} / ${info.fare_token_rub} ₽`
+    : `${info.fare_rub || 30} ₽`;
+  const fareLabel = info.fare_token_rub ? 'карта / жетон' : 'за поездку';
+
+  // URL label from domain
+  const urlLabel = info.url ? new URL(info.url).hostname : '';
 
   const infoCard = `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -2224,28 +2438,34 @@ function renderMetro(data) {
           <div class="text-xs text-slate-400 mt-0.5">пасс./день</div>
         </div>
         <div class="px-5 py-3 text-center">
-          <div class="text-2xl font-bold text-slate-700">${info.fare_rub || 30} ₽</div>
-          <div class="text-xs text-slate-400 mt-0.5">за поездку</div>
+          <div class="text-2xl font-bold text-slate-700">${fareText}</div>
+          <div class="text-xs text-slate-400 mt-0.5">${fareLabel}</div>
         </div>
       </div>
       <div class="px-5 py-3 divide-y divide-slate-100">${lineBadges}</div>
-      ${(info.bridge_length_m || 822) ? `<div class="px-5 pb-3 text-xs text-slate-400">Метромост через реку Обь — ${fmt(info.bridge_length_m || 822)} м (открытая эстакада)</div>` : ''}
-      <div class="px-3 pb-3">
-        <img src="/static/nsk_metro_map.jpg" alt="Схема Новосибирского метро"
-             style="width:100%;border-radius:0.5rem;border:1px solid #e2e8f0;display:block" />
+      ${noteLine}
+      <div class="px-3 pb-3 relative cursor-zoom-in" onclick="_openMetroMap('${_metroMapSrc}', '${esc(info.name || 'метро')}')">
+        <img src="${_metroMapSrc}" alt="Схема ${esc(info.name || 'метро')}"
+             style="width:100%;border-radius:0.5rem;border:1px solid #e2e8f0;display:block"
+             onerror="this.closest('.relative').style.display='none'" />
+        <div class="absolute bottom-5 right-5 bg-white/80 backdrop-blur-sm rounded-lg px-2.5 py-1.5 text-xs text-slate-500 shadow-sm pointer-events-none flex items-center gap-1">
+          🔍 Нажмите для увеличения
+        </div>
       </div>
       <div class="px-5 pb-4 flex flex-wrap gap-2">
         <button onclick="askNow('станции метро')" class="${btnAll}">📋 Все станции</button>
-        <button onclick="askNow('станции метро линия 1')" class="${btnL1}">🔵 Линия 1</button>
-        <button onclick="askNow('станции метро линия 2')" class="${btnL2}">🔴 Линия 2</button>
-        ${info.url ? `<a href="${esc(info.url)}" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🌐 nsk-metro.ru</a>` : ''}
+        ${lineButtons}
+        ${info.url ? `<a href="${esc(info.url)}" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 rounded-xl border bg-white text-slate-600 border-slate-200 hover:border-slate-400">🌐 ${esc(urlLabel)}</a>` : ''}
       </div>
     </div>`;
 
   // ── Плашка 2: список станций ───────────────────────────────────────────────
-  const LINE_COLOR = { '1': '#2563eb', '2': '#dc2626' };
-  const LINE_BG    = { '1': '#eff6ff', '2': '#fef2f2' };
-  const LINE_NAME  = { '1': 'Дзержинская', '2': 'Ленинская' };
+  // Dynamic line colors from data
+  const LINE_COLOR = {}; const LINE_BG = {};
+  for (const [id, ln] of Object.entries(lines)) {
+    LINE_COLOR[id] = ln.color || '#64748b';
+    LINE_BG[id]    = ln.color ? ln.color + '12' : '#f8fafc';
+  }
 
   const stationRows = stations.map(s => {
     const col = LINE_COLOR[s.line] || '#64748b';

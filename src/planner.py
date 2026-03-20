@@ -138,13 +138,25 @@ def make_plan(query: str, topic: str | None) -> Plan:
     # Для темы метро — специальные операции
     if topic == "metro":
         district = extract_district(query)
-        # Линия 1 / 2 из текста запроса
+        # Линия N из текста запроса (универсально для любого кол-ва линий)
         line_filter = None
         q_low = query.lower()
-        if "линия 1" in q_low or "первая линия" in q_low or "дзержинск" in q_low:
+        import re as _re
+        _lm = _re.search(r'лини[яию]\s*(\d+)', q_low)
+        if _lm:
+            line_filter = _lm.group(1)
+        elif "первая линия" in q_low:
             line_filter = "1"
-        elif "линия 2" in q_low or "вторая линия" in q_low or "ленинск" in q_low:
+        elif "вторая линия" in q_low:
             line_filter = "2"
+        elif "третья линия" in q_low:
+            line_filter = "3"
+        elif "четвёртая линия" in q_low or "четвертая линия" in q_low:
+            line_filter = "4"
+        elif "пятая линия" in q_low:
+            line_filter = "5"
+        elif "шестая линия" in q_low:
+            line_filter = "6"
 
         # COUNT → METRO_INFO (покажем общее кол-во в info-карточке)
         # FILTER / TOP_N / «станции» / «список» / линейный фильтр → METRO_STATIONS
@@ -161,7 +173,7 @@ def make_plan(query: str, topic: str | None) -> Plan:
             topic="metro",
             district=district,
             street=None,
-            limit=13,
+            limit=100,
             year=None,
             min_value=None,
             extra_filters={"line": line_filter or ""},

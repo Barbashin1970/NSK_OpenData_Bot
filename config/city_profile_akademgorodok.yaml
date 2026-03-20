@@ -83,30 +83,14 @@ features:
   power_outages_base: ""
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
+# Open-Meteo grid ~11 км — все 4 зоны Академгородка (~2 км) попадают в одну
+# ячейку и возвращают идентичные данные. Одна станция = честные данные.
 ecology_stations:
-  - station_id: "academ_upper"
-    district: "Верхняя зона"
-    address: "пр. Лаврентьева (Институтская зона)"
-    lat: 54.8530
-    lon: 83.0970
-
-  - station_id: "academ_mkr_sh"
-    district: "Микрорайон Щ"
-    address: "ул. Жемчужная (мкр. Щ)"
-    lat: 54.8420
-    lon: 83.1130
-
-  - station_id: "academ_eltsovka"
-    district: "Нижняя Ельцовка"
-    address: "Нижняя Ельцовка"
-    lat: 54.8350
-    lon: 83.1200
-
-  - station_id: "academ_nsu"
-    district: "Университетский"
-    address: "ул. Пирогова (НГУ)"
-    lat: 54.8470
-    lon: 83.0890
+  - station_id: "academ_sovetsky"
+    district: "Советский район"
+    address: "Академгородок, Советский район"
+    lat: 54.8478
+    lon: 83.1044
 
 # ── Открытые данные ──────────────────────────────────────────────────────────
 opendata_base_url: ""
