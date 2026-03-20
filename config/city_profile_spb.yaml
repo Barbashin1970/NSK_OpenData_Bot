@@ -107,8 +107,8 @@ features:
     - "led"
     - "аэровокзал"
 
-  power_outages_url: ""
-  power_outages_base: ""
+  power_outages_url: "https://rosseti-lenenergo.ru/planned_work/"
+  power_outages_base: "https://rosseti-lenenergo.ru"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:
