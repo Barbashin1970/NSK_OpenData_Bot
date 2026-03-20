@@ -1369,9 +1369,39 @@ function renderHeatSources(data) {
     </div>`
   ).join('');
 
+  // Eco-comparison table (if present, e.g. Akademgorodok)
+  const ecoComp = meta.eco_comparison || null;
+  let ecoCompHtml = '';
+  if (ecoComp) {
+    const ecoEntries = Object.entries(ecoComp);
+    const ecoLabels = {population:'Население', fuel:'Топливо', thermal_gcal_h:'Гкал/ч', I_stationary:'I_statio.', I_mobile:'I_mobile', I_total:'I_total'};
+    const ecoFields = ['population','fuel','thermal_gcal_h','I_stationary','I_mobile','I_total'];
+    const hdr = ecoEntries.map(([k]) => `<th class="px-2 py-1.5 text-xs font-semibold text-slate-600 border-b border-slate-200">${esc(k)}</th>`).join('');
+    const bodyRows = ecoFields.map(f => {
+      const cells = ecoEntries.map(([, v]) => {
+        const val = v[f];
+        const isIdx = f.startsWith('I_');
+        const color = isIdx ? (val >= 80 ? 'text-green-600 font-bold' : val >= 60 ? 'text-amber-600 font-semibold' : 'text-red-600 font-bold') : 'text-slate-700';
+        const fmt = typeof val === 'number' && !isIdx ? Number(val).toLocaleString('ru-RU') : String(val ?? '—');
+        return `<td class="px-2 py-1 text-xs ${color} border-b border-slate-50">${esc(fmt)}</td>`;
+      }).join('');
+      return `<tr><td class="px-2 py-1 text-xs font-medium text-slate-500 border-b border-slate-50 whitespace-nowrap">${esc(ecoLabels[f] || f)}</td>${cells}</tr>`;
+    }).join('');
+    ecoCompHtml = `
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wider text-emerald-600 mb-2">Сравнение экоиндекса</div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead><tr><th class="px-2 py-1.5 text-xs text-slate-400 border-b border-slate-200"></th>${hdr}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
   // Insights panel (collapsible)
   let insightsHtml = '';
-  if (insights.length > 0 || rowNotes) {
+  if (insights.length > 0 || rowNotes || ecoCompHtml) {
     const insightItems = insights.map(t =>
       `<li class="text-sm text-slate-600 leading-relaxed">${esc(t)}</li>`
     ).join('');
@@ -1396,6 +1426,7 @@ function renderHeatSources(data) {
             <div class="text-xs font-semibold uppercase tracking-wider text-blue-600 mb-2">По каждому объекту</div>
             <div class="bg-slate-50 rounded-lg px-3 py-2">${rowNotes}</div>
           </div>` : ''}
+        ${ecoCompHtml}
       </div>
     </div>`;
   }

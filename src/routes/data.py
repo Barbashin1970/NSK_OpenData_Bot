@@ -719,6 +719,7 @@ def get_ask(
             "_heatMeta": {
                 "note": heat_meta.get("note", ""),
                 "insights": heat_meta.get("insights", []),
+                "eco_comparison": heat_meta.get("eco_comparison", None),
             },
         }
 
