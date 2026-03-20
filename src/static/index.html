@@ -3266,7 +3266,9 @@ function renderTopics(topics) {
   // ── [/PUZZLE GAME] ─────────────────────────────────────────────────────────
 
   // ── Карточка Метро (если has_metro + metro dataset) ──────────────────────────
-  const _metroLines = _cityCfg?.metro_lines || _cityCfg?.static_datasets?.metro?.lines_count || 0;
+  const _metroName   = _cityCfg?.metro_name   || 'Метро';
+  const _metroQ      = _cityCfg?.metro_name   ? `метро ${_cityCfg.metro_name}` : 'метро';
+  const _metroLines  = _cityCfg?.metro_lines || _cityCfg?.static_datasets?.metro?.lines_count || 0;
   const _metroStations = _cityCfg?.metro_stations || _cityCfg?.static_datasets?.metro?.stations_count || 0;
   const metroCard = (_cityCfg?.has_metro && _dsAvail('metro')) ? `
     <div class="topic-card bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 cursor-pointer hover:border-blue-400 hover:shadow-md"
@@ -3281,7 +3283,9 @@ function renderTopics(topics) {
   ` : '';
 
   // ── Карточка Аэропорт (если has_airport + airport dataset) ─────────────────
-  const _airIata = _cityCfg?.airport_iata || '';
+  const _airportName = _cityCfg?.airport_name || 'Аэропорт';
+  const _airportQ    = _cityCfg?.airport_name ? `аэропорт ${_cityCfg.airport_name}` : 'аэропорт';
+  const _airIata     = _cityCfg?.airport_iata || '';
   const airportCard = (_cityCfg?.has_airport && _dsAvail('airport')) ? `
     <div class="topic-card bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-200 rounded-2xl p-4 cursor-pointer hover:border-sky-400 hover:shadow-md"
          onclick="setQuery('${esc(_airportQ)}')">

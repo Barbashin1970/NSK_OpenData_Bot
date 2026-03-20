@@ -1,0 +1,280 @@
+{
+  "type": "FeatureCollection",
+  "name": "ekb_heat_sources_v1",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "date": "2026-03-20",
+    "project": "NSK OpenData Bot — тепловые источники Екатеринбурга",
+    "operators": [
+      "ПАО «Т Плюс»",
+      "ЭЛ5-Энерго",
+      "Екбэнерго",
+      "ОАО «Уралхиммаш»",
+      "УТЗ"
+    ],
+    "total_objects": 11,
+    "coordinate_system": "WGS84",
+    "note": "11 крупнейших системообразующих объектов. Всего в городе 162 источника (8 475 Гкал/ч). Всё топливо — природный газ (мазут — аварийный резерв). Оператор 90%+ — ПАО «Т Плюс»."
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.6050, 56.8900]},
+      "properties": {
+        "id": "ekb_sverdl_chp",
+        "name": "Свердловская ТЭЦ",
+        "short_name": "Свердловская ТЭЦ",
+        "operator": "ПАО «Т Плюс»",
+        "operator_inn": "6315376946",
+        "operator_group": "Т Плюс",
+        "type": "ТЭЦ",
+        "fuel": "Газ, мазут",
+        "address": "ул. Победы, 10",
+        "district": "Орджоникидзевский",
+        "thermal_gcal_h": 1336,
+        "electric_mw": 24,
+        "year_built": 1932,
+        "network_zone": "Уралмаш",
+        "contacts": {"web": "tplusgroup.ru"},
+        "digitalization_status": "нет",
+        "note": "Лидер по установленной тепловой мощности (1 336 Гкал/ч). Район Уралмаш."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.4870, 56.9540]},
+      "properties": {
+        "id": "ekb_sredneuralsk_gres",
+        "name": "Среднеуральская ГРЭС",
+        "short_name": "Среднеуральская ГРЭС",
+        "operator": "ЭЛ5-Энерго",
+        "operator_inn": "6163089069",
+        "operator_group": "ЭЛ5-Энерго",
+        "type": "ГРЭС",
+        "fuel": "Газ, мазут",
+        "address": "г. Среднеуральск, ул. Энергетиков, 1",
+        "district": "г. Среднеуральск (16 км)",
+        "thermal_gcal_h": 1327,
+        "electric_mw": 1578.5,
+        "year_built": 1936,
+        "network_zone": "Среднеуральск — Екатеринбург",
+        "contacts": {"web": "el5-energo.ru"},
+        "digitalization_status": "нет",
+        "note": "Крупнейшая по подключённой нагрузке (1 130,7 Гкал/ч к горсети). 1 578,5 МВт эл. мощности."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.6750, 56.8150]},
+      "properties": {
+        "id": "ekb_novo_sverdl_chp",
+        "name": "Ново-Свердловская ТЭЦ",
+        "short_name": "Ново-Свердловская ТЭЦ",
+        "operator": "ПАО «Т Плюс»",
+        "operator_inn": "6315376946",
+        "operator_group": "Т Плюс",
+        "type": "ТЭЦ",
+        "fuel": "Газ, мазут",
+        "address": "тер. НС ТЭЦ, 1Е",
+        "district": "Чкаловский",
+        "thermal_gcal_h": 857,
+        "electric_mw": 557,
+        "year_built": 1982,
+        "network_zone": "Чкаловский (восток)",
+        "contacts": {"web": "tplusgroup.ru"},
+        "digitalization_status": "нет",
+        "note": "Третья по мощности ТЭЦ Екатеринбурга. Запланировано увеличение мощности до 2030 г."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.6130, 56.8780]},
+      "properties": {
+        "id": "ekb_ump_chp",
+        "name": "ТЭЦ УМП (Фронтовых бригад)",
+        "short_name": "ТЭЦ УМП",
+        "operator": "УТЗ / Екбэнерго",
+        "operator_inn": null,
+        "operator_group": "УТЗ",
+        "type": "ТЭЦ/промкотельная",
+        "fuel": "Газ",
+        "address": "ул. Фронтовых бригад, 18",
+        "district": "Орджоникидзевский",
+        "thermal_gcal_h": 420,
+        "electric_mw": 80,
+        "year_built": 1954,
+        "network_zone": "Эльмаш",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Промышленная ТЭЦ в районе Эльмаш."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.5700, 56.8050]},
+      "properties": {
+        "id": "ekb_gurzuf_boiler",
+        "name": "Гурзуфская котельная",
+        "short_name": "Гурзуфская котельная",
+        "operator": "ПАО «Т Плюс»",
+        "operator_inn": "6315376946",
+        "operator_group": "Т Плюс",
+        "type": "Котельная (пиковая)",
+        "fuel": "Газ",
+        "address": "ул. Гурзуфская, 19",
+        "district": "Кировский",
+        "thermal_gcal_h": 400,
+        "electric_mw": null,
+        "year_built": 1969,
+        "network_zone": "Кировский",
+        "contacts": {"web": "tplusgroup.ru"},
+        "digitalization_status": "нет",
+        "note": "Пиковая котельная для Кировского района."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.6520, 56.7650]},
+      "properties": {
+        "id": "ekb_akadem_chp",
+        "name": "Академическая ТЭЦ (ПГУ-230)",
+        "short_name": "Академическая ТЭЦ",
+        "operator": "ПАО «Т Плюс»",
+        "operator_inn": "6315376946",
+        "operator_group": "Т Плюс",
+        "type": "ТЭЦ (ПГУ)",
+        "fuel": "Газ",
+        "address": "ул. Академика Сахарова",
+        "district": "Чкаловский",
+        "thermal_gcal_h": 391,
+        "electric_mw": 228,
+        "year_built": 2016,
+        "network_zone": "мкр. Академический",
+        "contacts": {"web": "tplusgroup.ru"},
+        "digitalization_status": "пилот",
+        "note": "Самый новый и эффективный объект (2016). ПГУ-блок 228 МВт для мкр. Академический."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.5620, 56.8150]},
+      "properties": {
+        "id": "ekb_kirov_boiler",
+        "name": "Кировская котельная",
+        "short_name": "Кировская котельная",
+        "operator": "ПАО «Т Плюс»",
+        "operator_inn": "6315376946",
+        "operator_group": "Т Плюс",
+        "type": "Котельная (пиковая)",
+        "fuel": "Газ",
+        "address": "ул. Кировградская, 36",
+        "district": "Кировский",
+        "thermal_gcal_h": 340,
+        "electric_mw": null,
+        "year_built": 1972,
+        "network_zone": "Кировский",
+        "contacts": {"web": "tplusgroup.ru"},
+        "digitalization_status": "нет",
+        "note": "Пиковая котельная Кировского района."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.6450, 56.7950]},
+      "properties": {
+        "id": "ekb_uralhimmash_boiler",
+        "name": "Котельная Уралхиммаш",
+        "short_name": "Котельная Уралхиммаш",
+        "operator": "ОАО «Уралхиммаш»",
+        "operator_inn": "6664000895",
+        "operator_group": "Уралхиммаш",
+        "type": "Промкотельная",
+        "fuel": "Газ",
+        "address": "ул. Технологическая, 1",
+        "district": "Чкаловский",
+        "thermal_gcal_h": 250,
+        "electric_mw": null,
+        "year_built": 1961,
+        "network_zone": "Вторчермет",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Промышленная котельная завода Уралхиммаш, район Вторчермет."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.6350, 56.8250]},
+      "properties": {
+        "id": "ekb_akademenergo_boiler",
+        "name": "АкадемЭнерго (котельная УНЦ)",
+        "short_name": "АкадемЭнерго",
+        "operator": "ПАО «Т Плюс»",
+        "operator_inn": "6315376946",
+        "operator_group": "Т Плюс",
+        "type": "Газовая котельная",
+        "fuel": "Газ",
+        "address": "ул. Первомайская",
+        "district": "Октябрьский",
+        "thermal_gcal_h": 210,
+        "electric_mw": null,
+        "year_built": 1975,
+        "network_zone": "УНЦ / УрО РАН",
+        "contacts": {"web": "tplusgroup.ru"},
+        "digitalization_status": "нет",
+        "note": "Котельная Уральского научного центра (УрО РАН)."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.6300, 56.7850]},
+      "properties": {
+        "id": "ekb_yuzhnaya_boiler",
+        "name": "Котельная «Южная»",
+        "short_name": "Котельная «Южная»",
+        "operator": "Екбэнерго",
+        "operator_inn": null,
+        "operator_group": "Екбэнерго",
+        "type": "Газовая котельная",
+        "fuel": "Газ",
+        "address": "ул. Московская",
+        "district": "Чкаловский",
+        "thermal_gcal_h": 150,
+        "electric_mw": null,
+        "year_built": 1980,
+        "network_zone": "Чкаловский (юг)",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Газовая котельная южной части Чкаловского района."
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [60.8050, 56.7500]},
+      "properties": {
+        "id": "ekb_novokoltsovo_boiler",
+        "name": "Котельная «Новокольцовская»",
+        "short_name": "Котельная «Новокольцовская»",
+        "operator": "Екбэнерго",
+        "operator_inn": null,
+        "operator_group": "Екбэнерго",
+        "type": "Газовая котельная",
+        "fuel": "Газ",
+        "address": "р-н аэропорта Кольцово",
+        "district": "Чкаловский",
+        "thermal_gcal_h": 120,
+        "electric_mw": null,
+        "year_built": 1995,
+        "network_zone": "Кольцово",
+        "contacts": {},
+        "digitalization_status": "нет",
+        "note": "Котельная в районе аэропорта Кольцово."
+      }
+    }
+  ]
+}

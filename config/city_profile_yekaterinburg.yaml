@@ -141,9 +141,9 @@ static_datasets:
     note: "2-ТП Воздух 2024, Свердловская область, 74 МО"
 
   heat_sources:
-    enabled: false
-    file: ""
-    note: "Данные о тепловых источниках Екатеринбурга ещё не добавлены"
+    enabled: true
+    file: "data/cities/yekaterinburg/heat_sources.geojson"
+    note: "11 крупнейших ТЭЦ/ГРЭС/котельных. Все на газе. Суммарно 5 801 Гкал/ч, 2 467 МВт"
 
   metro:
     enabled: true
