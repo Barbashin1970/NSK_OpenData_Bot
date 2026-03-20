@@ -116,9 +116,9 @@ knowledge_base: ""
 static_datasets:
 
   emissions:
-    enabled: false
-    file: ""
-    note: "Скачать 2-ТП Воздух по Хабаровскому краю с rpn.gov.ru"
+    enabled: true
+    file: "data/cities/khabarovsk/emissions_2tp.json"
+    note: "2-ТП Воздух 2024, Хабаровский край, 20 МО"
 
   heat_sources:
     enabled: false
