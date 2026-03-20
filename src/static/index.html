@@ -1264,17 +1264,80 @@ function showError(html) {
   el.innerHTML = `<strong class="font-semibold">Ошибка:</strong> ${html}`;
 }
 
+// ─── Cross-city hint (Академгородок ↔ Новосибирск) ───────────────────────────
+function _crossCityHint(data, query) {
+  const cityId = _cityCfg?.city_id || '';
+  const q = (query || '').toLowerCase();
+
+  // Case 1: User is in Новосибирск, mentions Академгородок or views heat_sources
+  if (cityId === 'novosibirsk') {
+    const mentionsAcadem = /академгород|(?:^|\s)академ(?:\s|$)|в\s+академе|мкр\.?\s*щ|верхн.{1,3}\s*зон/i.test(q);
+    const isHeatSources = data.topic === 'heat_sources';
+    const subDist = data.sub_district || '';
+    const isAcademSubDist = /академгородок|шлюз|верхняя зона|мкр.*щ/i.test(subDist);
+
+    if (mentionsAcadem || isAcademSubDist) {
+      return `
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mt-3 flex items-start gap-3">
+          <span class="text-lg flex-shrink-0">🌿</span>
+          <div class="text-sm">
+            <span class="font-semibold text-emerald-800">Академгородок — автономная эко-зона</span>
+            <span class="text-emerald-700"> с газовым теплоснабжением (I<sub>total</sub> ~79 vs ~51 у Новосибирска).
+            Для детальной аналитики по тепловым источникам и экоиндексу доступен отдельный профиль.</span>
+            <button onclick="_setActiveCity('akademgorodok')" class="ml-2 inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-emerald-400 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition-colors font-medium">
+              🏙 Открыть Академгородок
+            </button>
+          </div>
+        </div>`;
+    }
+    if (isHeatSources) {
+      return `
+        <div class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 mt-3 text-xs text-slate-500 flex items-center gap-2">
+          <span>💡</span>
+          <span>Академгородок (Советский р-н) имеет автономное газовое теплоснабжение ФГУП «УЭВ» — доступен как
+          <button onclick="_setActiveCity('akademgorodok')" class="text-blue-600 hover:underline font-medium">отдельный эко-профиль</button>
+          с детальной аналитикой.</span>
+        </div>`;
+    }
+  }
+
+  // Case 2: User is in Академгородок, may want full Новосибирск data
+  if (cityId === 'akademgorodok') {
+    const wantsFullCity = /новосибирск|весь город|общегородск|все район|нск\b/i.test(q);
+    const noData = data.error || (data.operation === 'UNKNOWN');
+    const csvTopic = data.topic && !['heat_sources','emissions','ecology','power_outages','metro','airport','construction'].includes(data.topic);
+    if (wantsFullCity || noData || csvTopic) {
+      return `
+        <div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mt-3 flex items-start gap-3">
+          <span class="text-lg flex-shrink-0">🏙</span>
+          <div class="text-sm">
+            <span class="font-semibold text-blue-800">Нужны данные по всему Новосибирску?</span>
+            <span class="text-blue-700"> Академгородок — микрорайон с автономной инфраструктурой. Для полного набора данных (10 тем, отключения, строительство) переключитесь на городской профиль.</span>
+            <button onclick="_setActiveCity('novosibirsk')" class="ml-2 inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-blue-400 bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors font-medium">
+              🏙 Открыть Новосибирск
+            </button>
+          </div>
+        </div>`;
+    }
+  }
+
+  return '';
+}
+
 // ─── Render result ────────────────────────────────────────────────────────────
 function renderResult(data, query) {
   document.getElementById('loadingState').className = 'hidden';
   const el = document.getElementById('resultArea');
 
   if (data.error) {
-    el.className = 'fade-in bg-amber-50 border border-amber-200 rounded-2xl p-5';
+    el.className = 'fade-in space-y-4';
     el.innerHTML = `
-      <p class="text-amber-800 font-semibold mb-1.5">⚠ Не удалось найти ответ</p>
-      <p class="text-amber-700 text-sm">${esc(data.error)}</p>
-      ${data.available_topics ? `<p class="text-slate-500 text-xs mt-3">Попробуйте: ${data.available_topics.slice(0,5).join(', ')}</p>` : ''}
+      <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+        <p class="text-amber-800 font-semibold mb-1.5">⚠ Не удалось найти ответ</p>
+        <p class="text-amber-700 text-sm">${esc(data.error)}</p>
+        ${data.available_topics ? `<p class="text-slate-500 text-xs mt-3">Попробуйте: ${data.available_topics.slice(0,5).join(', ')}</p>` : ''}
+      </div>
+      ${_crossCityHint(data, query)}
     `;
     return;
   }
@@ -1302,6 +1365,9 @@ function renderResult(data, query) {
   else if (op && op.startsWith('METRO_'))      html += renderMetro(data);
   else if (op === 'AIRPORT_INFO')              html += renderAirport(data);
   else                                         html += renderTable(data);
+
+  // Cross-city hint: Академгородок ↔ Новосибирск
+  html += _crossCityHint(data, query);
 
   el.innerHTML = html;
 

@@ -711,6 +711,8 @@ def get_ask(
             "confidence": round(route_result.confidence, 3),
             "operation": "FILTER",
             "count": total,
+            "district": plan.district,
+            "sub_district": plan.sub_district,
             "rows": rows,
             "columns": TABLE_COLUMNS,
             "coords_enriched": True,
