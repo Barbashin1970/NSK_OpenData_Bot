@@ -286,7 +286,7 @@ const ECO_INDEX_CITIES = [
   { rank: 2,  city: 'Ханты-Мансийск',   index: 99.89,  total_kg: 18.0,  dust_kg: 1.3,   so2_kg: 0.4,   fuel: 'Газ',                     zone: 'green',  population: 110000,   area_km2: 337 },
   { rank: 3,  city: 'Санкт-Петербург',  index: 99.74,  total_kg: 11.9,  dust_kg: 0.6,   so2_kg: 0.3,   fuel: 'Газ',                     zone: 'green',  population: 5384000,  area_km2: 1439 },
   { rank: 4,  city: 'Горно-Алтайск',    index: 99.73,  total_kg: 11.9,  dust_kg: 2.0,   so2_kg: 0.6,   fuel: 'Уголь/Дрова (нет ТЭЦ)',   zone: 'green',  population: 65000,    area_km2: 95 },
-  { rank: 5,  city: 'Сбер-Сити',        index: 99.69,  total_kg: 15.0,  dust_kg: 1.1,   so2_kg: 0.4,   fuel: 'Газовые котельные',        zone: 'green',  population: 30000,    area_km2: 4.6 },
+  { rank: 5,  city: 'Сбер-Сити',        index: 99.69,  total_kg: 15.0,  dust_kg: 1.1,   so2_kg: 0.4,   fuel: 'Газовые котельные',        zone: 'green',  population: 30000,    area_km2: 95 },
   { rank: 6,  city: 'Академгородок',    index: 99.65,  total_kg: 16.2,  dust_kg: 0.9,   so2_kg: 0.3,   fuel: 'Газ 97% (автон. зона)',    zone: 'green',  population: 110000,   area_km2: 110 },
   { rank: 7,  city: 'Екатеринбург',     index: 99.37,  total_kg: 14.4,  dust_kg: 1.7,   so2_kg: 0.2,   fuel: 'Газ',                     zone: 'green',  population: 1544000,  area_km2: 468 },
   { rank: 8,  city: 'Тюмень',           index: 98.85,  total_kg: 25.6,  dust_kg: 1.3,   so2_kg: 0.8,   fuel: 'Газ',                     zone: 'green',  population: 850000,   area_km2: 698 },
@@ -1178,7 +1178,7 @@ async function _showRisksView() {
               <span class="text-xs font-semibold text-slate-800 w-24 text-right">${fmt(val)} т</span>
             </div>
           </td>
-          <td class="py-2 px-3 text-xs text-slate-500 hidden sm:table-cell">SO₂ ${fmt(row.so2_t)} / NOx ${fmt(row.nox_t)}</td>
+          <td class="py-2 px-3 text-xs text-slate-500 whitespace-nowrap">SO₂ ${fmt(row.so2_t)} / NOx ${fmt(row.nox_t)}</td>
         </tr>`;
     }).join('');
 
@@ -1200,12 +1200,12 @@ async function _showRisksView() {
           ✓ — официальный отчёт &nbsp;·&nbsp; ~ — оценка (требует верификации по данным rpn.gov.ru)
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full">
+          <table class="min-w-full">
             <thead>
               <tr class="bg-slate-50 border-b border-slate-200">
-                <th class="py-2 px-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Муниципальное образование</th>
-                <th class="py-2 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Всего, т/год</th>
-                <th class="py-2 px-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden sm:table-cell">SO₂ / NOx</th>
+                <th class="py-2 px-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Муниципальное образование</th>
+                <th class="py-2 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Всего, т/год</th>
+                <th class="py-2 px-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">SO₂ / NOx</th>
               </tr>
             </thead>
             <tbody>${tableRows}</tbody>
@@ -1555,9 +1555,9 @@ function renderEmissions(data) {
             <span class="text-sm font-bold text-slate-800 w-28 text-right tabular-nums">${fmt(val)} т</span>
           </div>
         </td>
-        <td class="py-2.5 px-4 text-xs text-slate-500 hidden md:table-cell tabular-nums">${fmt(row.so2_t)}</td>
-        <td class="py-2.5 px-4 text-xs text-slate-500 hidden md:table-cell tabular-nums">${fmt(row.nox_t)}</td>
-        <td class="py-2.5 px-4 text-xs text-slate-500 hidden md:table-cell tabular-nums">${fmt(row.co_t)}</td>
+        <td class="py-2.5 px-4 text-xs text-slate-500 tabular-nums whitespace-nowrap">${fmt(row.so2_t)}</td>
+        <td class="py-2.5 px-4 text-xs text-slate-500 tabular-nums whitespace-nowrap">${fmt(row.nox_t)}</td>
+        <td class="py-2.5 px-4 text-xs text-slate-500 tabular-nums whitespace-nowrap">${fmt(row.co_t)}</td>
       </tr>`;
   }).join('');
 
@@ -1578,14 +1578,14 @@ function renderEmissions(data) {
         ✓ — официальный отчёт &nbsp;·&nbsp; ~ — оценочные данные (требуют верификации по rpn.gov.ru)
       </div>
       <div class="overflow-x-auto">
-        <table class="w-full">
+        <table class="min-w-full">
           <thead>
             <tr class="bg-slate-50 border-b border-slate-200">
-              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">МО / Населённый пункт</th>
-              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Всего, т/год</th>
-              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">SO₂, т</th>
-              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">NOx, т</th>
-              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">CO, т</th>
+              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">МО / Населённый пункт</th>
+              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Всего, т/год</th>
+              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">SO₂, т</th>
+              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">NOx, т</th>
+              <th class="py-2.5 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">CO, т</th>
             </tr>
           </thead>
           <tbody>${tableRows}</tbody>

@@ -439,10 +439,12 @@ def _route_heat_sources(q: str) -> "RouteResult | None":
         score = 1.0
 
     confidence = min(1.0, max(score / 8, 0.6))
+    from .city_config import get_city_name
+    _city = get_city_name("genitive")  # "Новосибирска", "Кемерово", ...
     return RouteResult(
         topic="heat_sources",
         confidence=confidence,
-        name="Тепловые источники НСО",
+        name=f"Тепловые источники {_city}",
         matched_keywords=[kw for kw in _HEAT_SOURCES_KEYWORDS if _normalize(kw) in q],
     )
 
@@ -482,7 +484,8 @@ def _route_emissions(q: str) -> "RouteResult | None":
     # Динамическое имя из профиля города
     from .city_config import get_emissions_meta_from_profile
     _emeta = get_emissions_meta_from_profile()
-    _scope = _emeta.get("scope") or "НСО"
+    from .city_config import get_city_name as _gcn
+    _scope = _emeta.get("scope") or _gcn("genitive")
     _year = _emeta.get("year") or 2024
     return RouteResult(
         topic="emissions",
