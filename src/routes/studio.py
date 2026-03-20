@@ -129,8 +129,8 @@ def studio_set_active_city(body: dict):
     except Exception:
         pass
     try:
-        from ..airport_data import load_airport_data
-        load_airport_data.cache_clear()
+        from ..airport_data import _load as _load_airport
+        _load_airport.cache_clear()
     except Exception:
         pass
 
