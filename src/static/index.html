@@ -280,29 +280,32 @@ let _cityCfg = null;
 // ─── Сводный экологический рейтинг городов (2-ТП Воздух 2024) ────────────────
 // Эко-индекс: 0–100 (100 = самый чистый воздух от стационарных источников)
 // Данные: Росприроднадзор, расчёт удельной токсичной нагрузки на жителя
-// population — тыс. чел., area_km2 — площадь города (км²)
+// population — чел., area_km2 — площадь города (км²)
+// Транспортные данные: cars_per_1000 — авто на 1000 жителей (ГИБДД/Росстат),
+//   avg_jam — средний балл пробок 0-10 (Яндекс), has_metro/tram/trolleybus — электро-ОТ,
+//   avg_wind_ms — среднегодовая скорость ветра (м/с), is_basin — город в котловине
 const ECO_INDEX_CITIES = [
-  { rank: 1,  city: 'Нефтеюганск',     index: 100.00, total_kg: 6.7,   dust_kg: 0.5,   so2_kg: 0.5,   fuel: 'Газ',                     zone: 'green',  population: 130000,   area_km2: 30 },
-  { rank: 2,  city: 'Ханты-Мансийск',   index: 99.89,  total_kg: 18.0,  dust_kg: 1.3,   so2_kg: 0.4,   fuel: 'Газ',                     zone: 'green',  population: 110000,   area_km2: 337 },
-  { rank: 3,  city: 'Санкт-Петербург',  index: 99.74,  total_kg: 11.9,  dust_kg: 0.6,   so2_kg: 0.3,   fuel: 'Газ',                     zone: 'green',  population: 5384000,  area_km2: 1439 },
-  { rank: 4,  city: 'Горно-Алтайск',    index: 99.73,  total_kg: 11.9,  dust_kg: 2.0,   so2_kg: 0.6,   fuel: 'Уголь/Дрова (нет ТЭЦ)',   zone: 'green',  population: 65000,    area_km2: 95 },
-  { rank: 5,  city: 'Сбер-Сити',        index: 99.69,  total_kg: 15.0,  dust_kg: 1.1,   so2_kg: 0.4,   fuel: 'Газовые котельные',        zone: 'green',  population: 30000,    area_km2: 95 },
-  { rank: 6,  city: 'Академгородок',    index: 99.65,  total_kg: 16.2,  dust_kg: 0.9,   so2_kg: 0.3,   fuel: 'Газ 97% (автон. зона)',    zone: 'green',  population: 110000,   area_km2: 110 },
-  { rank: 7,  city: 'Екатеринбург',     index: 99.37,  total_kg: 14.4,  dust_kg: 1.7,   so2_kg: 0.2,   fuel: 'Газ',                     zone: 'green',  population: 1544000,  area_km2: 468 },
-  { rank: 8,  city: 'Тюмень',           index: 98.85,  total_kg: 25.6,  dust_kg: 1.3,   so2_kg: 0.8,   fuel: 'Газ',                     zone: 'green',  population: 850000,   area_km2: 698 },
-  { rank: 9,  city: 'Владивосток',      index: 98.75,  total_kg: 32.7,  dust_kg: 1.9,   so2_kg: 3.2,   fuel: 'Смешанный (Уголь/Газ)',    zone: 'yellow', population: 600000,   area_km2: 331 },
-  { rank: 10, city: 'Томск',            index: 97.15,  total_kg: 41.7,  dust_kg: 3.7,   so2_kg: 2.4,   fuel: 'Смешанный',               zone: 'yellow', population: 573000,   area_km2: 294 },
-  { rank: 11, city: 'Новосибирск',      index: 94.95,  total_kg: 45.5,  dust_kg: 5.3,   so2_kg: 14.6,  fuel: 'Смешанный',               zone: 'orange', population: 1620000,  area_km2: 505 },
-  { rank: 12, city: 'Красноярск',       index: 92.78,  total_kg: 85.7,  dust_kg: 9.5,   so2_kg: 16.8,  fuel: 'Уголь + Металлургия',      zone: 'orange', population: 1093000,  area_km2: 348 },
-  { rank: 13, city: 'Барнаул',          index: 91.77,  total_kg: 69.7,  dust_kg: 16.5,  so2_kg: 18.3,  fuel: 'Уголь',                   zone: 'orange', population: 632000,   area_km2: 322 },
-  { rank: 14, city: 'Хабаровск',        index: 91.28,  total_kg: 70.8,  dust_kg: 16.2,  so2_kg: 20.9,  fuel: 'Уголь / Мазут',            zone: 'orange', population: 617000,   area_km2: 383 },
-  { rank: 15, city: 'Бийск',            index: 88.89,  total_kg: 95.8,  dust_kg: 26.6,  so2_kg: 23.9,  fuel: 'Уголь',                   zone: 'red',    population: 200000,   area_km2: 291 },
-  { rank: 16, city: 'Чита',             index: 88.87,  total_kg: 93.3,  dust_kg: 30.9,  so2_kg: 25.0,  fuel: 'Уголь + Котловина',        zone: 'red',    population: 350000,   area_km2: 534 },
-  { rank: 17, city: 'Кемерово',         index: 88.25,  total_kg: 107.4, dust_kg: 25.2,  so2_kg: 25.4,  fuel: 'Уголь + Химия',            zone: 'red',    population: 556000,   area_km2: 295 },
-  { rank: 18, city: 'Сургут',           index: 87.74,  total_kg: 164.8, dust_kg: 1.1,   so2_kg: 0.3,   fuel: 'Попутный газ (NOx)',        zone: 'red',    population: 400000,   area_km2: 353 },
-  { rank: 19, city: 'Омск',             index: 87.15,  total_kg: 104.4, dust_kg: 19.4,  so2_kg: 35.7,  fuel: 'Уголь + Нефтехимия',       zone: 'red',    population: 1140000,  area_km2: 572 },
-  { rank: 20, city: 'Иркутск',          index: 79.26,  total_kg: 131.8, dust_kg: 19.1,  so2_kg: 87.0,  fuel: 'Уголь',                   zone: 'red',    population: 623000,   area_km2: 277 },
-  { rank: 21, city: 'Нерюнгри',         index: 0.00,   total_kg: 924.6, dust_kg: 280.5, so2_kg: 123.2, fuel: 'Уголь (ТЭЦ + Разрезы)',   zone: 'red',    population: 57000,    area_km2: 98 },
+  { rank: 1,  city: 'Нефтеюганск',     index: 100.00, total_kg: 6.7,   dust_kg: 0.5,   so2_kg: 0.5,   fuel: 'Газ',                     zone: 'green',  population: 130000,   area_km2: 30,   cars_per_1000: 380, avg_jam: 2.5, has_metro: false, has_tram: false, has_trolleybus: false, avg_wind_ms: 3.8, is_basin: false },
+  { rank: 2,  city: 'Ханты-Мансийск',   index: 99.89,  total_kg: 18.0,  dust_kg: 1.3,   so2_kg: 0.4,   fuel: 'Газ',                     zone: 'green',  population: 110000,   area_km2: 337,  cars_per_1000: 400, avg_jam: 2.0, has_metro: false, has_tram: false, has_trolleybus: false, avg_wind_ms: 3.5, is_basin: false },
+  { rank: 3,  city: 'Санкт-Петербург',  index: 99.74,  total_kg: 11.9,  dust_kg: 0.6,   so2_kg: 0.3,   fuel: 'Газ',                     zone: 'green',  population: 5384000,  area_km2: 1439, cars_per_1000: 310, avg_jam: 5.8, has_metro: true,  has_tram: true,  has_trolleybus: true,  avg_wind_ms: 3.3, is_basin: false },
+  { rank: 4,  city: 'Горно-Алтайск',    index: 99.73,  total_kg: 11.9,  dust_kg: 2.0,   so2_kg: 0.6,   fuel: 'Уголь/Дрова (нет ТЭЦ)',   zone: 'green',  population: 65000,    area_km2: 95,   cars_per_1000: 350, avg_jam: 2.0, has_metro: false, has_tram: false, has_trolleybus: false, avg_wind_ms: 2.2, is_basin: true  },
+  { rank: 5,  city: 'Сбер-Сити',        index: 99.69,  total_kg: 15.0,  dust_kg: 1.1,   so2_kg: 0.4,   fuel: 'Газовые котельные',        zone: 'green',  population: 30000,    area_km2: 95,   cars_per_1000: 200, avg_jam: 1.5, has_metro: false, has_tram: false, has_trolleybus: false, avg_wind_ms: 3.2, is_basin: false },
+  { rank: 6,  city: 'Академгородок',    index: 99.65,  total_kg: 16.2,  dust_kg: 0.9,   so2_kg: 0.3,   fuel: 'Газ 97% (автон. зона)',    zone: 'green',  population: 110000,   area_km2: 110,  cars_per_1000: 320, avg_jam: 3.0, has_metro: false, has_tram: false, has_trolleybus: false, avg_wind_ms: 3.0, is_basin: false },
+  { rank: 7,  city: 'Екатеринбург',     index: 99.37,  total_kg: 14.4,  dust_kg: 1.7,   so2_kg: 0.2,   fuel: 'Газ',                     zone: 'green',  population: 1544000,  area_km2: 468,  cars_per_1000: 340, avg_jam: 5.5, has_metro: true,  has_tram: true,  has_trolleybus: true,  avg_wind_ms: 3.1, is_basin: false },
+  { rank: 8,  city: 'Тюмень',           index: 98.85,  total_kg: 25.6,  dust_kg: 1.3,   so2_kg: 0.8,   fuel: 'Газ',                     zone: 'green',  population: 850000,   area_km2: 698,  cars_per_1000: 370, avg_jam: 4.5, has_metro: false, has_tram: true,  has_trolleybus: false, avg_wind_ms: 3.6, is_basin: false },
+  { rank: 9,  city: 'Владивосток',      index: 98.75,  total_kg: 32.7,  dust_kg: 1.9,   so2_kg: 3.2,   fuel: 'Смешанный (Уголь/Газ)',    zone: 'yellow', population: 600000,   area_km2: 331,  cars_per_1000: 420, avg_jam: 5.0, has_metro: false, has_tram: true,  has_trolleybus: false, avg_wind_ms: 5.8, is_basin: false },
+  { rank: 10, city: 'Томск',            index: 97.15,  total_kg: 41.7,  dust_kg: 3.7,   so2_kg: 2.4,   fuel: 'Смешанный',               zone: 'yellow', population: 573000,   area_km2: 294,  cars_per_1000: 310, avg_jam: 4.0, has_metro: false, has_tram: true,  has_trolleybus: true,  avg_wind_ms: 3.0, is_basin: false },
+  { rank: 11, city: 'Новосибирск',      index: 94.95,  total_kg: 45.5,  dust_kg: 5.3,   so2_kg: 14.6,  fuel: 'Смешанный',               zone: 'orange', population: 1620000,  area_km2: 505,  cars_per_1000: 340, avg_jam: 5.2, has_metro: true,  has_tram: true,  has_trolleybus: true,  avg_wind_ms: 3.2, is_basin: false },
+  { rank: 12, city: 'Красноярск',       index: 92.78,  total_kg: 85.7,  dust_kg: 9.5,   so2_kg: 16.8,  fuel: 'Уголь + Металлургия',      zone: 'orange', population: 1093000,  area_km2: 348,  cars_per_1000: 350, avg_jam: 6.0, has_metro: false, has_tram: false, has_trolleybus: false, avg_wind_ms: 2.4, is_basin: true  },
+  { rank: 13, city: 'Барнаул',          index: 91.77,  total_kg: 69.7,  dust_kg: 16.5,  so2_kg: 18.3,  fuel: 'Уголь',                   zone: 'orange', population: 632000,   area_km2: 322,  cars_per_1000: 330, avg_jam: 4.2, has_metro: false, has_tram: true,  has_trolleybus: true,  avg_wind_ms: 3.5, is_basin: false },
+  { rank: 14, city: 'Хабаровск',        index: 91.28,  total_kg: 70.8,  dust_kg: 16.2,  so2_kg: 20.9,  fuel: 'Уголь / Мазут',            zone: 'orange', population: 617000,   area_km2: 383,  cars_per_1000: 360, avg_jam: 4.8, has_metro: false, has_tram: true,  has_trolleybus: true,  avg_wind_ms: 3.8, is_basin: false },
+  { rank: 15, city: 'Бийск',            index: 88.89,  total_kg: 95.8,  dust_kg: 26.6,  so2_kg: 23.9,  fuel: 'Уголь',                   zone: 'red',    population: 200000,   area_km2: 291,  cars_per_1000: 310, avg_jam: 2.5, has_metro: false, has_tram: false, has_trolleybus: false, avg_wind_ms: 3.0, is_basin: false },
+  { rank: 16, city: 'Чита',             index: 88.87,  total_kg: 93.3,  dust_kg: 30.9,  so2_kg: 25.0,  fuel: 'Уголь + Котловина',        zone: 'red',    population: 350000,   area_km2: 534,  cars_per_1000: 380, avg_jam: 3.5, has_metro: false, has_tram: false, has_trolleybus: true,  avg_wind_ms: 1.8, is_basin: true  },
+  { rank: 17, city: 'Кемерово',         index: 88.25,  total_kg: 107.4, dust_kg: 25.2,  so2_kg: 25.4,  fuel: 'Уголь + Химия',            zone: 'red',    population: 556000,   area_km2: 295,  cars_per_1000: 340, avg_jam: 3.8, has_metro: false, has_tram: true,  has_trolleybus: false, avg_wind_ms: 3.2, is_basin: false },
+  { rank: 18, city: 'Сургут',           index: 87.74,  total_kg: 164.8, dust_kg: 1.1,   so2_kg: 0.3,   fuel: 'Попутный газ (NOx)',        zone: 'red',    population: 400000,   area_km2: 353,  cars_per_1000: 410, avg_jam: 3.0, has_metro: false, has_tram: false, has_trolleybus: false, avg_wind_ms: 3.5, is_basin: false },
+  { rank: 19, city: 'Омск',             index: 87.15,  total_kg: 104.4, dust_kg: 19.4,  so2_kg: 35.7,  fuel: 'Уголь + Нефтехимия',       zone: 'red',    population: 1140000,  area_km2: 572,  cars_per_1000: 350, avg_jam: 4.5, has_metro: false, has_tram: true,  has_trolleybus: true,  avg_wind_ms: 3.4, is_basin: false },
+  { rank: 20, city: 'Иркутск',          index: 79.26,  total_kg: 131.8, dust_kg: 19.1,  so2_kg: 87.0,  fuel: 'Уголь',                   zone: 'red',    population: 623000,   area_km2: 277,  cars_per_1000: 350, avg_jam: 5.5, has_metro: false, has_tram: true,  has_trolleybus: true,  avg_wind_ms: 2.0, is_basin: true  },
+  { rank: 21, city: 'Нерюнгри',         index: 0.00,   total_kg: 924.6, dust_kg: 280.5, so2_kg: 123.2, fuel: 'Уголь (ТЭЦ + Разрезы)',   zone: 'red',    population: 57000,    area_km2: 98,   cars_per_1000: 290, avg_jam: 1.5, has_metro: false, has_tram: false, has_trolleybus: false, avg_wind_ms: 2.8, is_basin: false },
 ];
 
 // ─── Role-specific chips ───────────────────────────────────────────────────────
@@ -603,19 +606,19 @@ async function _loadRoleDashboardImpl(isRetry) {
       fetch('/ask?q=' + encodeURIComponent('отключения ЖКХ сейчас')),
       fetch('/ecology/status'),
       fetch('/ecology/risks'),
+      fetch('/traffic-index'),
     ];
     if (currentRole === 'official') {
       fetches.push(fetch('/transit/districts'));
-      fetches.push(fetch('/traffic-index'));
     }
     const results = await Promise.all(fetches);
     const power       = results[0].ok ? await results[0].json() : null;
     const eco         = results[1].ok ? await results[1].json() : null;
     const risks       = results[2].ok ? await results[2].json() : null;
-    const transit     = (currentRole === 'official' && results[3]?.ok) ? await results[3].json() : null;
-    const trafficData = (currentRole === 'official' && results[4]?.ok) ? await results[4].json() : null;
+    const trafficData = results[3]?.ok ? await results[3].json() : null;
+    const transit     = (currentRole === 'official' && results[4]?.ok) ? await results[4].json() : null;
     dashEl.innerHTML = currentRole === 'mayor'
-      ? renderMayorDashboard(power, eco, risks)
+      ? renderMayorDashboard(power, eco, risks, trafficData)
       : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData);
     _restoreDashCollapse();
 
@@ -634,6 +637,53 @@ async function _loadRoleDashboardImpl(isRetry) {
   } catch(e) {
     dashEl.innerHTML = '<div class="text-red-400 text-sm text-center py-3">Ошибка загрузки данных панели</div>';
   }
+}
+
+function _getCityEcoRating() {
+  const name = (_cityCfg?.city_name || '').trim();
+  if (!name) return null;
+  return ECO_INDEX_CITIES.find(c => c.city === name) || null;
+}
+
+function _dashTrafficKpi(data) {
+  if (!data || data.error) return null;
+  const idx = data.index ?? null;
+  if (idx === null) return null;
+  const level = data.level || '';
+  const emoji = data.emoji || '🚗';
+  const numIdx = parseFloat(idx) || 0;
+  return {
+    icon: emoji, label: 'Дорожная нагрузка',
+    val: String(idx) + '/10',
+    color:  numIdx <= 3 ? 'text-emerald-700' : numIdx <= 6 ? 'text-amber-700' : 'text-red-700',
+    bg:     numIdx <= 3 ? 'bg-emerald-50'    : numIdx <= 6 ? 'bg-amber-50'    : 'bg-red-50',
+    border: numIdx <= 3 ? 'border-emerald-200': numIdx <= 6 ? 'border-amber-200': 'border-red-200',
+    sub: level + (data.next_peak ? ' · ' + data.next_peak : ''),
+    note: level,
+    link: "askNow('пробки сейчас')",
+    onclick: "askNow('пробки сейчас')",
+  };
+}
+
+function _dashEcoRatingKpi() {
+  const r = _getCityEcoRating();
+  if (!r) return null;
+  const zoneMap = {
+    green:  { bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-700' },
+    yellow: { bg:'bg-yellow-50',  border:'border-yellow-200',  text:'text-yellow-700' },
+    orange: { bg:'bg-orange-50',  border:'border-orange-200',  text:'text-orange-700' },
+    red:    { bg:'bg-red-50',     border:'border-red-200',     text:'text-red-700' },
+  };
+  const z = zoneMap[r.zone] || zoneMap.orange;
+  return {
+    icon: '🏆', label: 'Экорейтинг города',
+    val: '#' + r.rank,
+    color: z.text, bg: z.bg, border: z.border,
+    sub: r.index.toFixed(1) + '/100 · ' + r.total_kg + ' кг/чел · ' + r.fuel,
+    note: r.index.toFixed(1) + '/100 · ' + r.fuel,
+    link: "askNow('экорейтинг города')",
+    onclick: "askNow('экорейтинг города')",
+  };
 }
 
 function _dashAqiClass(aqi) {
@@ -807,6 +857,14 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
       onclick:`askNow('${qRisks}')` },
   ];
 
+  // Добавляем трафик (компактная KPI-карточка вместо отдельного виджета)
+  const tKpi = _dashTrafficKpi(trafficData);
+  if (tKpi) kpis.push(tKpi);
+
+  // Добавляем экорейтинг
+  const ecoR = _dashEcoRatingKpi();
+  if (ecoR) kpis.push(ecoR);
+
   const kpiHtml = kpis.map(k => `
     <div class="dash-kpi border rounded-2xl p-4 ${k.bg} ${k.border} cursor-pointer hover:shadow-md active:scale-95 transition-all"
          onclick="${k.onclick}" title="Нажмите для подробностей">
@@ -888,15 +946,26 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
         <button onclick="loadRoleDashboard()" class="text-xs text-blue-600 hover:underline">↻ Обновить</button>
       </div>
       ${distFilterBar}
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${kpiHtml}</div>
-      ${renderTrafficCompact(trafficData)}
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${kpiHtml}</div>
       ${pwrTable}
       ${ecoChips ? `<div class="flex flex-wrap gap-2 items-center">
         <span class="text-xs text-slate-400">AQI${d ? ` · ${dShort}` : ' по районам'}:</span>${ecoChips}</div>` : ''}
+      ${(() => {
+        const ix = computeLifeIndices(ecoRows);
+        if (!ix) return '';
+        return `<div class="flex flex-wrap gap-2 items-center">
+          <span class="text-xs text-slate-400 flex-shrink-0">Индексы:</span>
+          ${['driver','walk','utility'].map(key => {
+            const i = ix[key];
+            return '<span class="px-2.5 py-1 rounded-full text-xs font-medium border cursor-pointer hover:opacity-80 transition-opacity ' + i.bg + '"'
+              + ' onclick="askNow(\'качество воздуха в городе\')">' + i.icon + ' ' + i.name.replace('Индекс ','') + ': ' + i.score + '/10 · ' + i.label + '</span>';
+          }).join('')}
+        </div>`;
+      })()}
     </div>`;
 }
 
-function renderMayorDashboard(power, eco, risks) {
+function renderMayorDashboard(power, eco, risks, trafficData) {
   const pm = power?.power_meta || {};
   const activeH  = pm.active_houses  || 0;
   const plannedH = pm.planned_houses || 0;
@@ -939,6 +1008,14 @@ function renderMayorDashboard(power, eco, risks) {
       link:"askNow('риски для жизни в городе')" },
   ];
 
+  // Добавляем трафик (если данные есть)
+  const tKpi = _dashTrafficKpi(trafficData);
+  if (tKpi) bigStats.push(tKpi);
+
+  // Добавляем экорейтинг города (если город есть в базе)
+  const ecoR = _dashEcoRatingKpi();
+  if (ecoR) bigStats.push(ecoR);
+
   const statsHtml = bigStats.map(s => `
     <div class="dash-kpi ${s.bg} border ${s.border} rounded-2xl p-5 flex flex-col gap-2 shadow-sm cursor-pointer"
          onclick="${s.link}">
@@ -968,6 +1045,18 @@ function renderMayorDashboard(power, eco, risks) {
       }).join('')}
     </div>` : '';
 
+  // ─ Индексы жизни (из данных экологии) ────────────────────────────────────
+  const indices = computeLifeIndices(ecoRows);
+  const indicesHtml = indices ? `
+    <div class="flex flex-wrap gap-2 items-center">
+      <span class="text-xs text-slate-400 flex-shrink-0">Индексы:</span>
+      ${['driver','walk','utility'].map(key => {
+        const ix = indices[key];
+        return `<span class="px-2.5 py-1 rounded-full text-xs font-medium border cursor-pointer hover:opacity-80 transition-opacity ${ix.bg}"
+          onclick="askNow('качество воздуха в городе')">${ix.icon} ${ix.name.replace('Индекс ','')}: ${ix.score}/10 · ${ix.label}</span>`;
+      }).join('')}
+    </div>` : '';
+
   const ts = new Date().toLocaleString('ru-RU', {day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit'});
   return `
     <div class="space-y-4">
@@ -975,7 +1064,8 @@ function renderMayorDashboard(power, eco, risks) {
         <h3 class="text-sm font-bold text-slate-700">🏛️ Сводка по городу · ${ts}</h3>
         <button onclick="loadRoleDashboard()" class="text-xs text-blue-600 hover:underline">↻ Обновить</button>
       </div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">${statsHtml}</div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${statsHtml}</div>
+      ${indicesHtml}
       ${risksHtml}
     </div>`;
 }
@@ -1678,6 +1768,52 @@ function showEcoIndex() {
   el.innerHTML = renderEcoIndex();
 }
 
+// ─── Расчёт I_mobile (транспортный индекс загрязнения) ────────────────────────
+// Формула из PDF «Алгоритм индекса городского загрязнения с учётом транспорта»
+// Все веса дублируют config/rules/mobile_index_rules.yaml (Вариант 1 — демо)
+function _computeMobileIndex(cities) {
+  const W = { alpha_cars: 0.4, alpha_jam: 0.6, d_min: 150, d_max: 450,
+              beta_metro: 0.50, beta_tram: 0.30, beta_trolley: 0.20, k_PT: 0.40,
+              gamma_wind: 0.30, gamma_calm: 0.40, v_min: 1.5, v_max: 6.0,
+              calm_default: 0.15, delta_basin: 0.40, f_min: 0.5, f_max: 2.0 };
+
+  const raws = cities.map(c => {
+    const S_cars = Math.max(0, Math.min(1, (c.cars_per_1000 - W.d_min) / (W.d_max - W.d_min)));
+    const S_jam  = Math.max(0, Math.min(1, c.avg_jam / 10));
+    const S_auto = W.alpha_cars * S_cars + W.alpha_jam * S_jam;
+
+    const S_PT = W.beta_metro * (c.has_metro ? 1 : 0)
+               + W.beta_tram  * (c.has_tram ? 1 : 0)
+               + W.beta_trolley * (c.has_trolleybus ? 1 : 0);
+    const F_PT = 1 - W.k_PT * S_PT;
+
+    const S_wind = Math.max(0, Math.min(1, (c.avg_wind_ms - W.v_min) / (W.v_max - W.v_min)));
+    const S_calm = W.calm_default;
+    let F_vent = 1 - W.gamma_wind * S_wind + W.gamma_calm * S_calm;
+    const F_relief = 1 + W.delta_basin * (c.is_basin ? 1 : 0);
+    let F_meteo = Math.max(W.f_min, Math.min(W.f_max, F_vent * F_relief));
+
+    const P_raw = S_auto * F_PT * F_meteo;
+    return { city: c, P_raw, S_auto, S_PT, F_PT, F_meteo };
+  });
+
+  const P_min = Math.min(...raws.map(r => r.P_raw));
+  const P_max = Math.max(...raws.map(r => r.P_raw));
+  const range = P_max - P_min || 1;
+
+  return raws.map(r => {
+    const P_norm = (r.P_raw - P_min) / range;
+    const I_mobile = 100 * (1 - P_norm);
+    const I_stat = r.city.index;
+    const I_total = 0.6 * I_stat + 0.4 * I_mobile;
+    const mobileZone = I_mobile >= 80 ? 'green' : I_mobile >= 60 ? 'yellow' : I_mobile >= 40 ? 'orange' : 'red';
+    const totalZone  = I_total >= 80 ? 'green' : I_total >= 60 ? 'yellow' : I_total >= 40 ? 'orange' : 'red';
+    return { ...r.city, I_mobile: Math.round(I_mobile * 10) / 10, I_total: Math.round(I_total * 10) / 10,
+             mobileZone, totalZone, S_auto: r.S_auto, F_PT: r.F_PT, F_meteo: r.F_meteo };
+  }).sort((a, b) => b.I_total - a.I_total)
+    .map((d, i) => ({ ...d, rankTotal: i + 1 }));
+}
+
 function renderEcoIndex() {
   const currentCity = (_cityCfg && _cityCfg.city_name) ? _cityCfg.city_name : '';
 
@@ -1706,6 +1842,9 @@ function renderEcoIndex() {
   /* зоны для km2-индекса */
   const km2Zone = idx => idx >= 80 ? 'green' : idx >= 60 ? 'yellow' : idx >= 40 ? 'orange' : 'red';
 
+  /* ── Рейтинг 3: транспортный + сводный ─────────────────────────────────── */
+  const mobileData = _computeMobileIndex(ECO_INDEX_CITIES);
+
   /* ── Построитель строк таблицы ──────────────────────────────────────────── */
   function buildRows(list, mode) {
     return list.map(c => {
@@ -1722,6 +1861,53 @@ function renderEcoIndex() {
       const indexPct = Math.max(0, Math.min(100, Math.round(idx)));
       const barColor = zKey === 'green' ? 'bg-emerald-400' : zKey === 'yellow' ? 'bg-yellow-400' : zKey === 'orange' ? 'bg-orange-400' : 'bg-red-500';
 
+      if (mode === 'mobile') {
+        const rk   = c.rankTotal;
+        const idxM = c.I_mobile;
+        const idxT = c.I_total;
+        const zKeyM = c.totalZone;
+        const zm    = zoneCfg[zKeyM] || zoneCfg.orange;
+        const isCur = currentCity && c.city.toLowerCase() === currentCity.toLowerCase();
+        const hl    = isCur ? 'ring-2 ring-blue-400 bg-blue-50/60' : '';
+        const cl    = isCur
+          ? `<span class="font-bold text-blue-700">${esc(c.city)}</span> <span class="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full ml-1">ваш город</span>`
+          : `<span class="font-medium">${esc(c.city)}</span>`;
+        const pctT  = Math.max(0, Math.min(100, Math.round(idxT)));
+        const pctM  = Math.max(0, Math.min(100, Math.round(idxM)));
+        const bcT   = zKeyM === 'green' ? 'bg-emerald-400' : zKeyM === 'yellow' ? 'bg-yellow-400' : zKeyM === 'orange' ? 'bg-orange-400' : 'bg-red-500';
+        const bcM   = c.mobileZone === 'green' ? 'bg-emerald-400' : c.mobileZone === 'yellow' ? 'bg-yellow-400' : c.mobileZone === 'orange' ? 'bg-orange-400' : 'bg-red-500';
+        const otIcons = [c.has_metro ? '🚇' : '', c.has_tram ? '🚊' : '', c.has_trolleybus ? '🚎' : ''].filter(Boolean).join('') || '🚌';
+        return `
+          <tr class="border-b border-slate-100 hover:bg-slate-50/80 ${hl}">
+            <td class="py-2.5 px-4 text-sm text-slate-500 text-center font-bold tabular-nums">${rk}</td>
+            <td class="py-2.5 px-4 text-sm text-slate-700">
+              <div class="flex items-center gap-2">
+                <span class="inline-block w-2.5 h-2.5 rounded-full ${zm.dot} flex-shrink-0"></span>
+                ${cl}
+              </div>
+            </td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-2 min-w-[100px]">
+                <div class="flex-1 bg-slate-100 rounded-full h-2">
+                  <div class="${bcT} h-2 rounded-full" style="width:${pctT}%"></div>
+                </div>
+                <span class="text-xs font-bold text-slate-700 w-12 text-right tabular-nums">${fmt(idxT)}</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-xs text-slate-600 tabular-nums text-right">${fmt(c.index)}</td>
+            <td class="py-2.5 px-4">
+              <div class="flex items-center gap-2 min-w-[80px]">
+                <div class="flex-1 bg-slate-100 rounded-full h-2">
+                  <div class="${bcM} h-2 rounded-full" style="width:${pctM}%"></div>
+                </div>
+                <span class="text-xs font-bold text-slate-700 w-12 text-right tabular-nums">${fmt(idxM)}</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-xs text-slate-500 tabular-nums text-center">${c.cars_per_1000}</td>
+            <td class="py-2.5 px-4 text-xs text-slate-500 tabular-nums text-center">${fmt(c.avg_jam)}</td>
+            <td class="py-2.5 px-4 text-xs text-center" title="${[c.has_metro?'Метро':'',c.has_tram?'Трамвай':'',c.has_trolleybus?'Троллейбус':''].filter(Boolean).join(', ')||'Нет электро-ОТ'}">${otIcons}</td>
+          </tr>`;
+      }
       if (isKm2) {
         return `
           <tr class="border-b border-slate-100 hover:bg-slate-50/80 ${highlight}">
@@ -1773,6 +1959,7 @@ function renderEcoIndex() {
 
   const perCapitaRows = buildRows(ECO_INDEX_CITIES, 'capita');
   const perKm2Rows    = buildRows(km2Sorted, 'km2');
+  const mobileRows    = buildRows(mobileData, 'mobile');
 
   /* ── Заголовки колонок ──────────────────────────────────────────────────── */
   const thCapita = `
@@ -1796,9 +1983,22 @@ function renderEcoIndex() {
       <th class="py-2 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Топливо</th>
     </tr>`;
 
+  const thMobile = `
+    <tr class="bg-slate-50 border-b border-slate-200">
+      <th class="py-2 px-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide w-10">#</th>
+      <th class="py-2 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Город</th>
+      <th class="py-2 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide min-w-[120px]">Сводный</th>
+      <th class="py-2 px-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Стац.</th>
+      <th class="py-2 px-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide min-w-[100px]">Транспорт</th>
+      <th class="py-2 px-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Авто/1к</th>
+      <th class="py-2 px-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">Пробки</th>
+      <th class="py-2 px-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">ОТ</th>
+    </tr>`;
+
   /* ── Описание метода ────────────────────────────────────────────────────── */
   const descCapita = 'Индекс 0–100, где 100 = самый чистый воздух от промышленных и энергетических источников. Учитывается вес загрязнителей (SO₂ и сажа опаснее CO).';
   const descKm2    = 'Индекс 0–100 по концентрации выбросов на единицу площади города (кг/км²). Компактные города с высокой плотностью промышленности оказываются ниже, чем в рейтинге «на жителя».';
+  const descMobile = 'Сводный индекс = 60% стационарные (2-ТП) + 40% транспортные выбросы. Транспортный индекс учитывает: автопарк, пробки, наличие электро-ОТ (метро/трамвай/троллейбус), ветер и рельеф.';
 
   return `
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1806,7 +2006,7 @@ function renderEcoIndex() {
         <span class="text-2xl">🏙️</span>
         <div class="flex-1">
           <div class="font-semibold text-slate-800">Экологический рейтинг городов России</div>
-          <div class="text-xs text-slate-500">2-ТП Воздух 2024 · 21 локация · два метода оценки</div>
+          <div class="text-xs text-slate-500">2-ТП Воздух 2024 · 21 локация · три метода оценки</div>
         </div>
       </div>
 
@@ -1814,11 +2014,15 @@ function renderEcoIndex() {
       <div class="flex border-b border-slate-200" id="ecoTabs">
         <button onclick="_switchEcoTab('capita')" id="ecoTabCapita"
           class="flex-1 py-2.5 text-sm font-medium text-center border-b-2 border-blue-500 text-blue-700 bg-blue-50/40">
-          Рейтинг 1 · на жителя
+          На жителя
         </button>
         <button onclick="_switchEcoTab('km2')" id="ecoTabKm2"
           class="flex-1 py-2.5 text-sm font-medium text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50">
-          Рейтинг 2 · на км²
+          На км²
+        </button>
+        <button onclick="_switchEcoTab('mobile')" id="ecoTabMobile"
+          class="flex-1 py-2.5 text-sm font-medium text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50">
+          🚗 Транспорт
         </button>
       </div>
 
@@ -1838,6 +2042,21 @@ function renderEcoIndex() {
         </div>
       </div>
 
+      <!-- Mobile/Transport view (hidden by default) -->
+      <div id="ecoPanelMobile" style="display:none">
+        <div class="px-5 py-2 text-xs text-slate-500 bg-slate-50 border-b border-slate-100">${descMobile}</div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full"><thead>${thMobile}</thead><tbody>${mobileRows}</tbody></table>
+        </div>
+        <div class="px-5 py-2.5 border-t border-slate-100 text-xs text-slate-400 leading-relaxed">
+          Формула: I<sub>total</sub> = 0.6 × I<sub>стац</sub> + 0.4 × I<sub>транспорт</sub>.
+          I<sub>транспорт</sub> учитывает: плотность автопарка (авто/1000 жит.), средний балл пробок,
+          компенсацию электро-ОТ (🚇метро ×0.5, 🚊трамвай ×0.3, 🚎троллейбус ×0.2),
+          метео-вентиляцию (ветер) и рельеф (котловина).
+          Веса настраиваются в <code>config/rules/mobile_index_rules.yaml</code>.
+        </div>
+      </div>
+
       <div class="px-5 py-3 border-t border-slate-100 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-400">
         <span class="font-medium text-slate-600">Зоны:</span>
         <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400"></span>Чистый воздух</span>
@@ -1846,31 +2065,24 @@ function renderEcoIndex() {
         <span class="flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span>Эко-бедствие</span>
       </div>
       <div class="px-5 py-2.5 border-t border-slate-100 text-xs text-slate-400 leading-relaxed">
-        Источник: Росприроднадзор (форма 2-ТП «Воздух»). Учитываются только стационарные промышленные источники.
-        Автотранспорт, частный сектор и природные факторы не включены.
+        Источник: Росприроднадзор (2-ТП «Воздух»), ГИБДД/Росстат, Яндекс.Пробки.
+        Рейтинги 1–2: стационарные источники. Рейтинг 3: сводный (стационар + транспорт + метео).
       </div>
     </div>`;
 }
 
 function _switchEcoTab(mode) {
-  const capBtn = document.getElementById('ecoTabCapita');
-  const km2Btn = document.getElementById('ecoTabKm2');
-  const capPan = document.getElementById('ecoPanelCapita');
-  const km2Pan = document.getElementById('ecoPanelKm2');
-  if (!capBtn || !km2Btn) return;
+  const tabs = ['capita', 'km2', 'mobile'];
   const activeClass   = 'flex-1 py-2.5 text-sm font-medium text-center border-b-2 border-blue-500 text-blue-700 bg-blue-50/40';
   const inactiveClass = 'flex-1 py-2.5 text-sm font-medium text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50';
-  if (mode === 'km2') {
-    km2Btn.className = activeClass;
-    capBtn.className = inactiveClass;
-    km2Pan.style.display = '';
-    capPan.style.display = 'none';
-  } else {
-    capBtn.className = activeClass;
-    km2Btn.className = inactiveClass;
-    capPan.style.display = '';
-    km2Pan.style.display = 'none';
-  }
+  const idMap = { capita: 'Capita', km2: 'Km2', mobile: 'Mobile' };
+  tabs.forEach(t => {
+    const btn = document.getElementById('ecoTab' + idMap[t]);
+    const pan = document.getElementById('ecoPanel' + idMap[t]);
+    if (!btn || !pan) return;
+    btn.className = t === mode ? activeClass : inactiveClass;
+    pan.style.display = t === mode ? '' : 'none';
+  });
 }
 
 // ─── GROUP ────────────────────────────────────────────────────────────────────
