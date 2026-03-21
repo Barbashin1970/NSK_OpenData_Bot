@@ -757,12 +757,33 @@ async def studio_import(
             encoding="utf-8",
         )
 
+        rel_path = str(out_file.relative_to(Path(__file__).parent.parent.parent))
+        # Автоматически включаем датасет в профиле города
+        profile_enabled = False
+        yaml_path = _find_profile_path(city_id)
+        if yaml_path:
+            try:
+                content = yaml_path.read_text("utf-8")
+                pattern = rf'(  {_re.escape(dataset_type)}:\s*\n)((?:\s+\S.*\n)*)'
+                def _imp_replacer(m):
+                    block = m.group(2)
+                    block = _re.sub(r'(    enabled:\s*).*', r'\g<1>true', block)
+                    block = _re.sub(r'(    file:\s*).*', rf'\g<1>"{rel_path}"', block)
+                    return m.group(1) + block
+                new_content = _re.sub(pattern, _imp_replacer, content)
+                if new_content != content:
+                    yaml_path.write_text(new_content, encoding="utf-8")
+                    profile_enabled = True
+            except Exception:
+                pass
+
         return {
             "success": True,
             "city_id": city_id,
             "dataset_type": dataset_type,
             "rows_imported": len(mapped_rows),
-            "saved_to": str(out_file.relative_to(Path(__file__).parent.parent.parent)),
+            "saved_to": rel_path,
+            "profile_enabled": profile_enabled,
         }
     finally:
         _os.unlink(tmp_path)

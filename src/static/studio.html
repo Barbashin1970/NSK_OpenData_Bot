@@ -294,11 +294,8 @@
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-600 mb-1">Тип датасета</label>
-          <select id="sel-dataset" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-            <option value="emissions">emissions — выбросы (2-ТП Воздух)</option>
-            <option value="heat_sources">heat_sources — тепловые источники</option>
-            <option value="metro">metro — метро (станции)</option>
-            <option value="airport">airport — аэропорт</option>
+          <select id="sel-dataset" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  onchange="_onDatasetTypeChange()">
             <option value="schools">schools — школы (CSV)</option>
             <option value="kindergartens">kindergartens — детсады (CSV)</option>
             <option value="pharmacies">pharmacies — аптеки (CSV)</option>
@@ -306,12 +303,18 @@
             <option value="parking">parking — парковки (CSV)</option>
             <option value="custom">custom — произвольный датасет</option>
           </select>
+          <div id="ds-type-hint" class="mt-2 text-xs text-slate-400 hidden"></div>
         </div>
       </div>
       <button onclick="goToStep2()"
               class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2 rounded-lg">
         Далее →
       </button>
+      <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500">
+        <span class="font-medium text-slate-600">Статические датасеты</span> (метро, аэропорт, выбросы, теплоисточники) редактируются
+        на вкладке <a href="#" onclick="event.preventDefault();document.querySelector('[data-tab=\x22cities\x22]').click()" class="text-blue-600 hover:underline font-medium">Города</a>
+        → кнопка «Редактировать» в карточке датасета.
+      </div>
     </div>
 
     <!-- Шаг 2: Загрузка файла -->
@@ -326,30 +329,14 @@
 
       <!-- Подсказки форматов -->
       <div id="import-fmt-help" class="hidden mb-4 bg-slate-50 rounded-xl p-4 text-xs text-slate-700 space-y-3">
+        <div class="font-semibold text-slate-800 mb-2">Поддерживаемый формат: CSV</div>
         <div>
-          <span class="font-semibold text-slate-800">CSV</span>
-          <span class="ml-2 text-slate-500">— таблица с заголовками</span>
-          <div class="mt-1 font-mono bg-white border border-slate-200 rounded p-2 text-slate-600 overflow-x-auto whitespace-pre">название;широта;долгота;мощность_мвт
-ТЭЦ-4;54.9271;83.0684;480
-ТЭЦ-5;55.0213;82.9504;1200</div>
-          <div class="mt-1 text-slate-500">Кодировка: UTF-8 или Windows-1251 (авто-определение). Разделитель: <code class="bg-white px-1 rounded border border-slate-200">;</code> или <code class="bg-white px-1 rounded border border-slate-200">,</code>. Координаты: lat/lon, широта/долгота, latitude/longitude.</div>
+          <div class="mt-1 font-mono bg-white border border-slate-200 rounded p-2 text-slate-600 overflow-x-auto whitespace-pre" id="import-csv-example">название;широта;долгота;район
+Школа №1;54.9271;83.0684;Центральный
+Школа №12;55.0213;82.9504;Ленинский</div>
+          <div class="mt-1 text-slate-500">Кодировка: UTF-8 или Windows-1251 (авто). Разделитель: <code class="bg-white px-1 rounded border border-slate-200">;</code> или <code class="bg-white px-1 rounded border border-slate-200">,</code>. Координаты: lat/lon, широта/долгота, latitude/longitude.</div>
         </div>
-        <div>
-          <span class="font-semibold text-slate-800">JSON</span>
-          <span class="ml-2 text-slate-500">— массив объектов или обёртка</span>
-          <div class="mt-1 font-mono bg-white border border-slate-200 rounded p-2 text-slate-600 overflow-x-auto whitespace-pre">[{"name": "ТЭЦ-4", "lat": 54.9271, "lon": 83.0684, "power": 480}]
-// или: {"data": [...]} / {"rows": [...]} / {"features": [...]}</div>
-        </div>
-        <div>
-          <span class="font-semibold text-slate-800">GeoJSON</span>
-          <span class="ml-2 text-slate-500">— FeatureCollection (стандарт RFC 7946)</span>
-          <div class="mt-1 font-mono bg-white border border-slate-200 rounded p-2 text-slate-600 overflow-x-auto whitespace-pre">{"type":"FeatureCollection","features":[
-  {"type":"Feature",
-   "geometry":{"type":"Point","coordinates":[83.068,54.927]},
-   "properties":{"name":"ТЭЦ-4","power":480}}
-]}</div>
-          <div class="mt-1 text-slate-500">Координаты берутся из <code class="bg-white px-1 rounded border border-slate-200">geometry.coordinates</code> в формате [lon, lat].</div>
-        </div>
+        <div id="import-schema-hint" class="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 text-slate-600"></div>
       </div>
       <div id="drop-zone"
            class="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition"
@@ -791,7 +778,8 @@ function renderProfiles(profiles) {
       if (!d.enabled)        { status='отключён';          statusCls='badge-off'; }
       else if (d.file_exists){ status='✓ файл есть';       statusCls='badge-ok'; }
       else                   { status='файл отсутствует';  statusCls='badge-miss'; }
-      const importBtn = d.enabled && !d.file_exists
+      const _STATIC_EDITOR_DS = ['metro','airport','emissions','heat_sources'];
+      const importBtn = d.enabled && !d.file_exists && !_STATIC_EDITOR_DS.includes(d.name)
         ? `<button onclick="_quickImport('${esc(p.city_id)}','${esc(d.name)}')"
              class="text-xs text-blue-600 hover:underline ml-2">Загрузить</button>`
         : '';
@@ -1242,12 +1230,56 @@ function setStep(n) {
 
 function goToStep1() { setStep(1); }
 
+// ── Подсказки по CSV-примерам для каждого типа датасета ──────────────────
+const _CSV_EXAMPLES = {
+  schools:        'название;район;широта;долгота;вместимость\nМОУ СОШ №1;Центральный;54.9821;82.8965;800\nМОУ СОШ №12;Ленинский;54.9614;82.9345;1200',
+  kindergartens:  'название;район;широта;долгота;группы\nДетсад №5;Октябрьский;55.0123;82.9256;12\nДетсад «Радуга»;Кировский;54.9801;82.8711;8',
+  pharmacies:     'название;адрес;район;широта;долгота\nАптека №1;ул. Ленина 10;Центральный;54.9831;82.8971\nАптека «Здоровье»;пр. Маркса 5;Ленинский;54.9614;82.9345',
+  stops:          'название;район;широта;долгота;маршруты\nпл. Ленина;Центральный;55.0302;82.9204;1/5/13/42\nГАЗ;Кировский;54.9801;82.8711;3/7/29',
+  parking:        'название;район;широта;долгота;мест\nП-1 ул. Ленина;Центральный;54.9831;82.8971;120\nП-2 пр. Маркса;Ленинский;54.9614;82.9345;80',
+  custom:         'поле_1;поле_2;поле_3\nзначение;значение;значение'
+};
+
+const _DS_SCHEMA_HINTS = {
+  schools:        'Обязательно: <strong>name</strong> (название). Рекомендуется: lat, lon, district.',
+  kindergartens:  'Обязательно: <strong>name</strong> (название). Рекомендуется: lat, lon, district.',
+  pharmacies:     'Обязательно: <strong>name</strong> (название). Рекомендуется: address, lat, lon.',
+  stops:          'Обязательно: <strong>name</strong> (название). Рекомендуется: lat, lon, marshrut (маршруты).',
+  parking:        'Обязательно: <strong>name</strong> (название). Рекомендуется: lat, lon, district.',
+  custom:         'Произвольный набор полей. Маппинг настраивается вручную на следующем шаге.'
+};
+
+function _onDatasetTypeChange() {
+  const ds = document.getElementById('sel-dataset').value;
+  const hint = document.getElementById('ds-type-hint');
+  if (ds === 'custom') {
+    hint.textContent = 'Произвольный датасет — любая структура CSV, маппинг настроите на шаге 3';
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+}
+
+function _updateStep2Hints() {
+  const ds = STATE.datasetType;
+  const example = _CSV_EXAMPLES[ds] || _CSV_EXAMPLES.custom;
+  const schemaHint = _DS_SCHEMA_HINTS[ds] || _DS_SCHEMA_HINTS.custom;
+  const exEl = document.getElementById('import-csv-example');
+  const hintEl = document.getElementById('import-schema-hint');
+  if (exEl) exEl.textContent = example;
+  if (hintEl) hintEl.innerHTML = schemaHint;
+  // Показываем подсказку по формату автоматически
+  const helpEl = document.getElementById('import-fmt-help');
+  if (helpEl) helpEl.classList.remove('hidden');
+}
+
 function goToStep2() {
   const cityEl = document.getElementById('sel-city');
   const dsEl   = document.getElementById('sel-dataset');
   STATE.cityId      = cityEl.value;
   STATE.datasetType = dsEl.value;
   if (!STATE.cityId) { alert('Выберите город'); return; }
+  _updateStep2Hints();
   setStep(2);
 }
 
@@ -1407,6 +1439,14 @@ async function runImport() {
     const data = await resp.json();
 
     if (data.success) {
+      const profileNote = data.profile_enabled
+        ? `<div class="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">
+             Датасет автоматически включён в профиле <code>city_profile_${esc(data.city_id)}.yaml</code>
+           </div>`
+        : `<div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+             Добавьте датасет вручную в <code>city_profile_${esc(data.city_id)}.yaml</code> →
+             <code>static_datasets.${esc(data.dataset_type)}: enabled: true, file: "${esc(data.saved_to)}"</code>
+           </div>`;
       result.innerHTML = `
         <div class="flex items-start gap-3 text-green-700 mb-4">
           <span class="text-3xl">✅</span>
@@ -1415,13 +1455,7 @@ async function runImport() {
             <div class="text-sm text-green-600">${data.rows_imported} строк · ${esc(data.saved_to)}</div>
           </div>
         </div>
-        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
-          <strong>Следующий шаг:</strong> добавьте путь к файлу в <code>city_profile_${esc(data.city_id)}.yaml</code>:
-          <pre class="bg-white rounded p-2 mt-2 text-xs border border-amber-200 overflow-auto">static_datasets:
-  ${esc(data.dataset_type)}:
-    enabled: true
-    file: "${esc(data.saved_to)}"</pre>
-        </div>
+        ${profileNote}
         <div class="mt-4 flex gap-3">
           <button onclick="resetImport()" class="text-sm text-blue-600 hover:underline">Импортировать ещё</button>
         </div>`;
