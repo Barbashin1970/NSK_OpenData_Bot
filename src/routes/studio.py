@@ -124,8 +124,8 @@ def studio_set_active_city(body: dict):
     except Exception:
         pass
     try:
-        from ..metro_data import load_metro_stations
-        load_metro_stations.cache_clear()
+        from ..metro_data import _load as _load_metro
+        _load_metro.cache_clear()
     except Exception:
         pass
     try:

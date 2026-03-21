@@ -87,7 +87,7 @@ features:
 # ячейку и возвращают идентичные данные. Одна станция = честные данные.
 ecology_stations:
   - station_id: "academ_sovetsky"
-    district: "Советский район"
+    district: "Верхняя зона"
     address: "Академгородок, Советский район"
     lat: 54.8478
     lon: 83.1044

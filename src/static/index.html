@@ -2354,9 +2354,10 @@ function renderMetro(data) {
   const stations = info.stations || data.rows || [];
   const fmt = n => n != null ? Number(n).toLocaleString('ru-RU') : '—';
 
-  // Active line filter: detect from current query
+  // Active line filter: detect from current query (any line number)
   const _ql = (_pageQuery || document.getElementById('queryInput')?.value || '').toLowerCase();
-  const _activeLine = _ql.includes('линия 2') ? '2' : _ql.includes('линия 1') ? '1' : 'all';
+  const _lineMatch = _ql.match(/лини[яию]\s*(\d+)/);
+  const _activeLine = _lineMatch ? _lineMatch[1] : 'all';
 
   // Counts: use actual stations.length so filtered view shows correct number
   const totalCount = info.stations_count || 13;
