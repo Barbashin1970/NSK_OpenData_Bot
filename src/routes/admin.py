@@ -236,3 +236,46 @@ def api_set_city(body: dict):
     """Переключить активный город (делегирует studio_set_active_city)."""
     from .studio import studio_set_active_city
     return studio_set_active_city(body)
+
+
+# ── District boundaries ─────────────────────────────────────────────────────
+
+@router.post(
+    "/admin/update-boundaries",
+    tags=["Администрирование"],
+    summary="Загрузить границы районов из OpenStreetMap",
+)
+def admin_update_boundaries() -> dict:
+    """Загружает полигоны административных границ (районов/округов) из Overpass API
+    и сохраняет в data/cities/{city_id}/district_boundaries.geojson.
+
+    После этого классификация медучреждений и камер будет использовать
+    точные полигоны вместо приблизительных центроидов.
+    """
+    from ..district_classifier import fetch_and_cache_boundaries
+    return fetch_and_cache_boundaries()
+
+
+@router.get(
+    "/admin/boundaries-status",
+    tags=["Администрирование"],
+    summary="Статус файла границ районов",
+)
+def admin_boundaries_status() -> dict:
+    """Показывает, есть ли файл границ и какие районы покрыты."""
+    from ..district_classifier import _boundaries_path, _load_boundaries
+    path = _boundaries_path()
+    if not path.exists():
+        return {
+            "available": False,
+            "path": str(path),
+            "hint": "POST /admin/update-boundaries для загрузки",
+        }
+    boundaries = _load_boundaries()
+    districts = sorted({b["district"] for b in boundaries}) if boundaries else []
+    return {
+        "available": True,
+        "path": str(path),
+        "districts": districts,
+        "polygons_count": len(boundaries) if boundaries else 0,
+    }

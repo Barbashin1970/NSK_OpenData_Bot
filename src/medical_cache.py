@@ -12,28 +12,12 @@ from typing import Any
 import duckdb
 
 from .city_config import get_bbox_dict, get_ecology_stations
+from .district_classifier import classify_district as _classify_district
 
 log = logging.getLogger(__name__)
 
 _TABLE = "medical_facilities"
 _TTL_HOURS = 72
-
-
-def _classify_district(lat: float | None, lon: float | None) -> str:
-    """Определяет район города по координатам (ближайший центроид станции мониторинга)."""
-    if lat is None or lon is None:
-        return "Прочие"
-    bb = get_bbox_dict()
-    if not (bb["lat_min"] <= lat <= bb["lat_max"] and bb["lon_min"] <= lon <= bb["lon_max"]):
-        return "Прочие"
-    best_dist = float("inf")
-    best_district = "Прочие"
-    for st in get_ecology_stations():
-        d = (lat - st["latitude"]) ** 2 + (lon - st["longitude"]) ** 2
-        if d < best_dist:
-            best_dist = d
-            best_district = st["district"]
-    return best_district
 
 
 def _conn():

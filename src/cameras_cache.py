@@ -12,36 +12,12 @@ from typing import Any
 import duckdb
 
 from .city_config import get_ecology_stations as _get_ecology_stations, get_bbox_dict as _get_bbox_dict
+from .district_classifier import classify_district as _classify_district
 
 log = logging.getLogger(__name__)
 
 _TABLE = "cameras"
 _TTL_DAYS = 7
-
-# Bounding box читается из city_profile.yaml через city_config
-def _bbox():
-    bb = _get_bbox_dict()
-    return bb["lat_min"], bb["lat_max"], bb["lon_min"], bb["lon_max"]
-
-
-def _classify_district(lat: float | None, lon: float | None) -> str:
-    """Определяет район города по координатам (ближайший центроид станции мониторинга).
-
-    Если точка за пределами bbox города — возвращает 'Прочие'.
-    """
-    if lat is None or lon is None:
-        return "Прочие"
-    lat_min, lat_max, lon_min, lon_max = _bbox()
-    if not (lat_min <= lat <= lat_max and lon_min <= lon <= lon_max):
-        return "Прочие"
-    best_dist = float("inf")
-    best_district = "Прочие"
-    for st in _get_ecology_stations():
-        d = (lat - st["latitude"]) ** 2 + (lon - st["longitude"]) ** 2
-        if d < best_dist:
-            best_dist = d
-            best_district = st["district"]
-    return best_district
 
 
 def _conn():
