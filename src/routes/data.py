@@ -893,13 +893,22 @@ def post_power_update() -> dict:
     В штатном режиме обновление происходит автоматически при запросах через `/ask`
     (тема `power_outages`) если TTL (30 мин) истёк.
     """
-    from ..power_scraper import fetch_all_outages
     from ..power_cache import upsert_outages, get_power_meta
 
-    records = fetch_all_outages()
-    count = upsert_outages(records)
-    meta = get_power_meta()
-    return {
+    count = 0
+    error_msg = None
+    try:
+        from ..power_scraper import fetch_all_outages
+        records = fetch_all_outages()
+        count = upsert_outages(records)
+    except Exception as e:
+        logging.getLogger(__name__).error("power/update failed: %s", e, exc_info=True)
+        error_msg = str(e)
+    try:
+        meta = get_power_meta()
+    except Exception:
+        meta = {}
+    result = {
         "success": count > 0,
         "records_loaded": count,
         "active_houses": meta.get("active_houses", 0),
@@ -907,3 +916,6 @@ def post_power_update() -> dict:
         "last_scraped": meta.get("last_scraped", ""),
         "source": get_feature("power_outages_url", ""),
     }
+    if error_msg:
+        result["error"] = error_msg
+    return result
