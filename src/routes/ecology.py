@@ -17,17 +17,20 @@ _ecology_lock = threading.Lock()
 
 def _ecology_auto_update() -> None:
     """Обновляет данные экологии и прогноза если TTL истёк."""
-    from ..ecology_cache import (
-        is_ecology_stale, upsert_stations, upsert_measurements,
-        is_forecast_stale, upsert_forecast,
-    )
-    from ..ecology_fetcher import fetch_all_ecology, fetch_all_forecast
-    with _ecology_lock:
-        if is_ecology_stale():
-            upsert_stations()
-            upsert_measurements(fetch_all_ecology())
-        if is_forecast_stale():
-            upsert_forecast(fetch_all_forecast())
+    try:
+        from ..ecology_cache import (
+            is_ecology_stale, upsert_stations, upsert_measurements,
+            is_forecast_stale, upsert_forecast,
+        )
+        from ..ecology_fetcher import fetch_all_ecology, fetch_all_forecast
+        with _ecology_lock:
+            if is_ecology_stale():
+                upsert_stations()
+                upsert_measurements(fetch_all_ecology())
+            if is_forecast_stale():
+                upsert_forecast(fetch_all_forecast())
+    except Exception as e:
+        log.error("Ecology auto-update failed: %s", e, exc_info=True)
 
 
 @router.get(

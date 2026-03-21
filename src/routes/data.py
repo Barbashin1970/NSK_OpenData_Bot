@@ -417,7 +417,10 @@ def get_ask(
         from ..power_scraper import fetch_all_outages
 
         if is_power_stale():
-            upsert_outages(fetch_all_outages())
+            try:
+                upsert_outages(fetch_all_outages())
+            except Exception as e:
+                logging.getLogger(__name__).error("Power outages fetch failed: %s", e, exc_info=True)
 
         result = execute_power(plan)
         _raw = plan.extra_filters.get("utility", None)
