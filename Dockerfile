@@ -14,9 +14,11 @@ COPY pyproject.toml SKILL.md ./
 # Финальная установка с полным кодом
 RUN pip install --no-cache-dir -e .
 
-# data/ монтируется снаружи (docker-compose volumes) — не включаем в образ
-# Это позволяет обновлять данные без пересборки образа
+# Статические данные (api_keys, cities GeoJSON/JSON, emissions)
+# На Railway нет volume — включаем в образ; docker-compose может перекрыть volume'ом
+COPY data/ ./data/
 
 EXPOSE 8000
 
-CMD ["bot", "serve", "--host", "0.0.0.0", "--port", "8000"]
+# Railway задаёт $PORT динамически; локально fallback на 8000
+CMD bot serve --host 0.0.0.0 --port ${PORT:-8000}
