@@ -182,6 +182,277 @@ def studio_schemas():
     return schemas
 
 
+def _find_profile_path(city_id: str) -> Path | None:
+    """Находит yaml-файл профиля по city_id."""
+    import yaml as _yaml
+    for p in _CONFIG_DIR.glob("city_profile*.yaml"):
+        try:
+            d = _yaml.safe_load(p.read_text("utf-8"))
+            if d and d.get("city", {}).get("id") == city_id:
+                return p
+        except Exception:
+            continue
+    return None
+
+
+@router.get("/studio/api/profile-yaml", include_in_schema=False)
+def studio_profile_yaml(city_id: str = Query(...)):
+    """Возвращает YAML-текст профиля города для редактирования."""
+    yaml_path = _find_profile_path(city_id)
+    if not yaml_path:
+        raise HTTPException(status_code=404, detail=f"Профиль '{city_id}' не найден")
+    return {
+        "city_id": city_id,
+        "profile_file": yaml_path.name,
+        "yaml_text": yaml_path.read_text("utf-8"),
+    }
+
+
+@router.put("/studio/api/profile-yaml", include_in_schema=False)
+async def studio_save_profile_yaml(request: Request):
+    """Сохранить отредактированный YAML профиля (существующий город)."""
+    import yaml as _yaml
+
+    body = await request.json()
+    city_id: str = (body.get("city_id") or "").strip()
+    yaml_text: str = body.get("yaml_text", "")
+
+    if not city_id or not _re.match(r'^[\w\-]+$', city_id):
+        raise HTTPException(status_code=400, detail="Недопустимый city_id")
+    if not yaml_text.strip():
+        raise HTTPException(status_code=400, detail="Пустой YAML")
+
+    # Валидируем YAML
+    try:
+        parsed = _yaml.safe_load(yaml_text)
+    except _yaml.YAMLError as e:
+        raise HTTPException(status_code=422, detail=f"Ошибка парсинга YAML: {e}")
+
+    if not isinstance(parsed, dict) or "city" not in parsed:
+        raise HTTPException(status_code=422, detail="YAML должен содержать секцию 'city'")
+
+    new_id = parsed.get("city", {}).get("id", "")
+    if not new_id:
+        raise HTTPException(status_code=422, detail="Поле city.id обязательно")
+
+    yaml_path = _find_profile_path(city_id)
+    if not yaml_path:
+        raise HTTPException(status_code=404, detail=f"Профиль '{city_id}' не найден")
+
+    yaml_path.write_text(yaml_text, encoding="utf-8")
+
+    city_name = parsed.get("city", {}).get("name", new_id)
+    return {"ok": True, "city_id": new_id, "city_name": city_name, "profile_file": yaml_path.name}
+
+
+@router.post("/studio/api/profile-yaml", include_in_schema=False)
+async def studio_create_profile_yaml(request: Request):
+    """Создать новый профиль города из YAML-текста."""
+    import yaml as _yaml
+
+    body = await request.json()
+    yaml_text: str = body.get("yaml_text", "")
+
+    if not yaml_text.strip():
+        raise HTTPException(status_code=400, detail="Пустой YAML")
+
+    try:
+        parsed = _yaml.safe_load(yaml_text)
+    except _yaml.YAMLError as e:
+        raise HTTPException(status_code=422, detail=f"Ошибка парсинга YAML: {e}")
+
+    if not isinstance(parsed, dict) or "city" not in parsed:
+        raise HTTPException(status_code=422, detail="YAML должен содержать секцию 'city'")
+
+    city_id = (parsed.get("city", {}).get("id") or "").strip()
+    if not city_id or not _re.match(r'^[\w\-]+$', city_id):
+        raise HTTPException(status_code=422, detail="Поле city.id обязательно и должно содержать только [a-z0-9_-]")
+
+    # Проверяем что такого city_id ещё нет
+    if _find_profile_path(city_id):
+        raise HTTPException(status_code=409, detail=f"Профиль с city_id='{city_id}' уже существует")
+
+    # Сохраняем в config/city_profile_<city_id>.yaml
+    filename = f"city_profile_{city_id}.yaml"
+    yaml_path = _CONFIG_DIR / filename
+    yaml_path.write_text(yaml_text, encoding="utf-8")
+
+    # Создаём директорию data/cities/<city_id>/ если нет
+    data_dir = _DATA_DIR / "cities" / city_id
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    city_name = parsed.get("city", {}).get("name", city_id)
+    return {"ok": True, "city_id": city_id, "city_name": city_name, "profile_file": filename}
+
+
+_DATASET_EXT = {
+    "emissions": ".json",
+    "heat_sources": ".geojson",
+    "metro": ".json",
+    "airport": ".json",
+}
+
+
+@router.get("/studio/api/dataset-json", include_in_schema=False)
+def studio_get_dataset(city_id: str = Query(...), dataset: str = Query(...)):
+    """Получить содержимое JSON/GeoJSON датасета для редактирования."""
+    import yaml as _yaml
+
+    if not _re.match(r'^[\w\-]+$', city_id) or not _re.match(r'^[\w\-]+$', dataset):
+        raise HTTPException(status_code=400, detail="Недопустимые символы")
+
+    yaml_path = _find_profile_path(city_id)
+    if not yaml_path:
+        raise HTTPException(status_code=404, detail=f"Профиль '{city_id}' не найден")
+
+    with open(yaml_path, encoding="utf-8") as f:
+        profile = _yaml.safe_load(f)
+
+    ds_cfg = profile.get("static_datasets", {}).get(dataset, {})
+    file_rel = ds_cfg.get("file", "")
+
+    # Если файл указан в профиле — читаем его
+    if file_rel:
+        file_path = Path(__file__).parent.parent.parent / file_rel
+    else:
+        # Пробуем стандартный путь
+        ext = _DATASET_EXT.get(dataset, ".json")
+        # emissions может быть emissions_2tp.json
+        candidates = [
+            _DATA_DIR / "cities" / city_id / f"{dataset}{ext}",
+            _DATA_DIR / "cities" / city_id / f"{dataset}_2tp{ext}",
+        ]
+        file_path = None
+        for c in candidates:
+            if c.exists():
+                file_path = c
+                break
+        if not file_path:
+            file_path = _DATA_DIR / "cities" / city_id / f"{dataset}{ext}"
+
+    exists = file_path.exists()
+    content = ""
+    if exists:
+        content = file_path.read_text("utf-8")
+
+    return {
+        "city_id": city_id,
+        "dataset": dataset,
+        "file_path": str(file_path.relative_to(Path(__file__).parent.parent.parent)),
+        "exists": exists,
+        "enabled": ds_cfg.get("enabled", False),
+        "json_text": content,
+    }
+
+
+@router.put("/studio/api/dataset-json", include_in_schema=False)
+async def studio_save_dataset(request: Request):
+    """Сохранить отредактированный JSON/GeoJSON датасет."""
+    import yaml as _yaml
+
+    body = await request.json()
+    city_id: str = (body.get("city_id") or "").strip()
+    dataset: str = (body.get("dataset") or "").strip()
+    json_text: str = body.get("json_text", "")
+
+    if not _re.match(r'^[\w\-]+$', city_id) or not _re.match(r'^[\w\-]+$', dataset):
+        raise HTTPException(status_code=400, detail="Недопустимые символы")
+    if not json_text.strip():
+        raise HTTPException(status_code=400, detail="Пустой JSON")
+
+    # Валидируем JSON
+    try:
+        parsed = json.loads(json_text)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=422, detail=f"Ошибка парсинга JSON: {e}")
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=422, detail="Ожидается JSON-объект (не массив)")
+
+    yaml_path = _find_profile_path(city_id)
+    if not yaml_path:
+        raise HTTPException(status_code=404, detail=f"Профиль '{city_id}' не найден")
+
+    with open(yaml_path, encoding="utf-8") as f:
+        profile = _yaml.safe_load(f)
+
+    ds_cfg = profile.get("static_datasets", {}).get(dataset, {})
+    file_rel = ds_cfg.get("file", "")
+
+    if file_rel:
+        file_path = Path(__file__).parent.parent.parent / file_rel
+    else:
+        ext = _DATASET_EXT.get(dataset, ".json")
+        file_path = _DATA_DIR / "cities" / city_id / f"{dataset}{ext}"
+
+    # Создаём директорию если нет
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Форматируем и сохраняем
+    formatted = json.dumps(parsed, ensure_ascii=False, indent=2)
+    file_path.write_text(formatted + "\n", encoding="utf-8")
+
+    # Если датасет не был enabled — обновляем профиль
+    rel_path = str(file_path.relative_to(Path(__file__).parent.parent.parent))
+    updated_profile = False
+    if not ds_cfg.get("enabled") or not ds_cfg.get("file"):
+        # Обновляем YAML через regex (сохраняя комментарии)
+        content = yaml_path.read_text("utf-8")
+        import re as _re2
+        # Ищем секцию dataset и обновляем enabled + file
+        pattern = rf'(  {_re.escape(dataset)}:\s*\n)((?:\s+\S.*\n)*)'
+        def _replacer(m):
+            block = m.group(2)
+            # Обновляем enabled
+            block = _re2.sub(r'(    enabled:\s*).*', rf'\g<1>true', block)
+            # Обновляем file
+            block = _re2.sub(r'(    file:\s*).*', rf'\g<1>"{rel_path}"', block)
+            return m.group(1) + block
+
+        new_content = _re2.sub(pattern, _replacer, content)
+        if new_content != content:
+            yaml_path.write_text(new_content, encoding="utf-8")
+            updated_profile = True
+
+    # Сбрасываем lru_cache для обновлённого датасета
+    try:
+        if dataset == "metro":
+            from ..metro_data import _load as _load_metro
+            _load_metro.cache_clear()
+        elif dataset == "airport":
+            from ..airport_data import _load as _load_airport
+            _load_airport.cache_clear()
+        elif dataset == "emissions":
+            from ..emissions import load_emissions
+            load_emissions.cache_clear()
+        elif dataset == "heat_sources":
+            from ..heat_sources import load_heat_sources, _load_geojson
+            load_heat_sources.cache_clear()
+            _load_geojson.cache_clear()
+    except Exception:
+        pass
+
+    # Подсчитаем записи
+    record_count = 0
+    if "stations" in parsed:
+        record_count = len(parsed["stations"])
+    elif "features" in parsed:
+        record_count = len(parsed["features"])
+    elif "municipalities" in parsed:
+        record_count = len(parsed["municipalities"])
+    elif "terminals" in parsed:
+        record_count = len(parsed.get("terminals", []))
+
+    return {
+        "ok": True,
+        "city_id": city_id,
+        "dataset": dataset,
+        "file_path": rel_path,
+        "records": record_count,
+        "profile_updated": updated_profile,
+    }
+
+
 @router.post("/studio/api/preview", include_in_schema=False)
 async def studio_preview(file: UploadFile = File(...)):
     """Загрузить CSV/JSON → вернуть {columns, sample[5], format}."""

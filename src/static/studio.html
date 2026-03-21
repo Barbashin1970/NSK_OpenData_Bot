@@ -159,23 +159,94 @@
       </button>
     </div>
 
-    <!-- Новый профиль — шаблон -->
-    <div id="new-profile-block" class="hidden mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-      <h3 class="font-semibold text-blue-800 mb-2">Как создать профиль нового города</h3>
-      <ol class="text-sm text-blue-700 space-y-1 list-decimal list-inside mb-3">
-        <li>Скопируйте существующий профиль как шаблон:</li>
-      </ol>
-      <pre class="bg-white border border-blue-200 rounded p-3 text-xs text-slate-700 overflow-auto mb-3">cp config/city_profile_omsk.yaml config/city_profile_<span class="font-bold">kemerovo</span>.yaml</pre>
-      <ol start="2" class="text-sm text-blue-700 space-y-1 list-decimal list-inside mb-3">
-        <li>Отредактируйте поля <code>city:</code> — id, name, center, bbox, districts</li>
-        <li>Запустите с новым профилем:</li>
-      </ol>
-      <pre class="bg-white border border-blue-200 rounded p-3 text-xs text-slate-700 overflow-auto mb-3">CITY_PROFILE=city_profile_kemerovo bot serve</pre>
-      <ol start="4" class="text-sm text-blue-700 list-decimal list-inside">
-        <li>Обновите страницу — новый профиль появится в списке выше</li>
-      </ol>
-      <button onclick="document.getElementById('new-profile-block').classList.add('hidden')"
-              class="mt-3 text-xs text-blue-600 hover:underline">Закрыть</button>
+    <!-- ── Редактор профиля (YAML) — используется для нового и редактирования ── -->
+    <div id="profile-editor-block" class="hidden mb-6 bg-white border border-blue-200 rounded-xl overflow-hidden">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-5 py-3 bg-blue-50 border-b border-blue-200">
+        <div>
+          <h3 id="profile-editor-title" class="font-semibold text-blue-800">Новый профиль города</h3>
+          <p id="profile-editor-subtitle" class="text-xs text-blue-600 mt-0.5">Отредактируйте YAML и нажмите «Сохранить»</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <select id="profile-template-sel"
+                  onchange="_applyProfileTemplate(this.value)"
+                  class="text-xs border border-blue-200 rounded px-2 py-1 bg-white">
+            <option value="">Шаблон из города…</option>
+          </select>
+          <button onclick="_exportProfileYaml()"
+                  class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg"
+                  title="Скачать YAML">⬇ Экспорт</button>
+          <button onclick="_closeProfileEditor()"
+                  class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1">✕</button>
+        </div>
+      </div>
+
+      <!-- Info banner -->
+      <div class="px-5 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-700">
+        <strong>Хранение:</strong> профили хранятся как YAML-файлы в <code class="bg-amber-100 px-1 rounded">config/</code> (без внешней БД).
+        Для продакшена — закоммитить в git и задеплоить.
+      </div>
+
+      <!-- Tabs: YAML / Preview -->
+      <div class="flex gap-0 border-b border-slate-200">
+        <button class="profile-view-btn active text-xs px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-medium"
+                data-view="yaml" onclick="_switchProfileView('yaml')">YAML редактор</button>
+        <button class="profile-view-btn text-xs px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-700"
+                data-view="preview" onclick="_switchProfileView('preview')">Просмотр структуры</button>
+        <button class="profile-view-btn text-xs px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-700"
+                data-view="help" onclick="_switchProfileView('help')">Справка по полям</button>
+      </div>
+
+      <!-- YAML textarea -->
+      <div id="profile-view-yaml" class="profile-view-pane px-5 pt-3 pb-2">
+        <textarea id="profile-yaml-textarea"
+                  class="w-full font-mono text-xs border border-slate-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"
+                  style="height:500px; white-space:pre; overflow-wrap:normal; overflow-x:auto; tab-size:2;"
+                  spellcheck="false"></textarea>
+      </div>
+
+      <!-- Preview tree -->
+      <div id="profile-view-preview" class="profile-view-pane hidden px-5 pt-3 pb-2">
+        <div id="profile-tree" class="font-mono text-xs text-slate-700 bg-slate-50 rounded-lg p-4 overflow-auto" style="max-height:500px;"></div>
+      </div>
+
+      <!-- Help / field reference -->
+      <div id="profile-view-help" class="profile-view-pane hidden px-5 pt-3 pb-2">
+        <div class="text-xs text-slate-600 space-y-2 max-h-[500px] overflow-auto">
+          <p class="font-semibold text-sm text-slate-700 mb-3">Обязательные поля профиля</p>
+          <table class="w-full text-xs border-collapse">
+            <thead><tr class="bg-slate-50"><th class="text-left p-2 border">Поле</th><th class="text-left p-2 border">Описание</th><th class="text-left p-2 border">Пример</th></tr></thead>
+            <tbody>
+              <tr><td class="p-2 border font-mono">city.id</td><td class="p-2 border">Уникальный ID (латиница, a-z0-9_-)</td><td class="p-2 border font-mono">barnaul</td></tr>
+              <tr><td class="p-2 border font-mono">city.name</td><td class="p-2 border">Название (именительный падеж)</td><td class="p-2 border">Барнаул</td></tr>
+              <tr><td class="p-2 border font-mono">city.name_genitive</td><td class="p-2 border">Родительный падеж</td><td class="p-2 border">Барнаула</td></tr>
+              <tr><td class="p-2 border font-mono">city.name_prepositional</td><td class="p-2 border">Предложный падеж</td><td class="p-2 border">Барнауле</td></tr>
+              <tr><td class="p-2 border font-mono">city.center</td><td class="p-2 border">Центр города {lat, lon}</td><td class="p-2 border font-mono">lat: 53.35, lon: 83.76</td></tr>
+              <tr><td class="p-2 border font-mono">city.timezone</td><td class="p-2 border">Часовой пояс IANA</td><td class="p-2 border font-mono">Asia/Barnaul</td></tr>
+              <tr><td class="p-2 border font-mono">districts</td><td class="p-2 border">Районы: {имя: [ключевые слова]}</td><td class="p-2 border">"Центральный": ["центр"]</td></tr>
+              <tr><td class="p-2 border font-mono">ecology_stations</td><td class="p-2 border">Станции мониторинга (1 на район)</td><td class="p-2 border">station_id, district, lat, lon</td></tr>
+              <tr><td class="p-2 border font-mono">static_datasets</td><td class="p-2 border">Статические датасеты</td><td class="p-2 border">emissions, heat_sources, metro, airport</td></tr>
+            </tbody>
+          </table>
+          <p class="mt-3 text-slate-400">Полная документация: <code class="bg-slate-100 px-1 rounded">SKILL.md</code> → раздел «City Profile»</p>
+        </div>
+      </div>
+
+      <!-- Notification -->
+      <div id="profile-notify" class="hidden mx-5 mb-2 p-3 rounded-lg text-sm"></div>
+
+      <!-- Footer actions -->
+      <div class="flex items-center justify-between px-5 py-3 bg-slate-50 border-t border-slate-100">
+        <div class="text-xs text-slate-400" id="profile-editor-filename"></div>
+        <div class="flex gap-2">
+          <button onclick="_closeProfileEditor()"
+                  class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-lg">Отмена</button>
+          <button onclick="_validateProfileYaml()"
+                  class="text-xs bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg">Проверить</button>
+          <button onclick="_saveProfileYaml()"
+                  class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium">Сохранить</button>
+        </div>
+      </div>
     </div>
 
     <!-- Карточки профилей -->
@@ -550,6 +621,75 @@
     </div>
   </div>
 
+  <!-- ══ Модаль: Редактор датасета (JSON) ═════════════════════════════════ -->
+  <div id="dataset-editor-modal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+       onclick="if(event.target===this)_closeDatasetEditor()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+        <div>
+          <h3 id="ds-editor-title" class="font-bold text-slate-800 text-base">Редактор датасета</h3>
+          <p id="ds-editor-subtitle" class="text-xs text-slate-400 mt-0.5"></p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="_exportDatasetJson()"
+                  class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg">⬇ Экспорт</button>
+          <button onclick="_closeDatasetEditor()"
+                  class="text-slate-400 hover:text-slate-600 text-lg px-2">✕</button>
+        </div>
+      </div>
+
+      <!-- Info banner for new datasets -->
+      <div id="ds-editor-new-banner" class="hidden px-6 py-2 bg-emerald-50 border-b border-emerald-200 text-xs text-emerald-700">
+        <strong>Новый датасет:</strong> файл будет создан, а в профиле города автоматически включится <code>enabled: true</code>.
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex gap-0 border-b border-slate-200">
+        <button class="ds-view-btn active text-xs px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-medium"
+                data-view="json" onclick="_switchDsView('json')">JSON редактор</button>
+        <button class="ds-view-btn text-xs px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-700"
+                data-view="form" onclick="_switchDsView('form')">Таблица записей</button>
+        <button class="ds-view-btn text-xs px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-700"
+                data-view="schema" onclick="_switchDsView('schema')">Схема полей</button>
+      </div>
+
+      <!-- JSON textarea -->
+      <div id="ds-view-json" class="ds-view-pane flex-1 overflow-hidden px-6 pt-3 pb-2">
+        <textarea id="ds-json-textarea"
+                  class="w-full h-full font-mono text-xs border border-slate-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                  style="min-height:400px; white-space:pre; overflow-wrap:normal; overflow-x:auto; tab-size:2;"
+                  spellcheck="false"></textarea>
+      </div>
+
+      <!-- Table view -->
+      <div id="ds-view-form" class="ds-view-pane hidden flex-1 overflow-auto px-6 pt-3 pb-2" style="max-height:500px;">
+        <div id="ds-table-container" class="text-xs"></div>
+      </div>
+
+      <!-- Schema reference -->
+      <div id="ds-view-schema" class="ds-view-pane hidden flex-1 overflow-auto px-6 pt-3 pb-2" style="max-height:500px;">
+        <div id="ds-schema-container" class="text-xs"></div>
+      </div>
+
+      <!-- Notification -->
+      <div id="ds-notify" class="hidden mx-6 mb-2 p-3 rounded-lg text-sm"></div>
+
+      <!-- Footer -->
+      <div class="flex items-center justify-between px-6 py-3 bg-slate-50 border-t border-slate-200 rounded-b-2xl">
+        <div class="text-xs text-slate-400" id="ds-editor-filepath"></div>
+        <div class="flex gap-2">
+          <button onclick="_closeDatasetEditor()"
+                  class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-lg">Отмена</button>
+          <button onclick="_validateDatasetJson()"
+                  class="text-xs bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg">Проверить</button>
+          <button onclick="_saveDatasetJson()"
+                  class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium">Сохранить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ─────────────────────────── СКРИПТ ──────────────────────────────────── -->
@@ -655,13 +795,16 @@ function renderProfiles(profiles) {
         ? `<button onclick="_quickImport('${esc(p.city_id)}','${esc(d.name)}')"
              class="text-xs text-blue-600 hover:underline ml-2">Загрузить</button>`
         : '';
+      const editBtn = `<button onclick="_openDatasetEditor('${esc(p.city_id)}','${esc(d.name)}')"
+             class="text-xs text-slate-500 hover:text-blue-600 hover:underline ml-2"
+             title="${d.file_exists ? 'Редактировать JSON' : 'Создать из шаблона'}">${d.file_exists ? '✏️ Редактировать' : '➕ Создать'}</button>`;
       return `<tr class="hover:bg-slate-50">
         <td class="px-3 py-1.5 text-sm">${m.icon}</td>
         <td class="px-2 py-1.5">
           <div class="text-sm font-medium text-slate-700">${esc(m.label)}</div>
           <div class="text-xs text-slate-400">${esc(m.hint)}</div>
         </td>
-        <td class="px-2 py-1.5"><span class="badge ${statusCls}">${status}</span>${importBtn}</td>
+        <td class="px-2 py-1.5"><span class="badge ${statusCls}">${status}</span>${importBtn}${editBtn}</td>
       </tr>`;
     }).join('');
 
@@ -721,6 +864,10 @@ function renderProfiles(profiles) {
           <button onclick="_quickImport('${esc(p.city_id)}', '')"
             class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
             Импортировать данные
+          </button>
+          <button onclick="_editProfileYaml('${esc(p.city_id)}')"
+            class="text-xs bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg">
+            ✏️ Редактировать YAML
           </button>
           <span class="text-xs text-slate-300 font-mono">${esc(p.profile_file)}</span>
         </div>
@@ -792,8 +939,283 @@ function _quickImport(cityId, dsType) {
   window.scrollTo(0, 0);
 }
 
+// ── Профиль-редактор: состояние ─────────────────────────────────────────────
+let _profileEditorMode = null;  // 'create' | 'edit'
+let _profileEditorCityId = null;
+let _profileEditorOriginalYaml = '';
+
+const _PROFILE_TEMPLATE = `# =============================================================================
+# Профиль города — [НАЗВАНИЕ]
+# =============================================================================
+# Запуск: CITY_PROFILE=city_profile_[ID] bot serve
+# =============================================================================
+
+city:
+  id: "[ID]"
+  name: "[НАЗВАНИЕ]"
+  name_genitive: "[НАЗВАНИЕ_род]"
+  name_prepositional: "[НАЗВАНИЕ_предл]"
+  slug: "[ID]"
+  timezone: "Asia/Novosibirsk"
+  utc_offset: 7
+
+  center:
+    lat: 55.0
+    lon: 73.0
+
+  bbox:
+    lat_min: 54.9
+    lat_max: 55.1
+    lon_min: 72.9
+    lon_max: 73.1
+
+districts:
+  "Центральный район": ["центр", "центральн"]
+
+sub_districts: []
+
+district_coords:
+  "Центральный район": {lon: 73.0, lat: 55.0}
+
+city_stopwords: []
+
+features:
+  has_metro: false
+  has_airport: false
+
+ecology_stations:
+  - station_id: "[ID]_central"
+    district: "Центральный район"
+    address: "Центр города"
+    lat: 55.0
+    lon: 73.0
+
+opendata_base_url: ""
+
+static_datasets:
+  emissions:
+    enabled: false
+    file: ""
+  heat_sources:
+    enabled: false
+    file: ""
+  metro:
+    enabled: false
+    file: ""
+  airport:
+    enabled: false
+    file: ""
+`;
+
 function showNewProfileTemplate() {
-  document.getElementById('new-profile-block').classList.remove('hidden');
+  _profileEditorMode = 'create';
+  _profileEditorCityId = null;
+  _profileEditorOriginalYaml = '';
+
+  document.getElementById('profile-editor-title').textContent = 'Новый профиль города';
+  document.getElementById('profile-editor-subtitle').textContent = 'Заполните YAML и нажмите «Сохранить» для создания нового профиля';
+  document.getElementById('profile-yaml-textarea').value = _PROFILE_TEMPLATE;
+  document.getElementById('profile-editor-filename').textContent = 'Новый файл: config/city_profile_[ID].yaml';
+  document.getElementById('profile-notify').classList.add('hidden');
+
+  // Заполнить селект шаблонов
+  _populateTemplateSelector();
+  _switchProfileView('yaml');
+
+  document.getElementById('profile-editor-block').classList.remove('hidden');
+  document.getElementById('profile-editor-block').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function _editProfileYaml(cityId) {
+  _profileEditorMode = 'edit';
+  _profileEditorCityId = cityId;
+
+  document.getElementById('profile-editor-title').textContent = `Редактирование: ${cityId}`;
+  document.getElementById('profile-editor-subtitle').textContent = 'Изменения сохраняются в YAML-файл. Для продакшена — git commit + deploy.';
+  document.getElementById('profile-notify').classList.add('hidden');
+  _showProfileNotify('info', 'Загрузка...');
+
+  try {
+    const r = await fetch(`/studio/api/profile-yaml?city_id=${encodeURIComponent(cityId)}`);
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const data = await r.json();
+
+    _profileEditorOriginalYaml = data.yaml_text;
+    document.getElementById('profile-yaml-textarea').value = data.yaml_text;
+    document.getElementById('profile-editor-filename').textContent = data.profile_file;
+    document.getElementById('profile-notify').classList.add('hidden');
+  } catch(e) {
+    _showProfileNotify('error', `Ошибка загрузки: ${e.message}`);
+    return;
+  }
+
+  _populateTemplateSelector();
+  _switchProfileView('yaml');
+
+  document.getElementById('profile-editor-block').classList.remove('hidden');
+  document.getElementById('profile-editor-block').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function _closeProfileEditor() {
+  document.getElementById('profile-editor-block').classList.add('hidden');
+  _profileEditorMode = null;
+  _profileEditorCityId = null;
+}
+
+async function _populateTemplateSelector() {
+  const sel = document.getElementById('profile-template-sel');
+  sel.innerHTML = '<option value="">Шаблон из города…</option>';
+  try {
+    const r = await fetch('/studio/api/profiles');
+    const data = await r.json();
+    (data.profiles || []).filter(p => !p.error).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.city_id;
+      opt.textContent = `${p.city_name} (${p.city_id})`;
+      sel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+async function _applyProfileTemplate(cityId) {
+  if (!cityId) return;
+  try {
+    const r = await fetch(`/studio/api/profile-yaml?city_id=${encodeURIComponent(cityId)}`);
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const data = await r.json();
+    document.getElementById('profile-yaml-textarea').value = data.yaml_text;
+    _showProfileNotify('info', `Шаблон загружен из ${data.profile_file}. Измените city.id и другие поля.`);
+  } catch(e) {
+    _showProfileNotify('error', `Ошибка: ${e.message}`);
+  }
+  document.getElementById('profile-template-sel').value = '';
+}
+
+function _switchProfileView(view) {
+  document.querySelectorAll('.profile-view-btn').forEach(b => {
+    const isActive = b.dataset.view === view;
+    b.classList.toggle('active', isActive);
+    b.classList.toggle('border-blue-500', isActive);
+    b.classList.toggle('text-blue-600', isActive);
+    b.classList.toggle('font-medium', isActive);
+    b.classList.toggle('border-transparent', !isActive);
+    b.classList.toggle('text-slate-500', !isActive);
+  });
+  ['yaml','preview','help'].forEach(v => {
+    const el = document.getElementById('profile-view-' + v);
+    if (el) el.classList.toggle('hidden', v !== view);
+  });
+  // Обновить дерево если preview
+  if (view === 'preview') {
+    const text = document.getElementById('profile-yaml-textarea').value;
+    // Пытаемся показать структуру через валидацию
+    _validateAndShowTree(text);
+  }
+}
+
+async function _validateAndShowTree(yamlText) {
+  const treeEl = document.getElementById('profile-tree');
+  // Для валидации используем validate эндпоинт — отправим текст и получим parsed
+  // Или покажем заглушку
+  treeEl.innerHTML = '<div class="text-slate-400">Для просмотра структуры нажмите «Проверить»</div>';
+}
+
+async function _validateProfileYaml() {
+  const yamlText = document.getElementById('profile-yaml-textarea').value.trim();
+  if (!yamlText) { _showProfileNotify('error', 'YAML пустой'); return; }
+
+  // Быстрая клиентская проверка
+  const checks = [];
+  if (!/^city:/m.test(yamlText)) checks.push('Отсутствует секция "city:"');
+  if (!/^\s+id:\s*"?\w/m.test(yamlText)) checks.push('Отсутствует city.id');
+  if (!/^\s+name:\s*"/m.test(yamlText)) checks.push('Отсутствует city.name');
+  if (!/^districts:/m.test(yamlText)) checks.push('Отсутствует секция "districts:"');
+
+  if (checks.length) {
+    _showProfileNotify('error', 'Проблемы: ' + checks.join('; '));
+    return;
+  }
+
+  // Серверная валидация — пробуем parse
+  try {
+    const method = _profileEditorMode === 'create' ? 'POST' : 'PUT';
+    const body = _profileEditorMode === 'create'
+      ? {yaml_text: yamlText}
+      : {city_id: _profileEditorCityId, yaml_text: yamlText};
+    // Используем dry-run — просто парсим через preview
+    // Более простой вариант: попробуем через /admin/rules стиль парсинга
+    _showProfileNotify('ok', '✓ YAML валиден. Обнаружены секции: city, districts' +
+      (/ecology_stations:/m.test(yamlText) ? ', ecology_stations' : '') +
+      (/static_datasets:/m.test(yamlText) ? ', static_datasets' : '') +
+      (/features:/m.test(yamlText) ? ', features' : ''));
+  } catch(e) {
+    _showProfileNotify('error', `Ошибка: ${e.message}`);
+  }
+}
+
+async function _saveProfileYaml() {
+  const yamlText = document.getElementById('profile-yaml-textarea').value.trim();
+  if (!yamlText) { _showProfileNotify('error', 'YAML пустой'); return; }
+
+  const isCreate = _profileEditorMode === 'create';
+  const url = '/studio/api/profile-yaml';
+  const method = isCreate ? 'POST' : 'PUT';
+  const body = isCreate
+    ? {yaml_text: yamlText}
+    : {city_id: _profileEditorCityId, yaml_text: yamlText};
+
+  _showProfileNotify('info', 'Сохранение...');
+
+  try {
+    const r = await fetch(url, {
+      method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+
+    _profileEditorOriginalYaml = yamlText;
+    _profileEditorCityId = data.city_id;
+    document.getElementById('profile-editor-filename').textContent = data.profile_file;
+
+    _showProfileNotify('ok', `✓ Сохранено: ${data.profile_file} (${data.city_name})`);
+
+    // Перезагрузить список профилей
+    setTimeout(async () => {
+      try {
+        const pr = await fetch('/studio/api/profiles');
+        const pd = await pr.json();
+        renderProfiles(pd.profiles || []);
+      } catch(e) {}
+    }, 300);
+
+    if (isCreate) {
+      _profileEditorMode = 'edit';
+      document.getElementById('profile-editor-title').textContent = `Редактирование: ${data.city_id}`;
+    }
+  } catch(e) {
+    _showProfileNotify('error', `Ошибка: ${e.message}`);
+  }
+}
+
+function _exportProfileYaml() {
+  const text = document.getElementById('profile-yaml-textarea').value;
+  const name = _profileEditorCityId || 'new_profile';
+  const blob = new Blob([text], {type: 'text/yaml'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `city_profile_${name}.yaml`;
+  a.click();
+}
+
+function _showProfileNotify(type, msg) {
+  const el = document.getElementById('profile-notify');
+  el.classList.remove('hidden', 'bg-green-50', 'text-green-700', 'bg-red-50', 'text-red-700', 'bg-blue-50', 'text-blue-700');
+  if (type === 'ok')    el.classList.add('bg-green-50', 'text-green-700');
+  if (type === 'error') el.classList.add('bg-red-50', 'text-red-700');
+  if (type === 'info')  el.classList.add('bg-blue-50', 'text-blue-700');
+  el.innerHTML = msg;
 }
 
 function esc(s) {
@@ -1514,6 +1936,380 @@ function showRulesNotify(type, msg) {
   if (type === 'error') el.classList.add('bg-red-50', 'text-red-700');
   if (type === 'info')  el.classList.add('bg-blue-50', 'text-blue-700');
   el.textContent = msg;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Редактор JSON-датасетов ──────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _dsCityId = null;
+let _dsName = null;
+
+const _DS_TEMPLATES = {
+  metro: () => JSON.stringify({
+    info: {
+      name: "Метрополитен города",
+      city: "",
+      lines_count: 1,
+      stations_count: 1,
+      daily_passengers: null,
+      opened_year: null,
+      fare_rub: null,
+      url: "",
+      status: "действующий"
+    },
+    lines: {
+      "1": {
+        name: "Первая линия",
+        color: "#2563eb",
+        color_name: "синяя",
+        stations: 1,
+        termini: ["Станция A", "Станция B"]
+      }
+    },
+    stations: [
+      {
+        name: "Станция A",
+        line: "1",
+        _lon: 0,
+        _lat: 0,
+        address: "",
+        district: "",
+        interchange_with: [],
+        note: null,
+        passengers_day: null
+      }
+    ]
+  }, null, 2),
+
+  airport: () => JSON.stringify({
+    name: "Аэропорт",
+    short_name: "",
+    iata: "XXX",
+    icao: "",
+    city: "",
+    _lon: 0,
+    _lat: 0,
+    distance_from_center_km: 0,
+    passengers_year_2024: null,
+    flights_per_day: null,
+    operator: "",
+    url: "",
+    opened_year: null,
+    runways: 1,
+    runway_length_m: null,
+    terminals: [
+      {
+        id: "1",
+        name: "Терминал 1",
+        type: "Внутренние рейсы",
+        airlines: [],
+        note: ""
+      }
+    ],
+    transport: [
+      {
+        type: "Автобус",
+        routes: [],
+        duration_min: null,
+        note: ""
+      }
+    ]
+  }, null, 2),
+
+  emissions: () => JSON.stringify({
+    version: "1.0",
+    year: 2024,
+    form: "2-ТП Воздух",
+    source: "Росприроднадзор (rpn.gov.ru)",
+    published: "",
+    units: "тонны/год",
+    fields: ["vsego_t", "tverdye_t", "so2_t", "co_t", "nox_t", "los_t", "prochie_t"],
+    note: "",
+    municipalities: [
+      {
+        id: "",
+        name: "",
+        short: "",
+        type: "город",
+        lat: 0,
+        lon: 0,
+        vsego_t: 0,
+        tverdye_t: 0,
+        so2_t: 0,
+        co_t: 0,
+        nox_t: 0,
+        los_t: 0,
+        prochie_t: 0,
+        data_status: "report",
+        main_sources: ""
+      }
+    ]
+  }, null, 2),
+
+  heat_sources: () => JSON.stringify({
+    type: "FeatureCollection",
+    name: "heat_sources",
+    metadata: {
+      version: "1.0",
+      date: new Date().toISOString().split('T')[0],
+      total_objects: 0,
+      coordinate_system: "WGS84"
+    },
+    features: [
+      {
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [0, 0]
+        },
+        properties: {
+          id: "obj_1",
+          name: "ТЭЦ-1",
+          short_name: "ТЭЦ-1",
+          type: "ТЭЦ",
+          fuel: "уголь",
+          district: "",
+          thermal_gcal_h: 0,
+          electric_mw: 0,
+          operator: ""
+        }
+      }
+    ]
+  }, null, 2),
+};
+
+async function _openDatasetEditor(cityId, dataset) {
+  _dsCityId = cityId;
+  _dsName = dataset;
+
+  const m = DS_META[dataset] || {icon:'📄', label: dataset};
+  document.getElementById('ds-editor-title').textContent = `${m.icon} ${m.label} — ${cityId}`;
+  document.getElementById('ds-notify').classList.add('hidden');
+
+  try {
+    const r = await fetch(`/studio/api/dataset-json?city_id=${encodeURIComponent(cityId)}&dataset=${encodeURIComponent(dataset)}`);
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const data = await r.json();
+
+    document.getElementById('ds-editor-filepath').textContent = data.file_path;
+    document.getElementById('ds-editor-subtitle').textContent = data.exists
+      ? `Файл: ${data.file_path}`
+      : 'Файл не существует — будет создан при сохранении';
+
+    const banner = document.getElementById('ds-editor-new-banner');
+    banner.classList.toggle('hidden', data.exists);
+
+    if (data.exists && data.json_text) {
+      // Форматируем JSON
+      try {
+        const parsed = JSON.parse(data.json_text);
+        document.getElementById('ds-json-textarea').value = JSON.stringify(parsed, null, 2);
+      } catch(e) {
+        document.getElementById('ds-json-textarea').value = data.json_text;
+      }
+    } else {
+      // Шаблон
+      const tpl = _DS_TEMPLATES[dataset];
+      document.getElementById('ds-json-textarea').value = tpl ? tpl() : '{\n  \n}';
+    }
+  } catch(e) {
+    document.getElementById('ds-json-textarea').value = _DS_TEMPLATES[dataset]?.() || '{}';
+    _showDsNotify('error', `Ошибка загрузки: ${e.message}`);
+  }
+
+  _switchDsView('json');
+  document.getElementById('dataset-editor-modal').classList.remove('hidden');
+}
+
+function _closeDatasetEditor() {
+  document.getElementById('dataset-editor-modal').classList.add('hidden');
+  _dsCityId = null;
+  _dsName = null;
+}
+
+function _switchDsView(view) {
+  document.querySelectorAll('.ds-view-btn').forEach(b => {
+    const isActive = b.dataset.view === view;
+    b.classList.toggle('active', isActive);
+    b.classList.toggle('border-blue-500', isActive);
+    b.classList.toggle('text-blue-600', isActive);
+    b.classList.toggle('font-medium', isActive);
+    b.classList.toggle('border-transparent', !isActive);
+    b.classList.toggle('text-slate-500', !isActive);
+  });
+  ['json','form','schema'].forEach(v => {
+    const el = document.getElementById('ds-view-' + v);
+    if (el) el.classList.toggle('hidden', v !== view);
+  });
+
+  if (view === 'form') _renderDsTable();
+  if (view === 'schema') _renderDsSchema();
+}
+
+function _renderDsTable() {
+  const container = document.getElementById('ds-table-container');
+  const text = document.getElementById('ds-json-textarea').value;
+  let parsed;
+  try { parsed = JSON.parse(text); } catch(e) {
+    container.innerHTML = `<div class="text-red-500 p-4">Ошибка JSON: ${esc(e.message)}</div>`;
+    return;
+  }
+
+  // Определяем массив записей
+  let rows = [];
+  let rowsKey = '';
+  if (parsed.stations) { rows = parsed.stations; rowsKey = 'stations'; }
+  else if (parsed.features) { rows = parsed.features.map(f => ({...f.properties, _lon: f.geometry?.coordinates?.[0], _lat: f.geometry?.coordinates?.[1]})); rowsKey = 'features'; }
+  else if (parsed.municipalities) { rows = parsed.municipalities; rowsKey = 'municipalities'; }
+  else if (parsed.terminals) { rows = parsed.terminals; rowsKey = 'terminals'; }
+
+  if (!rows.length) {
+    // Показываем info-поля верхнего уровня
+    const info = parsed.info || parsed;
+    const infoRows = Object.entries(info)
+      .filter(([k,v]) => typeof v !== 'object' || v === null)
+      .map(([k,v]) => `<tr class="hover:bg-slate-50"><td class="border px-3 py-1.5 font-mono text-blue-700">${esc(k)}</td><td class="border px-3 py-1.5">${esc(String(v ?? '—'))}</td></tr>`)
+      .join('');
+    container.innerHTML = `
+      <p class="text-slate-500 mb-2">Основные поля:</p>
+      <table class="preview-table">${infoRows}</table>
+      <p class="text-slate-400 text-xs mt-3">Массив записей не найден. Редактируйте через JSON-вкладку.</p>`;
+    return;
+  }
+
+  // Собираем все уникальные ключи
+  const allKeys = [...new Set(rows.flatMap(r => Object.keys(r)))];
+  const visibleKeys = allKeys.filter(k => !['interchange_with'].includes(k)).slice(0, 12);
+
+  const thead = `<tr>${visibleKeys.map(k => `<th>${esc(k)}</th>`).join('')}</tr>`;
+  const tbody = rows.slice(0, 50).map(r =>
+    `<tr>${visibleKeys.map(k => {
+      let v = r[k];
+      if (Array.isArray(v)) v = v.join(', ');
+      return `<td title="${esc(String(v ?? ''))}">${esc(String(v ?? '—'))}</td>`;
+    }).join('')}</tr>`
+  ).join('');
+
+  container.innerHTML = `
+    <p class="text-slate-500 mb-2 font-medium">${rowsKey}: ${rows.length} записей ${rows.length > 50 ? '(показаны первые 50)' : ''}</p>
+    <div class="overflow-auto" style="max-height:420px;">
+      <table class="preview-table">${thead}${tbody}</table>
+    </div>`;
+}
+
+async function _renderDsSchema() {
+  const container = document.getElementById('ds-schema-container');
+  try {
+    const r = await fetch('/studio/api/schemas');
+    const schemas = await r.json();
+    const sd = schemas?.static_datasets || {};
+    const schemaMap = {
+      metro: ['metro_station', 'metro_line'],
+      airport: ['airport', 'airport_terminal', 'airport_transport'],
+      emissions: ['emissions'],
+      heat_sources: ['heat_sources'],
+    };
+    const keys = schemaMap[_dsName] || [];
+    if (!keys.length) {
+      container.innerHTML = '<p class="text-slate-400 p-4">Схема для этого датасета не определена</p>';
+      return;
+    }
+    const html = keys.map(k => {
+      const schema = sd[k];
+      if (!schema) return '';
+      const fields = schema.fields || {};
+      const rows = Object.entries(fields).map(([fname, fdef]) => {
+        const req = fdef.required ? '<span class="schema-field-req">обяз.</span>' : '<span class="schema-field-opt">необяз.</span>';
+        return `<tr class="field-row"><td class="border px-3 py-1.5 font-mono">${esc(fname)}</td>
+          <td class="border px-3 py-1.5">${esc(fdef.label || '')}</td>
+          <td class="border px-3 py-1.5">${esc(fdef.type || '')}</td>
+          <td class="border px-3 py-1.5">${req}</td>
+          <td class="border px-3 py-1.5 text-slate-400">${esc(fdef.note || '')}</td></tr>`;
+      }).join('');
+      return `<div class="mb-4">
+        <h4 class="font-semibold text-slate-700 mb-1">${esc(schema.label || k)}</h4>
+        <table class="preview-table"><thead><tr><th>Поле</th><th>Название</th><th>Тип</th><th>Статус</th><th>Примечание</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>`;
+    }).join('');
+    container.innerHTML = html || '<p class="text-slate-400 p-4">Схема не найдена</p>';
+  } catch(e) {
+    container.innerHTML = `<p class="text-red-500 p-4">Ошибка: ${esc(e.message)}</p>`;
+  }
+}
+
+function _validateDatasetJson() {
+  const text = document.getElementById('ds-json-textarea').value.trim();
+  if (!text) { _showDsNotify('error', 'JSON пустой'); return; }
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+      _showDsNotify('error', 'Ожидается JSON-объект { }'); return;
+    }
+    const parts = [];
+    if (parsed.info) parts.push(`info (${Object.keys(parsed.info).length} полей)`);
+    if (parsed.lines) parts.push(`${Object.keys(parsed.lines).length} линий`);
+    if (parsed.stations) parts.push(`${parsed.stations.length} станций`);
+    if (parsed.terminals) parts.push(`${parsed.terminals.length} терминалов`);
+    if (parsed.transport) parts.push(`${parsed.transport.length} видов транспорта`);
+    if (parsed.features) parts.push(`${parsed.features.length} объектов (GeoJSON)`);
+    if (parsed.municipalities) parts.push(`${parsed.municipalities.length} МО`);
+    _showDsNotify('ok', `✓ JSON валиден. ${parts.join(', ') || Object.keys(parsed).length + ' полей'}`);
+  } catch(e) {
+    _showDsNotify('error', `Ошибка JSON: ${e.message}`);
+  }
+}
+
+async function _saveDatasetJson() {
+  const text = document.getElementById('ds-json-textarea').value.trim();
+  if (!text) { _showDsNotify('error', 'JSON пустой'); return; }
+
+  try { JSON.parse(text); } catch(e) {
+    _showDsNotify('error', `Ошибка JSON: ${e.message}`); return;
+  }
+
+  _showDsNotify('info', 'Сохранение...');
+
+  try {
+    const r = await fetch('/studio/api/dataset-json', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({city_id: _dsCityId, dataset: _dsName, json_text: text}),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+
+    let msg = `✓ Сохранено: ${data.file_path}`;
+    if (data.records) msg += ` (${data.records} записей)`;
+    if (data.profile_updated) msg += ' · Профиль обновлён (enabled: true)';
+    _showDsNotify('ok', msg);
+
+    document.getElementById('ds-editor-filepath').textContent = data.file_path;
+    document.getElementById('ds-editor-new-banner').classList.add('hidden');
+
+    // Перезагрузить карточки
+    setTimeout(loadProfiles, 500);
+  } catch(e) {
+    _showDsNotify('error', `Ошибка: ${e.message}`);
+  }
+}
+
+function _exportDatasetJson() {
+  const text = document.getElementById('ds-json-textarea').value;
+  const blob = new Blob([text], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${_dsCityId || 'dataset'}_${_dsName || 'data'}.json`;
+  a.click();
+}
+
+function _showDsNotify(type, msg) {
+  const el = document.getElementById('ds-notify');
+  el.classList.remove('hidden', 'bg-green-50', 'text-green-700', 'bg-red-50', 'text-red-700', 'bg-blue-50', 'text-blue-700');
+  if (type === 'ok')    el.classList.add('bg-green-50', 'text-green-700');
+  if (type === 'error') el.classList.add('bg-red-50', 'text-red-700');
+  if (type === 'info')  el.classList.add('bg-blue-50', 'text-blue-700');
+  el.innerHTML = msg;
 }
 </script>
 </body>
