@@ -150,7 +150,8 @@ def fetch_outages_detail(
         reason, scraped_at
     }
     """
-    url = f"{_get_city_feature("power_outages_base", "")}{district_href}" if district_href.startswith("/") else district_href
+    base = _get_city_feature("power_outages_base", "")
+    url = f"{base}{district_href}" if district_href.startswith("/") else district_href
     try:
         resp = requests.get(url, headers=SCRAPER_HEADERS, timeout=SCRAPER_TIMEOUT)
         resp.raise_for_status()
