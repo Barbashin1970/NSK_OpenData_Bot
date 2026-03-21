@@ -422,10 +422,17 @@ def get_ask(
             except Exception as e:
                 logging.getLogger(__name__).error("Power outages fetch failed: %s", e, exc_info=True)
 
-        result = execute_power(plan)
+        try:
+            result = execute_power(plan)
+        except Exception as e:
+            logging.getLogger(__name__).error("execute_power failed: %s", e, exc_info=True)
+            result = {"rows": [], "columns": [], "count": 0}
         _raw = plan.extra_filters.get("utility", None)
         _uf = "электроснабж" if _raw is None else (_raw or None)
-        meta = get_power_meta(utility_filter=_uf, district_filter=plan.district)
+        try:
+            meta = get_power_meta(utility_filter=_uf, district_filter=plan.district)
+        except Exception:
+            meta = {}
         return {
             "query": q,
             "topic": topic,
