@@ -282,12 +282,24 @@ def upsert_measurements(records: list[dict[str, Any]]) -> int:
 
 
 def is_ecology_stale(ttl_minutes: int = ECOLOGY_TTL_MINUTES) -> bool:
-    """True если данных нет или они устарели."""
+    """True если данных нет или они устарели (для текущего города).
+
+    Фильтрует по station_id текущего city_profile, чтобы после
+    переключения города данные старого города не маскировали отсутствие
+    данных нового.
+    """
     try:
         init_ecology_tables()
+        current_ids = [s["station_id"] for s in _get_ecology_stations()]
+        if not current_ids:
+            return True
         conn = _get_conn()
         try:
-            row = conn.execute("SELECT MAX(measured_at) FROM fact_measurements").fetchone()
+            placeholders = ", ".join(["?"] * len(current_ids))
+            row = conn.execute(
+                f"SELECT MAX(measured_at) FROM fact_measurements WHERE station_id IN ({placeholders})",
+                current_ids,
+            ).fetchone()
             last = row[0] if row else None
             if not last:
                 return True

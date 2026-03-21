@@ -793,9 +793,11 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
       border: plannedH === 0 ? 'border-emerald-200': 'border-amber-200',
       note: plannedH === 0 ? (d ? `в ${dShort}: плановых нет` : 'плановых нет') : (d ? `плановые в ${dShort}` : 'запланированные'),
       onclick:`askNow('${qPlan}')` },
-    { icon:'🍃', label:'AQI (средний)',    val: avgAqi != null ? String(avgAqi) : '—',
+    { icon:'🍃', label:'AQI (средний)',
+      val: avgAqi != null ? String(avgAqi) : (window._ecologyLoading ? '⟳' : '—'),
       color: ac.text, bg: ac.bg, border: ac.border,
-      note: ac.label + (d ? ` · ${dShort}` : ''),
+      note: avgAqi != null ? ac.label + (d ? ` · ${dShort}` : '')
+            : window._ecologyLoading ? 'загрузка...' : 'нет данных',
       onclick:`askNow('${qEco}')` },
     { icon:'⚠️', label:'Активных рисков', val: String(riskCount),
       color: riskCount > 0 ? 'text-amber-700' : 'text-emerald-600',
@@ -922,9 +924,13 @@ function renderMayorDashboard(power, eco, risks) {
       border: plannedH === 0 ? 'border-emerald-200': 'border-amber-200',
       sub: plannedH === 0 ? 'плановых отключений нет' : 'запланировано',
       link:"askNow('плановые отключения на неделю')" },
-    { label:'Качество воздуха (AQI ср.)', val: avgAqi != null ? String(avgAqi) : '—', icon:'🍃',
+    { label:'Качество воздуха (AQI ср.)',
+      val: avgAqi != null ? String(avgAqi) : (window._ecologyLoading ? '⟳' : '—'),
+      icon:'🍃',
       color: ac.text, bg: ac.bg, border: ac.border,
-      sub: ac.label + ' · PM2.5 ср. ' + avgPm25 + ' мкг/м³', link:"askNow('качество воздуха в городе')" },
+      sub: avgAqi != null ? ac.label + ' · PM2.5 ср. ' + avgPm25 + ' мкг/м³'
+           : window._ecologyLoading ? 'загрузка данных экологии...' : 'нет данных',
+      link:"askNow('качество воздуха в городе')" },
     { label:'Активных угроз городу', val: String(riskCount), icon:'⚠️',
       color: riskCount > 0 ? 'text-amber-700' : 'text-emerald-600',
       bg:    riskCount > 0 ? 'bg-amber-50'    : 'bg-emerald-50',
@@ -2894,6 +2900,14 @@ function renderEcology(data) {
     : '—';
 
   if (op !== 'ECO_RISKS' && op !== 'ECO_FORECAST' && !rows.length) {
+    if (window._ecologyLoading) {
+      return `
+        <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center">
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-sky-500 border-t-transparent mb-3"></div>
+          <p class="text-slate-500 font-medium">Загрузка экологических данных...</p>
+          <p class="text-xs text-slate-400 mt-2">Подключение к станциям мониторинга нового города</p>
+        </div>`;
+    }
     return `
       <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center">
         <span class="text-3xl block mb-3">🍃</span>
@@ -5372,8 +5386,20 @@ async function _setActiveCity(cityId) {
     // Сброс открытого ответа (старый город) — чтобы не было путаницы
     const _ra = document.getElementById('resultArea');
     if (_ra) { _ra.innerHTML = ''; _ra.classList.add('hidden'); }
+    // Флаг: экология подгружается для нового города
+    window._ecologyLoading = true;
     await loadCityConfig();
-    // Перезагрузить дашборд если видим
+    // Фоновый prefetch экологии — бэкенд уже запустил фоновый поток,
+    // но нам нужно дождаться данных перед рендером дашборда
+    fetch('/ecology/update', { method: 'POST' })
+      .then(() => { window._ecologyLoading = false; })
+      .catch(() => { window._ecologyLoading = false; })
+      .finally(() => {
+        // Перерисовать дашборд когда экология готова
+        const dash = document.getElementById('roleDashboard');
+        if (dash && !dash.classList.contains('hidden')) loadRoleDashboard();
+      });
+    // Перезагрузить дашборд сразу (покажет спиннер экологии)
     const dash = document.getElementById('roleDashboard');
     if (dash && !dash.classList.contains('hidden')) loadRoleDashboard();
   } catch(e) {}

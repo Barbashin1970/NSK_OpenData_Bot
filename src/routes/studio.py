@@ -134,6 +134,13 @@ def studio_set_active_city(body: dict):
     except Exception:
         pass
 
+    # Сброс и prefetch экологии для нового города
+    try:
+        from ..ecology_cache import upsert_stations as _eco_upsert
+        _eco_upsert()  # синхронизирует dim_stations для нового города
+    except Exception:
+        pass
+
     new_profile = _gcp()
     city_name = new_profile.get("city", {}).get("name", city_id)
 
@@ -145,6 +152,19 @@ def studio_set_active_city(body: dict):
         _router.SUB_DISTRICTS_INFO = _gsdi()
     except Exception:
         pass
+
+    # Фоновый prefetch экологических данных для нового города
+    def _bg_ecology_prefetch():
+        try:
+            from ..ecology_cache import is_ecology_stale, upsert_measurements
+            from ..ecology_fetcher import fetch_all_ecology
+            if is_ecology_stale():
+                upsert_measurements(fetch_all_ecology())
+        except Exception:
+            pass
+
+    import threading
+    threading.Thread(target=_bg_ecology_prefetch, daemon=True).start()
 
     return {"ok": True, "city_id": city_id, "city_name": city_name, "profile_file": matched_path.name}
 
