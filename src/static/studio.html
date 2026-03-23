@@ -35,18 +35,23 @@
 <body class="bg-slate-50 min-h-screen">
 
 <!-- ── Шапка ──────────────────────────────────────────────────────────────── -->
-<header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
+<header class="bg-gradient-to-r from-slate-800 to-slate-900 text-white px-6 py-3 flex items-center justify-between shadow-md">
   <div class="flex items-center gap-3">
-    <a href="/docs" class="text-slate-400 hover:text-slate-600 text-sm">← API docs</a>
-    <span class="text-slate-300">|</span>
-    <span class="font-bold text-slate-800">Data Studio</span>
-    <span class="text-xs text-slate-400 hidden sm:inline">управление городскими данными</span>
+    <a href="/" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+      <img src="/static/img/sigma-cat.png" class="h-8 w-auto" alt="Sigma" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.4))">
+      <span class="font-bold text-base">Studio</span>
+    </a>
+    <span class="text-slate-500">|</span>
+    <span class="text-xs text-slate-400 hidden sm:inline" id="studio-city-name">City OpenData Bot</span>
   </div>
   <div class="flex items-center gap-3">
+    <a href="/news-editor" target="_blank"
+       class="text-xs px-3 py-1.5 rounded-lg bg-purple-500/15 border border-purple-400/30 text-purple-300 hover:bg-purple-500/25 transition-colors hidden sm:inline-flex items-center gap-1">
+      Редактор новостей</a>
     <button onclick="document.getElementById('studio-help-modal').classList.remove('hidden')"
-            class="text-xs text-slate-500 hover:text-blue-600 border border-slate-200 hover:border-blue-300 rounded-full w-6 h-6 flex items-center justify-center font-bold transition-colors"
+            class="text-xs text-slate-400 hover:text-white border border-slate-600 hover:border-slate-400 rounded-full w-6 h-6 flex items-center justify-center font-bold transition-colors"
             title="Справка по Data Studio">?</button>
-    <a href="/" class="text-xs text-slate-400 hover:text-blue-600">← Главная</a>
+    <a href="/" class="text-xs text-slate-400 hover:text-white transition-colors">← Главная</a>
   </div>
 </header>
 
@@ -64,7 +69,31 @@
     <div class="overflow-y-auto px-6 py-5 text-sm text-slate-700 space-y-5">
 
       <div>
-        <div class="font-semibold text-slate-800 mb-1">🏙 Города — городские профили</div>
+        <div class="font-semibold text-slate-800 mb-1">Обзор — дашборд системы</div>
+        <p class="text-slate-600 leading-relaxed">
+          Сводная панель: источники данных и их статусы, поддерживаемые темы, основные KPI города.
+          Быстрый доступ к тестированию и управлению городами.
+        </p>
+      </div>
+
+      <div>
+        <div class="font-semibold text-slate-800 mb-1">API — документация эндпоинтов</div>
+        <p class="text-slate-600 leading-relaxed">
+          Встроенный Swagger UI с интерактивным тестированием всех API-эндпоинтов.
+          Поддерживает Try It Out для мгновенной проверки запросов.
+        </p>
+      </div>
+
+      <div>
+        <div class="font-semibold text-slate-800 mb-1">Тестирование — pytest + загрузка данных</div>
+        <p class="text-slate-600 leading-relaxed">
+          Запуск автоматических тестов (pytest) и массовая загрузка данных из всех источников.
+          Показывает статус каждого датасета (загружен / устарел / отсутствует).
+        </p>
+      </div>
+
+      <div>
+        <div class="font-semibold text-slate-800 mb-1">Города — городские профили</div>
         <p class="text-slate-600 leading-relaxed">
           Каждый профиль описывает один город: ID, название, временная зона, список районов, доступные датасеты.
           Профили хранятся в <code class="bg-slate-100 px-1 rounded">config/city_profile_*.yaml</code>.
@@ -125,22 +154,28 @@
 </div>
 
 <!-- ── Табы ───────────────────────────────────────────────────────────────── -->
-<div class="bg-white border-b border-slate-200 px-6">
-  <nav class="flex gap-0">
-    <button class="tab-btn active px-5 py-3 text-sm text-slate-600 border-b-2" data-tab="profiles">
-      🏙 Города
+<div class="bg-white border-b border-slate-200 px-6 overflow-x-auto">
+  <nav class="flex gap-0 min-w-max">
+    <button class="tab-btn active px-5 py-3 text-sm text-slate-600 border-b-2" data-tab="overview">
+      Обзор
     </button>
-    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="import">
-      📥 Импорт данных
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="api">
+      API
     </button>
-    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="sources">
-      🔗 Онлайн источники
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="testing">
+      Тестирование<span id="test-fail-badge" class="hidden ml-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"></span>
+    </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="profiles">
+      Города
+    </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="data">
+      Данные
     </button>
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="schemas">
-      📋 Справочник схем
+      Схемы
     </button>
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="rules">
-      ⚙️ Регламенты
+      Регламенты
     </button>
   </nav>
 </div>
@@ -148,8 +183,110 @@
 <!-- ── Контент ────────────────────────────────────────────────────────────── -->
 <main class="max-w-6xl mx-auto px-4 py-6">
 
+  <!-- ══ Вкладка: Обзор ═══════════════════════════════════════════════════ -->
+  <div id="tab-overview" class="tab-pane active">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-800">Обзор системы</h2>
+        <p class="text-xs text-slate-400 mt-0.5" id="overview-city-label">Загрузка...</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="switchTab('testing')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors">Тестировать</button>
+        <button onclick="switchTab('profiles')" class="text-xs bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-1.5 rounded-lg transition-colors">+ Город</button>
+      </div>
+    </div>
+
+    <!-- Карточки источников данных -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6" id="overview-sources-grid">
+      <div class="text-slate-400 text-sm col-span-full py-8 text-center">Загрузка статусов...</div>
+    </div>
+
+    <!-- Поддерживаемые темы -->
+    <div>
+      <h3 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">Поддерживаемые темы</h3>
+      <div id="overview-topics-grid" class="flex flex-wrap gap-2">
+        <span class="text-sm text-slate-400">Загрузка...</span>
+      </div>
+    </div>
+
+    <!-- Быстрая информация -->
+    <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4" id="overview-kpi-row">
+    </div>
+  </div>
+
+  <!-- ══ Вкладка: API ═════════════════════════════════════════════════════ -->
+  <div id="tab-api" class="tab-pane">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-800">API Документация</h2>
+        <p class="text-xs text-slate-400 mt-0.5">OpenAPI 3.1 · Swagger UI · интерактивное тестирование эндпоинтов</p>
+      </div>
+      <a href="/openapi.json" target="_blank" class="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">/openapi.json</a>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-xl overflow-hidden" style="height: calc(100vh - 200px); min-height:500px;">
+      <iframe id="api-iframe" src="" class="w-full h-full border-0" style="display:none;"></iframe>
+      <div id="api-placeholder" class="flex items-center justify-center h-full text-slate-400 text-sm">
+        Нажмите для загрузки Swagger UI...
+        <button onclick="_loadApiDocs()" class="ml-3 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">Загрузить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Вкладка: Тестирование ════════════════════════════════════════════ -->
+  <div id="tab-testing" class="tab-pane">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-800">Тестирование системы</h2>
+        <p class="text-xs text-slate-400 mt-0.5">pytest + проверка состояния данных</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="st-update-btn" onclick="STTests.updateAll()"
+                class="text-xs px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors flex items-center gap-1.5">
+          &#8635; Загрузить все данные
+        </button>
+        <button id="st-run-btn" onclick="STTests.run()"
+                class="text-xs px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors flex items-center gap-1.5">
+          &#9654; Тестирование
+        </button>
+      </div>
+    </div>
+
+    <!-- Прогресс-бар -->
+    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+      <div class="bg-slate-100 rounded-full h-3 overflow-hidden mb-2">
+        <div id="st-progress-fill" class="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-300" style="width:0%"></div>
+      </div>
+      <div class="flex justify-between items-center text-xs text-slate-500">
+        <span id="st-pct-text" class="font-bold text-blue-600">0%</span>
+        <span class="flex gap-4">
+          <span class="text-green-600" id="st-pass-cnt">0 прошли</span>
+          <span class="text-red-500" id="st-fail-cnt">0 упали</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Состояние данных -->
+    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Состояние данных</div>
+      <div class="flex flex-wrap gap-2" id="st-health-grid">
+        <span class="text-xs text-slate-400">Запустите тесты для проверки</span>
+      </div>
+    </div>
+
+    <!-- Лог -->
+    <div class="bg-slate-900 rounded-xl overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">
+        <span class="text-xs font-semibold text-slate-400">Лог выполнения</span>
+        <span id="st-result" class="text-xs font-semibold"></span>
+      </div>
+      <div id="st-log-body" class="p-4 font-mono text-xs text-slate-400 overflow-y-auto" style="max-height:400px; min-height:120px;">
+        <div class="text-slate-600">Нажмите «Тестирование» или «Загрузить все данные» для начала.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ Вкладка: Города ════════════════════════════════════════════════════ -->
-  <div id="tab-profiles" class="tab-pane active">
+  <div id="tab-profiles" class="tab-pane">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold text-slate-800">Городские профили</h2>
       <button id="btn-new-profile"
@@ -255,8 +392,16 @@
     </div>
   </div>
 
-  <!-- ══ Вкладка: Импорт ════════════════════════════════════════════════════ -->
-  <div id="tab-import" class="tab-pane">
+  <!-- ══ Вкладка: Данные (объединяет Импорт + Онлайн источники) ═══════════ -->
+  <div id="tab-data" class="tab-pane">
+    <!-- Под-табы -->
+    <div class="flex gap-0 border-b border-slate-200 mb-5">
+      <button class="data-sub-btn active text-sm px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-medium" data-sub="import" onclick="_switchDataSub('import')">Импорт данных</button>
+      <button class="data-sub-btn text-sm px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-700" data-sub="sources" onclick="_switchDataSub('sources')">Онлайн источники</button>
+    </div>
+
+    <!-- Под-вкладка: Импорт -->
+    <div id="data-sub-import" class="data-sub-pane">
     <h2 class="text-lg font-semibold text-slate-800 mb-4">Импорт данных</h2>
 
     <!-- Прогресс шагов -->
@@ -312,7 +457,7 @@
       </button>
       <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-500">
         <span class="font-medium text-slate-600">Статические датасеты</span> (метро, аэропорт, выбросы, теплоисточники) редактируются
-        на вкладке <a href="#" onclick="event.preventDefault();document.querySelector('[data-tab=\x22cities\x22]').click()" class="text-blue-600 hover:underline font-medium">Города</a>
+        на вкладке <a href="#" onclick="event.preventDefault();switchTab('profiles')" class="text-blue-600 hover:underline font-medium">Города</a>
         → кнопка «Редактировать» в карточке датасета.
       </div>
     </div>
@@ -398,10 +543,11 @@
                 class="text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors">← Импортировать ещё один датасет</button>
       </div>
     </div>
-  </div>
 
-  <!-- ══ Вкладка: Онлайн источники ════════════════════════════════════════ -->
-  <div id="tab-sources" class="tab-pane">
+    </div><!-- /data-sub-import -->
+
+    <!-- Под-вкладка: Онлайн источники -->
+    <div id="data-sub-sources" class="data-sub-pane hidden">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold text-slate-800">Онлайн источники данных</h2>
     </div>
@@ -426,7 +572,9 @@
 
     <!-- Карточки источников -->
     <div id="sources-cards" class="space-y-3"></div>
-  </div>
+
+    </div><!-- /data-sub-sources -->
+  </div><!-- /tab-data -->
 
   <!-- ══ Вкладка: Справочник схем ═══════════════════════════════════════════ -->
   <div id="tab-schemas" class="tab-pane">
@@ -698,20 +846,381 @@ const STATE = {
 };
 
 // ── Таб-навигация ──────────────────────────────────────────────────────────
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const tab = btn.dataset.tab;
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + tab).classList.add('active');
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  if (btn) btn.classList.add('active');
+  const pane = document.getElementById('tab-' + tab);
+  if (pane) pane.classList.add('active');
 
-    if (tab === 'profiles') loadProfiles();
-    if (tab === 'sources')  initSourcesTab();
-    if (tab === 'schemas')  loadSchemas();
-    if (tab === 'rules')    initRulesTab();
-  });
+  // Lazy-load tab content
+  if (tab === 'overview')  loadOverview();
+  if (tab === 'api')       _loadApiDocs();
+  if (tab === 'profiles')  loadProfiles();
+  if (tab === 'data')      { /* sub-tabs handle their own init */ }
+  if (tab === 'schemas')   loadSchemas();
+  if (tab === 'rules')     initRulesTab();
+
+  // Update URL hash
+  history.replaceState(null, '', '#' + tab);
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
+
+// ── Под-табы «Данные» ────────────────────────────────────────────────────
+function _switchDataSub(sub) {
+  document.querySelectorAll('.data-sub-btn').forEach(b => {
+    b.classList.remove('active');
+    b.classList.remove('border-blue-500', 'text-blue-600', 'font-medium');
+    b.classList.add('border-transparent', 'text-slate-500');
+  });
+  document.querySelectorAll('.data-sub-pane').forEach(p => p.classList.add('hidden'));
+  const btn = document.querySelector(`.data-sub-btn[data-sub="${sub}"]`);
+  if (btn) {
+    btn.classList.add('active', 'border-blue-500', 'text-blue-600', 'font-medium');
+    btn.classList.remove('border-transparent', 'text-slate-500');
+  }
+  const pane = document.getElementById('data-sub-' + sub);
+  if (pane) pane.classList.remove('hidden');
+
+  if (sub === 'sources') initSourcesTab();
+}
+
+// ── Hash-роутинг ─────────────────────────────────────────────────────────
+const VALID_TABS = ['overview','api','testing','profiles','data','schemas','rules'];
+function _initFromHash() {
+  const hash = location.hash.replace('#','');
+  if (VALID_TABS.includes(hash)) {
+    switchTab(hash);
+  } else {
+    switchTab('overview');
+  }
+}
+window.addEventListener('hashchange', _initFromHash);
+
+// ── API docs iframe (lazy) ──────────────────────────────────────────────
+let _apiLoaded = false;
+function _loadApiDocs() {
+  if (_apiLoaded) return;
+  _apiLoaded = true;
+  const iframe = document.getElementById('api-iframe');
+  const placeholder = document.getElementById('api-placeholder');
+  iframe.src = '/docs';
+  iframe.style.display = 'block';
+  if (placeholder) placeholder.style.display = 'none';
+}
+
+// ── Обзор (Dashboard) ──────────────────────────────────────────────────
+let _overviewLoaded = false;
+async function loadOverview() {
+  if (_overviewLoaded) return;
+  _overviewLoaded = true;
+
+  // Load city config
+  let cityName = 'Город', cityId = '', hasCsv = false, hasPower = false;
+  try {
+    const r = await fetch('/api/city-config');
+    const cfg = await r.json();
+    cityName = cfg.city_name || cityName;
+    cityId = cfg.city_id || '';
+    hasCsv = !!cfg.has_opendata_csv;
+    hasPower = !!cfg.power_outages_url;
+    document.getElementById('studio-city-name').textContent = cityName;
+    document.getElementById('overview-city-label').textContent = cityName + ' · ' + (cfg.timezone || '');
+  } catch(_) {}
+
+  // Source status cards
+  const sources = [
+    { name: 'Открытые данные мэрии', desc: 'CSV-файлы: парковки, школы, аптеки и др.', icon: '📊', ttl: '24 ч', enabled: hasCsv },
+    { name: 'Отключения ЖКХ', desc: 'Электричество, тепло, вода, газ', icon: '⚡', ttl: '30 мин', enabled: hasPower },
+    { name: 'Экология (Open-Meteo)', desc: 'PM2.5, PM10, AQI, температура, ветер', icon: '🌿', ttl: '15 мин', enabled: true },
+    { name: 'CityAir API', desc: 'Физические датчики качества воздуха', icon: '🏭', ttl: '15 мин', enabled: true },
+    { name: 'Камеры (OSM)', desc: 'Камеры фиксации нарушений ПДД', icon: '📷', ttl: '7 дн', enabled: true },
+    { name: 'Медучреждения (OSM)', desc: 'Больницы, поликлиники', icon: '🏥', ttl: '72 ч', enabled: true },
+  ];
+
+  const grid = document.getElementById('overview-sources-grid');
+  grid.innerHTML = sources.map(s => `
+    <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3 ${s.enabled ? '' : 'opacity-50'}">
+      <span class="text-2xl flex-shrink-0">${s.icon}</span>
+      <div class="min-w-0">
+        <div class="font-semibold text-slate-800 text-sm">${esc(s.name)}</div>
+        <div class="text-xs text-slate-500 mt-0.5">${esc(s.desc)}</div>
+        <div class="flex items-center gap-2 mt-2">
+          <span class="text-[10px] px-2 py-0.5 rounded-full font-medium ${s.enabled ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-400 border border-slate-200'}">${s.enabled ? 'Подключён' : 'Не подключён'}</span>
+          <span class="text-[10px] text-slate-400">TTL: ${s.ttl}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // Topics
+  try {
+    const r = await fetch('/topics');
+    const topics = await r.json();
+    const grid2 = document.getElementById('overview-topics-grid');
+    grid2.innerHTML = (topics || []).map(t => `
+      <span class="text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 font-medium">${esc(t.name || t.id || t)}</span>
+    `).join('');
+  } catch(_) {}
+
+  // KPI row
+  const kpi = document.getElementById('overview-kpi-row');
+  try {
+    const r = await fetch('/api/city-config');
+    const cfg = await r.json();
+    const districts = cfg.districts || [];
+    kpi.innerHTML = `
+      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+        <div class="text-2xl font-bold text-blue-600">${districts.length}</div>
+        <div class="text-xs text-slate-500 mt-1">Районов</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+        <div class="text-2xl font-bold text-emerald-600">${hasCsv ? 'CSV' : '—'}</div>
+        <div class="text-xs text-slate-500 mt-1">OpenData</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
+        <div class="text-2xl font-bold text-purple-600">v1.2.0</div>
+        <div class="text-xs text-slate-500 mt-1">Версия API</div>
+      </div>
+    `;
+  } catch(_) {}
+}
+
+// ── Тестирование (Studio Tests) ─────────────────────────────────────────
+const STTests = (() => {
+  let source = null;
+  let total = 0, passed = 0, failed = 0;
+
+  const el = id => document.getElementById(id);
+
+  function _setProgress(pct, p, f, tot) {
+    el('st-progress-fill').style.width = pct + '%';
+    el('st-pct-text').textContent = pct + '%' + (tot ? ' (' + (p+f) + '/' + tot + ')' : '');
+    el('st-pass-cnt').textContent = p + ' прошли';
+    el('st-fail-cnt').textContent = f + ' упали';
+  }
+
+  function _addLine(text, cls) {
+    const d = document.createElement('div');
+    d.style.cssText = 'font-size:11.5px;line-height:1.55;white-space:pre-wrap;word-break:break-all;padding:1px 0;';
+    if (cls === 'passed') d.style.color = '#4ade80';
+    else if (cls === 'failed') d.style.color = '#f87171';
+    else if (cls === 'warn') d.style.color = '#facc15';
+    else if (cls === 'info') d.style.color = '#7dd3fc';
+    else if (cls === 'dim') d.style.color = '#475569';
+    else d.style.color = '#94a3b8';
+    d.textContent = text;
+    el('st-log-body').appendChild(d);
+    el('st-log-body').scrollTop = el('st-log-body').scrollHeight;
+  }
+
+  function run() {
+    if (source) { source.close(); source = null; }
+    el('st-log-body').innerHTML = '';
+    el('st-result').textContent = '';
+    el('st-result').className = 'text-xs font-semibold';
+    _setProgress(0, 0, 0, 0);
+    el('st-run-btn').disabled = true;
+    el('st-health-grid').innerHTML = '';
+    el('st-progress-fill').style.background = 'linear-gradient(90deg,#3b82f6,#60a5fa)';
+    total = 0; passed = 0; failed = 0;
+
+    const _topicLabels = {
+      parking:'Парковки', stops:'Остановки', schools:'Школы',
+      kindergartens:'Детсады', libraries:'Библиотеки', pharmacies:'Аптеки',
+      parks:'Парки', sport_grounds:'Спортплощадки', sport_orgs:'Спортклубы',
+      culture:'Культура', power_outages:'Отключения ЖКХ', ecology:'Экология',
+      construction_permits:'construction_permits', construction_commissioned:'construction_commissioned',
+      cameras:'cameras', medical:'medical',
+    };
+
+    source = new EventSource('/run-tests');
+    source.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      if (d.type === 'health') {
+        const g = el('st-health-grid');
+        g.innerHTML = '';
+        d.checks.forEach(c => {
+          const chip = document.createElement('span');
+          const clr = c.status === 'ok' ? 'bg-green-50 text-green-700 border-green-200'
+                    : c.status === 'stale' ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : 'bg-purple-50 text-purple-700 border-purple-200';
+          chip.className = `text-xs px-2.5 py-1 rounded-lg border ${clr}`;
+          chip.title = c.msg;
+          chip.textContent = (_topicLabels[c.topic] || c.topic) + (c.status !== 'ok' ? ' ⚠' : '');
+          g.appendChild(chip);
+        });
+      } else if (d.type === 'start') {
+        total = d.total;
+        _addLine('Собрано тестов: ' + total, 'info');
+      } else if (d.type === 'progress') {
+        if (d.status === 'passed') { passed++; _addLine('  \u2713 ' + d.short, 'passed'); }
+        else                       { failed++; _addLine('  \u2717 ' + d.short, 'failed'); }
+        _setProgress(d.pct, passed, failed, d.total);
+      } else if (d.type === 'log') {
+        if (!d.line.trim()) return;
+        const cls = d.line.includes('ERROR') ? 'failed'
+                  : d.line.includes('WARNING') ? 'warn'
+                  : d.line.startsWith('FAILED') ? 'failed'
+                  : d.line.match(/^={3,}/) ? 'dim' : '';
+        _addLine(d.line, cls);
+      } else if (d.type === 'done') {
+        source.close(); source = null;
+        el('st-run-btn').disabled = false;
+        if (d.no_pytest) {
+          _setProgress(0, 0, 0, 0);
+          el('st-pct-text').textContent = 'N/A';
+          el('st-progress-fill').style.width = '0%';
+          el('st-progress-fill').style.background = '#334155';
+          const r = el('st-result');
+          r.textContent = '⚠ pytest не установлен в этом окружении';
+          r.style.color = '#94a3b8';
+          _addLine('', '');
+          _addLine('⚠ pytest не установлен в этом окружении.', 'warn');
+          _addLine('Тестирование доступно только в локальной разработке.', 'dim');
+          _addLine('Для запуска локально: pip install pytest && python -m pytest tests/', 'dim');
+        } else {
+          _setProgress(100, d.passed, d.failed, d.total);
+          el('st-progress-fill').style.background = d.failed > 0
+            ? 'linear-gradient(90deg,#dc2626,#ef4444)'
+            : 'linear-gradient(90deg,#16a34a,#4ade80)';
+          const r = el('st-result');
+          if (d.failed === 0 && d.returncode === 0) {
+            r.textContent = '\u2713 Все тесты прошли (' + d.passed + ')';
+            r.style.color = '#4ade80';
+            _addLine('', '');
+            _addLine('Все ' + d.passed + ' тестов прошли.' + (d.skipped ? ' Пропущено: ' + d.skipped : ''), 'passed');
+          } else {
+            r.textContent = '\u2717 Упало: ' + d.failed;
+            r.style.color = '#f87171';
+            _addLine('', '');
+            _addLine('Упавшие тесты:', 'warn');
+            d.failed_lines.forEach(l => _addLine('  ' + l, 'failed'));
+            // Update badge
+            const badge = document.getElementById('test-fail-badge');
+            badge.textContent = d.failed;
+            badge.classList.remove('hidden');
+          }
+        }
+      }
+    };
+    source.onerror = () => {
+      source.close(); source = null;
+      el('st-run-btn').disabled = false;
+      _addLine('Ошибка подключения к /run-tests', 'failed');
+    };
+  }
+
+  async function updateAll() {
+    const btn = el('st-update-btn');
+    const runB = el('st-run-btn');
+    el('st-log-body').innerHTML = '';
+    el('st-result').textContent = '';
+    el('st-result').className = 'text-xs font-semibold';
+    btn.disabled = true;
+    runB.disabled = true;
+    btn.innerHTML = '&#8635; Загружаю данные…';
+
+    let cityName = 'город', hasOpendataCsv = true, hasPower = true;
+    try {
+      const cfgResp = await fetch('/api/city-config');
+      if (cfgResp.ok) {
+        const cfg = await cfgResp.json();
+        cityName = cfg.city_name || cityName;
+        hasOpendataCsv = !!cfg.has_opendata_csv;
+        hasPower = !!(cfg.power_outages_url);
+      }
+    } catch (_) {}
+
+    _addLine('Загрузка данных: ' + cityName, 'info');
+    _addLine('', '');
+
+    let totalOk = 0, totalErr = 0;
+
+    if (hasOpendataCsv) {
+      _addLine('▶ Открытые данные мэрии…', 'info');
+      try {
+        const resp = await fetch('/update', { method: 'POST' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        for (const [tid, info] of Object.entries(data.updated || {})) {
+          if (info.success) { totalOk++; _addLine('  \u2713 ' + tid + ' — ' + (info.rows||0) + ' строк', 'passed'); }
+          else              { totalErr++; _addLine('  \u2717 ' + tid + ' — ошибка', 'failed'); }
+        }
+      } catch(e) { totalErr++; _addLine('  \u2717 Открытые данные: ' + e.message, 'failed'); }
+    } else {
+      _addLine('▷ Открытые данные CSV — не подключены для ' + cityName, 'dim');
+    }
+
+    _addLine('', '');
+    _addLine('▶ Экология и погода (Open-Meteo)…', 'info');
+    try {
+      const resp = await fetch('/ecology/update', { method: 'POST' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      if (data.success) { totalOk++; _addLine('  \u2713 ecology — ' + (data.records_loaded||0) + ' измерений', 'passed'); }
+      else              { totalErr++; _addLine('  \u2717 ecology — данные не загружены', 'failed'); }
+    } catch(e) { totalErr++; _addLine('  \u2717 Экология: ' + e.message, 'failed'); }
+
+    _addLine('', '');
+    if (hasPower) {
+      _addLine('▶ Отключения ЖКХ…', 'info');
+      try {
+        const resp = await fetch('/power/update', { method: 'POST' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (data.success) { totalOk++; _addLine('  \u2713 power_outages — ' + (data.records_loaded||0) + ' записей', 'passed'); }
+        else              { totalErr++; _addLine('  \u2717 power_outages — данные не загружены' + (data.error ? ': ' + data.error : ''), 'failed'); }
+      } catch(e) { totalErr++; _addLine('  \u2717 Отключения ЖКХ: ' + e.message, 'failed'); }
+    } else {
+      _addLine('▷ Отключения ЖКХ — не подключены для ' + cityName, 'dim');
+    }
+
+    _addLine('', '');
+    _addLine('▶ Камеры (OpenStreetMap)…', 'info');
+    try {
+      const resp = await fetch('/cameras/update', { method: 'POST' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      const info = (data.updated || {}).cameras || {};
+      if (info.success) { totalOk++; _addLine('  \u2713 cameras — ' + (info.rows||0) + ' камер', 'passed'); }
+      else              { totalErr++; _addLine('  \u2717 cameras — ошибка загрузки', 'failed'); }
+    } catch(e) { totalErr++; _addLine('  \u2717 Камеры: ' + e.message, 'failed'); }
+
+    _addLine('', '');
+    _addLine('▶ Медицинские учреждения (OpenStreetMap)…', 'info');
+    try {
+      const resp = await fetch('/medical/update', { method: 'POST' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      const info = (data.updated || {}).medical || {};
+      if (info.success) { totalOk++; _addLine('  \u2713 medical — ' + (info.rows||0) + ' объектов', 'passed'); }
+      else              { totalErr++; _addLine('  \u2717 medical — ошибка загрузки', 'failed'); }
+    } catch(e) { totalErr++; _addLine('  \u2717 Медицина: ' + e.message, 'failed'); }
+
+    _addLine('', '');
+    const r = el('st-result');
+    if (totalErr === 0) {
+      _addLine('Все источники ' + cityName + ' обновлены (' + totalOk + ' успешно).', 'passed');
+      r.textContent = '\u2713 Обновлено (' + totalOk + ')';
+      r.style.color = '#4ade80';
+    } else {
+      _addLine('Загружено: ' + totalOk + ', ошибок: ' + totalErr + '.', 'warn');
+      r.textContent = '⚠ ' + totalErr + ' ошибок';
+      r.style.color = '#f87171';
+    }
+    _addLine('Нажмите «Тестирование» чтобы обновить статус данных.', 'dim');
+    btn.disabled = false;
+    runB.disabled = false;
+    btn.innerHTML = '&#8635; Загрузить все данные';
+  }
+
+  return { run, updateAll };
+})();
 
 // ── Вкладка «Города» ──────────────────────────────────────────────────────
 let _activeCityId = null;
@@ -921,8 +1430,9 @@ async function setActiveCity(cityId, idx) {
 }
 
 function _quickImport(cityId, dsType) {
-  // Switch to Import tab with pre-filled values
-  document.querySelector('[data-tab="import"]').click();
+  // Switch to Data tab → Import sub-tab
+  switchTab('data');
+  _switchDataSub('import');
   if (cityId) {
     const sel = document.getElementById('sel-city');
     for (const opt of sel.options) if (opt.value === cityId) { opt.selected = true; break; }
@@ -1750,8 +2260,7 @@ async function saveSource(idx, cityId, key) {
   }
 }
 
-// ── Инициализация ─────────────────────────────────────────────────────────
-loadProfiles();
+// ── Инициализация (профили загрузятся при переключении на вкладку «Города») ──
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── Вкладка «Регламенты» ───────────────────────────────────────────────────
@@ -2359,6 +2868,9 @@ function _showDsNotify(type, msg) {
   if (type === 'info')  el.classList.add('bg-blue-50', 'text-blue-700');
   el.innerHTML = msg;
 }
+
+// ── Инициализация: загружаем по хэшу или обзор ──────────────────────────
+_initFromHash();
 </script>
 </body>
 </html>
