@@ -25,12 +25,12 @@
     /* Mic button pulse when recording */
     .mic-recording {
       animation: micPulse 1.2s ease-in-out infinite;
-      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+      background: linear-gradient(135deg, #dc2626, #e11d48) !important;
     }
     @keyframes micPulse {
-      0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
-      70%  { box-shadow: 0 0 0 18px rgba(239, 68, 68, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+      0%   { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5); }
+      70%  { box-shadow: 0 0 0 20px rgba(99, 102, 241, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
     }
 
     /* Chip style */
@@ -57,32 +57,43 @@
   </header>
 
   <!-- ── Main ────────────────────────────────────────────────────────────── -->
-  <main class="flex-1 flex flex-col px-5 pb-6">
+  <main class="flex-1 flex flex-col px-5 pb-5">
+
+    <!-- Mic button — hero element, always visible -->
+    <div class="flex flex-col items-center pt-6 pb-4">
+      <button
+        onclick="toggleVoice()"
+        id="micBtn"
+        class="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-[3px] border-white/20 flex items-center justify-center shadow-xl shadow-blue-500/25 active:scale-95 transition-transform mb-3"
+      >
+        <svg id="micIcon" class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24">
+          <rect x="9" y="2" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M5 11a7 7 0 0014 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M12 18v3m-3 0h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <svg id="micStopIcon" class="w-10 h-10 text-white hidden" fill="none" viewBox="0 0 24 24">
+          <rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/>
+        </svg>
+      </button>
+      <p id="mic-hint" class="text-[11px] text-slate-500">Нажмите для голосового ввода</p>
+      <p id="mic-listening" class="text-xs text-blue-400 font-medium hidden fade-in">Слушаю... говорите</p>
+      <div id="no-voice" class="hidden text-[11px] text-slate-500 mt-1">
+        Голос доступен в Chrome и Safari
+      </div>
+    </div>
 
     <!-- Last sent echo -->
-    <div id="last-query" class="hidden text-xs text-slate-500 mb-3 fade-in">
+    <div id="last-query" class="hidden text-xs text-slate-500 mb-3 fade-in text-center">
       <span class="text-emerald-400 mr-1">✓</span> <span id="last-query-text"></span>
     </div>
 
-    <!-- Spacer pushes input to bottom on tall screens -->
-    <div class="flex-1 min-h-[40px]"></div>
-
-    <!-- Quick chips -->
-    <div class="mb-4 flex flex-wrap gap-2" id="chips">
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Сколько школ</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Парковки по районам</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Отключения ЖКХ</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Топ-5 аптек</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Экология сейчас</button>
-    </div>
-
     <!-- Input area -->
-    <div class="relative mb-4">
+    <div class="relative mb-3">
       <input
         type="text"
         id="queryInput"
-        class="w-full bg-white/10 border border-white/15 text-white placeholder:text-white/35 rounded-2xl pl-4 pr-14 py-4 text-base outline-none focus:border-blue-400/50 focus:bg-white/12 transition-all"
-        placeholder="Введите вопрос..."
+        class="w-full bg-white/10 border border-white/15 text-white placeholder:text-white/35 rounded-2xl pl-4 pr-14 py-3.5 text-[15px] outline-none focus:border-blue-400/50 focus:bg-white/12 transition-all"
+        placeholder="Или введите текстом..."
         autocomplete="off"
         enterkeyhint="send"
       >
@@ -97,27 +108,13 @@
       </button>
     </div>
 
-    <!-- Mic button -->
-    <div class="flex justify-center mb-2">
-      <button
-        onclick="toggleVoice()"
-        id="micBtn"
-        class="w-20 h-20 rounded-full bg-gradient-to-br from-red-500 to-rose-600 border-4 border-white/15 flex items-center justify-center shadow-2xl shadow-red-500/30 active:scale-95 transition-transform"
-      >
-        <svg id="micIcon" class="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 7v4m-4 0h8m-4-16a3 3 0 00-3 3v4a3 3 0 006 0V6a3 3 0 00-3-3z"/>
-        </svg>
-        <svg id="micStopIcon" class="w-9 h-9 text-white hidden" fill="currentColor" viewBox="0 0 24 24">
-          <rect x="6" y="6" width="12" height="12" rx="2"/>
-        </svg>
-      </button>
-    </div>
-    <p id="mic-hint" class="text-center text-[11px] text-slate-500">Нажмите для голосового ввода</p>
-    <p id="mic-listening" class="text-center text-xs text-red-400 font-medium hidden fade-in">Слушаю... говорите</p>
-
-    <!-- Voice not supported -->
-    <div id="no-voice" class="hidden text-center text-xs text-slate-500 mt-2">
-      Голосовой ввод доступен только в Chrome и Safari
+    <!-- Quick chips -->
+    <div class="flex flex-wrap gap-2" id="chips">
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Сколько школ</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Парковки по районам</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Отключения ЖКХ</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Топ-5 аптек</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Экология сейчас</button>
     </div>
   </main>
 
@@ -249,7 +246,6 @@ function setMicRecording(on) {
 
   if (on) {
     btn.classList.add('mic-recording');
-    btn.classList.replace('from-red-500', 'from-red-600');
     iconMic.classList.add('hidden');
     iconStop.classList.remove('hidden');
     hint.classList.add('hidden');
@@ -267,7 +263,6 @@ function resetMic() {
   const listening = document.getElementById('mic-listening');
 
   btn.classList.remove('mic-recording');
-  btn.classList.replace('from-red-600', 'from-red-500');
   iconMic.classList.remove('hidden');
   iconStop.classList.add('hidden');
   hint.classList.remove('hidden');
