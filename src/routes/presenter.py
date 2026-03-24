@@ -11,8 +11,6 @@ import secrets
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
-
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
@@ -161,88 +159,10 @@ async def session_ask(sid: str, request: Request):
     if not q:
         return JSONResponse(status_code=400, content={"error": "empty query"})
 
-    # Push "loading" event to all displays
-    loading_msg = {"type": "loading", "query": q}
+    # Push query event to all displays (iframe will call /ask itself)
+    query_msg = {"type": "query", "query": q}
+    s.last_result = query_msg
     for queue in s.queues:
-        await queue.put(loading_msg)
-
-    # Execute query through the standard pipeline
-    try:
-        result = _execute_query(q)
-        result_msg = {"type": "result", "query": q, "data": result}
-    except Exception as e:
-        log.exception("Presenter query error: %s", e)
-        result_msg = {"type": "error", "query": q, "error": str(e)}
-
-    # Store last result and push to displays
-    s.last_result = result_msg
-    for queue in s.queues:
-        await queue.put(result_msg)
+        await queue.put(query_msg)
 
     return {"ok": True, "query": q}
-
-
-def _execute_query(q: str) -> dict[str, Any]:
-    """Run query through router → planner → executor (same as GET /ask)."""
-    from ..router import best_topic
-    from ..planner import make_plan, INFO_PATTERNS, DISTRICTS_PATTERNS
-    from ..executor import execute_plan
-
-    route_result = best_topic(q)
-
-    if not route_result:
-        q_lower = q.lower()
-        if DISTRICTS_PATTERNS.search(q_lower):
-            from ..router import DISTRICTS
-            return {"operation": "DISTRICTS", "rows": list(DISTRICTS.keys()), "count": len(DISTRICTS)}
-        if INFO_PATTERNS.search(q_lower):
-            from ..registry import load_registry
-            registry = load_registry()
-            return {
-                "operation": "INFO",
-                "topics": [
-                    {"id": tid, "name": ds.get("name"), "description": ds.get("description")}
-                    for tid, ds in registry.items()
-                ],
-            }
-        return {"operation": "UNKNOWN", "error": "Тема не определена"}
-
-    topic = route_result.topic
-    plan = make_plan(q, topic)
-
-    # Construction special path
-    if topic == "construction":
-        from ..executor import execute_construction
-        from ..construction_opendata import permits_available
-        if not permits_available():
-            from ..updater import ensure_fresh
-            ensure_fresh("construction_permits")
-            ensure_fresh("construction_commissioned")
-        if permits_available():
-            result = execute_construction(plan)
-            return {"topic": topic, "operation": plan.operation, **result}
-        return {"error": "Данные о строительстве не загружены"}
-
-    # Metro
-    if topic == "metro":
-        from ..executor import execute_metro
-        result = execute_metro(plan)
-        return {"topic": topic, "operation": result.get("operation", plan.operation), **result}
-
-    # Airport
-    if topic == "airport":
-        from ..executor import execute_airport
-        result = execute_airport(plan)
-        return {"topic": topic, "operation": result.get("operation", plan.operation), **result}
-
-    # Standard topics + power_outages
-    result = execute_plan(plan)
-    return {
-        "query": q,
-        "topic": topic,
-        "topic_name": route_result.name,
-        "confidence": route_result.confidence,
-        "operation": plan.operation,
-        "district": plan.district,
-        **result,
-    }

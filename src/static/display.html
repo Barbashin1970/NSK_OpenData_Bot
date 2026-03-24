@@ -17,104 +17,136 @@
     }
   </script>
   <style>
+    body { margin: 0; overflow: hidden; background: #f8fafc; }
     .fade-in { animation: fadeIn .3s ease; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     .pulse-dot { animation: pulseDot 2s ease-in-out infinite; }
     @keyframes pulseDot { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
-    .bar-fill { transition: width .7s cubic-bezier(.4,0,.2,1); }
     .spinner { animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .slide-up { animation: slideUp .4s ease; }
-    @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+
+    /* QR overlay backdrop */
+    .qr-overlay {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      background: rgba(15,23,42,.7);
+      transition: opacity .3s ease;
+    }
+    .qr-overlay.hiding { opacity: 0; pointer-events: none; }
+
+    /* Status bar */
+    .status-bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 20px;
+      background: linear-gradient(135deg, #1e3a5f, #1e293b);
+      border-bottom: 1px solid rgba(255,255,255,.1);
+      color: white;
+      font-family: 'Inter', sans-serif;
+      transition: transform .3s ease, opacity .3s ease;
+    }
+    .status-bar.hidden-bar { transform: translateY(-100%); opacity: 0; }
+
+    /* Loading overlay */
+    .loading-overlay {
+      position: fixed; inset: 0; z-index: 30;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(248,250,252,.92);
+      backdrop-filter: blur(4px);
+      transition: opacity .3s ease;
+    }
+    .loading-overlay.hiding { opacity: 0; pointer-events: none; }
+
+    /* Main iframe */
+    #mainFrame {
+      position: fixed;
+      top: 52px; left: 0; right: 0; bottom: 0;
+      width: 100%; height: calc(100vh - 52px);
+      border: none;
+    }
+
+    /* Idle screen */
+    .idle-screen {
+      position: fixed; inset: 0; z-index: 20;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #f0f4ff 0%, #f8fafc 50%, #eff6ff 100%);
+      transition: opacity .4s ease;
+    }
+    .idle-screen.hiding { opacity: 0; pointer-events: none; }
   </style>
 </head>
-<body class="bg-slate-50 min-h-screen font-sans flex flex-col">
+<body class="font-sans">
 
-  <!-- ── Header ──────────────────────────────────────────────────────────── -->
-  <header class="bg-gradient-to-r from-blue-900 via-blue-700 to-indigo-700 text-white px-6 py-4 flex items-center justify-between shadow-lg">
+  <!-- ── Status bar (always on top) ─────────────────────────────────────────── -->
+  <div class="status-bar" id="statusBar">
     <div class="flex items-center gap-3">
-      <img src="/static/img/sigma-cat.png" alt="" class="w-9 h-9 rounded-xl" onerror="this.style.display='none'">
+      <img src="/static/img/sigma-cat.png" alt="" class="w-7 h-7 rounded-lg" onerror="this.style.display='none'">
       <div>
-        <h1 class="text-lg font-bold tracking-tight">Сигма — Режим презентации</h1>
-        <p class="text-blue-200 text-xs">Голосовое управление с мобильного устройства</p>
+        <span class="text-sm font-bold tracking-tight">Сигма</span>
+        <span class="text-[11px] text-blue-300 ml-2">Режим презентации</span>
       </div>
     </div>
     <div class="flex items-center gap-3">
-      <span id="status-badge" class="flex items-center gap-1.5 text-xs bg-white/10 border border-white/20 rounded-full px-3 py-1.5">
+      <span id="query-echo" class="text-xs text-blue-200 max-w-[400px] truncate hidden"></span>
+      <span class="flex items-center gap-1.5 text-xs bg-white/10 border border-white/15 rounded-full px-3 py-1">
         <span id="status-dot" class="w-2 h-2 rounded-full bg-amber-400 pulse-dot"></span>
-        <span id="status-text">Ожидание подключения</span>
+        <span id="status-text">Подключение...</span>
       </span>
-      <button onclick="showQR()" id="qr-toggle" class="text-xs bg-white/15 hover:bg-white/25 border border-white/20 rounded-lg px-3 py-1.5 transition-colors hidden">
+      <button onclick="toggleQR()" class="text-xs bg-white/15 hover:bg-white/25 border border-white/15 rounded-lg px-3 py-1.5 transition-colors" title="Показать QR-код">
         QR
       </button>
     </div>
-  </header>
+  </div>
 
-  <!-- ── Main content ────────────────────────────────────────────────────── -->
-  <main class="flex-1 flex items-center justify-center p-6">
+  <!-- ── Idle screen (before first query) ───────────────────────────────────── -->
+  <div class="idle-screen" id="idleScreen">
+    <div class="text-center fade-in">
+      <img src="/static/img/sigma-cat.png" alt="" class="w-24 h-24 mx-auto mb-6 rounded-2xl shadow-lg" onerror="this.style.display='none'">
+      <h1 class="text-3xl font-bold text-slate-800 mb-2">Сигма — Открытые данные</h1>
+      <p class="text-slate-500 text-lg mb-8">Голосовое управление с мобильного устройства</p>
 
-    <!-- QR section (shown initially) -->
-    <div id="qr-section" class="text-center max-w-md fade-in">
-      <div class="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 mb-4">
-        <div id="qr-canvas" class="mx-auto mb-5 inline-block"></div>
-        <h2 class="text-xl font-bold text-slate-800 mb-2">Отсканируйте QR-код</h2>
-        <p class="text-slate-500 text-sm mb-4">Откройте камеру смартфона и наведите на код — браузер откроет пульт управления</p>
-        <div class="bg-slate-50 rounded-xl px-4 py-2.5 text-xs text-slate-400 font-mono break-all" id="mobile-url"></div>
+      <div class="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 max-w-sm mx-auto mb-6">
+        <div id="qr-idle" class="mx-auto mb-4 inline-block"></div>
+        <h2 class="text-lg font-bold text-slate-800 mb-1">Отсканируйте QR-код</h2>
+        <p class="text-slate-400 text-sm mb-3">Откройте камеру смартфона и наведите на код</p>
+        <div class="bg-slate-50 rounded-xl px-4 py-2 text-[11px] text-slate-400 font-mono break-all" id="mobile-url-idle"></div>
       </div>
-      <p class="text-slate-400 text-xs">Сессия: <span id="session-label" class="font-mono font-semibold text-slate-500"></span></p>
+
+      <p class="text-slate-300 text-xs">Сессия: <span id="session-label" class="font-mono font-semibold text-slate-400"></span></p>
     </div>
+  </div>
 
-    <!-- Result section (shown after first query) -->
-    <div id="result-section" class="w-full max-w-5xl hidden">
+  <!-- ── Loading overlay ────────────────────────────────────────────────────── -->
+  <div class="loading-overlay hiding" id="loadingOverlay">
+    <svg class="w-12 h-12 text-blue-500 spinner mb-4" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+    </svg>
+    <p class="text-slate-600 text-lg font-medium" id="loading-query">Обработка запроса...</p>
+  </div>
 
-      <!-- Loading state -->
-      <div id="result-loading" class="hidden text-center py-20 slide-up">
-        <svg class="w-10 h-10 text-blue-500 spinner mx-auto mb-4" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-        </svg>
-        <p class="text-slate-500 text-lg" id="loading-query">Обработка запроса...</p>
-      </div>
-
-      <!-- Result card -->
-      <div id="result-card" class="hidden slide-up">
-        <div class="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
-          <!-- Query echo -->
-          <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 px-6 py-4">
-            <div class="flex items-center gap-2 text-sm text-slate-500 mb-1">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-              Запрос
-            </div>
-            <p class="text-lg font-semibold text-slate-800" id="result-query"></p>
-          </div>
-          <!-- Meta line -->
-          <div class="px-6 py-3 border-b border-slate-100 flex items-center gap-4 text-xs text-slate-400" id="result-meta"></div>
-          <!-- Body -->
-          <div class="px-6 py-5" id="result-body"></div>
-        </div>
-      </div>
-
-      <!-- Error -->
-      <div id="result-error" class="hidden text-center py-16 slide-up">
-        <div class="text-5xl mb-4">😕</div>
-        <p class="text-slate-600 text-lg" id="error-text">Ошибка</p>
-      </div>
+  <!-- ── QR overlay (modal, toggled by button) ──────────────────────────────── -->
+  <div class="qr-overlay hiding fixed inset-0 z-50 flex items-center justify-center" id="qrOverlay" onclick="if(event.target===this)toggleQR()">
+    <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm text-center fade-in">
+      <div id="qr-canvas" class="mx-auto mb-5 inline-block"></div>
+      <h2 class="text-xl font-bold text-slate-800 mb-2">Подключите телефон</h2>
+      <p class="text-slate-500 text-sm mb-4">Отсканируйте QR-код камерой смартфона</p>
+      <div class="bg-slate-50 rounded-xl px-4 py-2.5 text-xs text-slate-400 font-mono break-all" id="mobile-url"></div>
+      <button onclick="toggleQR()" class="mt-5 text-sm text-slate-400 hover:text-slate-600 transition-colors">Закрыть</button>
     </div>
-  </main>
+  </div>
 
-  <!-- ── Footer ──────────────────────────────────────────────────────────── -->
-  <footer class="text-center text-xs text-slate-300 py-3">
-    Сигма · Открытые данные · Режим презентации
-  </footer>
+  <!-- ── Main content iframe ────────────────────────────────────────────────── -->
+  <iframe id="mainFrame" src="/?mode=display"></iframe>
 
 <script>
 // ── Session management ──────────────────────────────────────────────────────
 let SID = new URLSearchParams(location.search).get('s');
 let _evtSource = null;
+let _firstQuery = true;
 
 async function init() {
   if (!SID) {
-    // Create new session
     const resp = await fetch('/session/create', { method: 'POST' });
     const data = await resp.json();
     SID = data.sid;
@@ -127,27 +159,36 @@ async function init() {
 
 function renderQR() {
   const url = `${location.origin}/mobile?s=${SID}`;
+
+  // Idle QR
+  const idleEl = document.getElementById('qr-idle');
+  document.getElementById('mobile-url-idle').textContent = url;
+  idleEl.innerHTML = '';
+  new QRCode(idleEl, {
+    text: url, width: 220, height: 220,
+    colorDark: '#1e293b', colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M,
+  });
+
+  // Overlay QR
+  const overlayEl = document.getElementById('qr-canvas');
   document.getElementById('mobile-url').textContent = url;
-  const el = document.getElementById('qr-canvas');
-  el.innerHTML = '';
-  new QRCode(el, {
-    text: url,
-    width: 240,
-    height: 240,
-    colorDark: '#1e293b',
-    colorLight: '#ffffff',
+  overlayEl.innerHTML = '';
+  new QRCode(overlayEl, {
+    text: url, width: 240, height: 240,
+    colorDark: '#1e293b', colorLight: '#ffffff',
     correctLevel: QRCode.CorrectLevel.M,
   });
 }
 
-function showQR() {
-  document.getElementById('qr-section').classList.remove('hidden');
-  document.getElementById('result-section').classList.add('hidden');
+function toggleQR() {
+  const overlay = document.getElementById('qrOverlay');
+  overlay.classList.toggle('hiding');
 }
 
 // ── SSE connection ──────────────────────────────────────────────────────────
 function connectSSE() {
-  if (_evtSource) { _evtSource.close(); }
+  if (_evtSource) _evtSource.close();
   _evtSource = new EventSource(`/session/${SID}/stream`);
 
   _evtSource.onmessage = (e) => {
@@ -156,14 +197,19 @@ function connectSSE() {
       case 'connected':
         setStatus('connected', 'Подключено');
         break;
+      case 'query':
+        // New simplified flow: backend just relays query text, iframe calls /ask
+        handleQuery(msg.query);
+        break;
+      // Legacy events (backwards compat)
       case 'loading':
         showLoading(msg.query);
         break;
       case 'result':
-        showResult(msg.query, msg.data);
+        handleResult(msg.query, msg.data);
         break;
       case 'error':
-        showError(msg.query, msg.error);
+        handleError(msg.query, msg.error);
         break;
     }
   };
@@ -181,175 +227,85 @@ function setStatus(state, text) {
   const txt = document.getElementById('status-text');
   txt.textContent = text;
   dot.className = 'w-2 h-2 rounded-full';
-  if (state === 'connected') { dot.classList.add('bg-emerald-400'); }
-  else if (state === 'error')  { dot.classList.add('bg-red-400', 'pulse-dot'); }
-  else { dot.classList.add('bg-amber-400', 'pulse-dot'); }
+  if (state === 'connected') dot.classList.add('bg-emerald-400');
+  else if (state === 'error') dot.classList.add('bg-red-400', 'pulse-dot');
+  else dot.classList.add('bg-amber-400', 'pulse-dot');
 }
 
-// ── Result rendering ────────────────────────────────────────────────────────
+// ── Query → iframe ──────────────────────────────────────────────────────────
+function handleQuery(query) {
+  // Hide idle screen on first query
+  if (_firstQuery) {
+    _firstQuery = false;
+    const idle = document.getElementById('idleScreen');
+    idle.classList.add('hiding');
+    setTimeout(() => idle.remove(), 500);
+  }
+
+  // Show query echo in status bar
+  const echo = document.getElementById('query-echo');
+  echo.textContent = `📨 ${query}`;
+  echo.classList.remove('hidden');
+
+  // Send query to iframe — index.html in display mode will call /ask
+  const frame = document.getElementById('mainFrame');
+  if (frame.contentWindow) {
+    frame.contentWindow.postMessage({ type: 'query', q: query }, '*');
+  }
+
+  // Update echo after brief delay
+  setTimeout(() => { echo.textContent = `✓ ${query}`; }, 1500);
+}
+
 function showLoading(query) {
-  switchToResults();
-  hide('result-card'); hide('result-error');
-  show('result-loading');
+  // Hide idle screen on first query
+  if (_firstQuery) {
+    _firstQuery = false;
+    const idle = document.getElementById('idleScreen');
+    idle.classList.add('hiding');
+    setTimeout(() => idle.remove(), 500);
+  }
+
+  // Show loading overlay
+  const lo = document.getElementById('loadingOverlay');
   document.getElementById('loading-query').textContent = `«${query}»`;
+  lo.classList.remove('hiding');
+
+  // Show query echo in status bar
+  const echo = document.getElementById('query-echo');
+  echo.textContent = `📨 ${query}`;
+  echo.classList.remove('hidden');
 }
 
-function showError(query, error) {
-  switchToResults();
-  hide('result-loading'); hide('result-card');
-  show('result-error');
-  document.getElementById('error-text').textContent = error || 'Не удалось обработать запрос';
+function handleResult(query, data) {
+  // Hide loading
+  const lo = document.getElementById('loadingOverlay');
+  lo.classList.add('hiding');
+
+  // Send query to iframe for rendering via main page's full pipeline
+  const frame = document.getElementById('mainFrame');
+  if (frame.contentWindow) {
+    frame.contentWindow.postMessage({ type: 'query', q: query }, '*');
+  }
+
+  // Update query echo
+  const echo = document.getElementById('query-echo');
+  echo.textContent = `✓ ${query}`;
 }
 
-function showResult(query, data) {
-  switchToResults();
-  hide('result-loading'); hide('result-error');
-  show('result-card');
+function handleError(query, error) {
+  const lo = document.getElementById('loadingOverlay');
+  lo.classList.add('hiding');
 
-  document.getElementById('result-query').textContent = query;
-
-  // Meta line
-  const meta = document.getElementById('result-meta');
-  const parts = [];
-  if (data.topic_name) parts.push(`<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">${esc(data.topic_name)}</span>`);
-  if (data.operation) parts.push(`<span class="text-slate-500">${esc(data.operation)}</span>`);
-  if (data.district) parts.push(`<span>📍 ${esc(data.district)}</span>`);
-  if (data.count != null) parts.push(`<span>${data.count} записей</span>`);
-  meta.innerHTML = parts.join('<span class="text-slate-200">·</span>');
-
-  // Body
-  const body = document.getElementById('result-body');
-  body.innerHTML = '';
-
-  // INFO — topic list (что ты умеешь)
-  if (data.operation === 'INFO' && data.topics) {
-    let html = '<div class="text-center mb-5"><div class="text-3xl mb-2">📋</div><div class="text-slate-500 text-sm">Доступные темы данных</div></div>';
-    html += '<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">';
-    const icons = {parking:'🅿️',stops:'🚏',culture:'🎭',schools:'🏫',kindergartens:'👶',libraries:'📚',parks:'🌳',sport_grounds:'⚽',pharmacies:'💊',sport_orgs:'🏋️'};
-    for (const t of data.topics) {
-      const icon = icons[t.id] || '📊';
-      html += `<div class="bg-slate-50 rounded-xl p-4 text-center border border-slate-100"><div class="text-2xl mb-1">${icon}</div><div class="text-sm font-semibold text-slate-700">${esc(t.name)}</div><div class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">${esc(t.description || '')}</div></div>`;
-    }
-    html += '</div>';
-    body.innerHTML = html;
-    return;
+  // Still send the query to iframe — let it handle the error display
+  const frame = document.getElementById('mainFrame');
+  if (frame.contentWindow) {
+    frame.contentWindow.postMessage({ type: 'query', q: query }, '*');
   }
 
-  // UNKNOWN — подсказка
-  if (data.operation === 'UNKNOWN') {
-    body.innerHTML = `<div class="text-center py-8"><div class="text-4xl mb-3">🤔</div><div class="text-slate-600 text-base">Не удалось определить тему</div><div class="text-slate-400 text-sm mt-2">Попробуйте: «сколько школ», «парковки по районам», «отключения ЖКХ»</div></div>`;
-    return;
-  }
-
-  // DISTRICTS — список районов
-  if (data.operation === 'DISTRICTS' && data.rows) {
-    let html = '<div class="text-center mb-4"><div class="text-3xl mb-2">🏙️</div><div class="text-slate-500 text-sm">' + data.rows.length + ' районов</div></div>';
-    html += '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">';
-    for (const d of data.rows) {
-      html += `<div class="bg-slate-50 rounded-lg px-4 py-3 text-sm text-slate-700 text-center border border-slate-100">${esc(String(d))}</div>`;
-    }
-    html += '</div>';
-    body.innerHTML = html;
-    return;
-  }
-
-  // COUNT — big number
-  if (data.operation === 'COUNT' && data.count != null) {
-    body.innerHTML = `
-      <div class="text-center py-8">
-        <div class="text-6xl font-bold text-blue-600 mb-2">${data.count.toLocaleString('ru-RU')}</div>
-        <div class="text-slate-400 text-sm">${esc(data.topic_name || 'объектов')}</div>
-      </div>`;
-    return;
-  }
-
-  // GROUP — horizontal bars
-  if (data.operation === 'GROUP' && data.rows && data.rows.length) {
-    const maxVal = Math.max(...data.rows.map(r => {
-      const vals = Object.values(r).filter(v => typeof v === 'number');
-      return vals.length ? Math.max(...vals) : 0;
-    }));
-    let html = '<div class="space-y-2">';
-    for (const row of data.rows) {
-      const keys = Object.keys(row);
-      const label = row[keys[0]];
-      const value = row[keys[1]] || 0;
-      const pct = maxVal ? (value / maxVal * 100) : 0;
-      html += `
-        <div class="flex items-center gap-3">
-          <div class="w-40 text-right text-sm text-slate-600 truncate">${esc(String(label))}</div>
-          <div class="flex-1 bg-slate-100 rounded-full h-7 overflow-hidden">
-            <div class="bar-fill bg-gradient-to-r from-blue-500 to-indigo-500 h-full rounded-full flex items-center justify-end pr-2" style="width:${pct}%">
-              <span class="text-white text-xs font-semibold">${Number(value).toLocaleString('ru-RU')}</span>
-            </div>
-          </div>
-        </div>`;
-    }
-    html += '</div>';
-    body.innerHTML = html;
-    // Animate bars
-    requestAnimationFrame(() => {
-      body.querySelectorAll('.bar-fill').forEach(el => { el.style.width = el.style.width; });
-    });
-    return;
-  }
-
-  // TABLE — for FILTER, TOP_N, etc.
-  if (data.rows && data.rows.length) {
-    const cols = data.columns || Object.keys(data.rows[0]);
-    let html = '<div class="overflow-x-auto"><table class="w-full text-sm">';
-    html += '<thead><tr class="border-b-2 border-slate-200">';
-    for (const c of cols) {
-      html += `<th class="text-left py-2 px-3 text-slate-500 font-medium text-xs uppercase">${esc(c)}</th>`;
-    }
-    html += '</tr></thead><tbody>';
-    for (const row of data.rows.slice(0, 50)) {
-      html += '<tr class="border-b border-slate-100 hover:bg-slate-50">';
-      for (const c of cols) {
-        html += `<td class="py-2.5 px-3 text-slate-700">${esc(String(row[c] ?? ''))}</td>`;
-      }
-      html += '</tr>';
-    }
-    html += '</tbody></table></div>';
-    if (data.rows.length > 50) {
-      html += `<p class="text-xs text-slate-400 mt-3 text-center">Показано 50 из ${data.rows.length}</p>`;
-    }
-    body.innerHTML = html;
-    return;
-  }
-
-  // POWER results
-  if (data.power_meta) {
-    let html = '<div class="grid grid-cols-2 gap-4 mb-4">';
-    if (data.power_meta.active_houses != null) {
-      html += `<div class="bg-red-50 rounded-xl p-4 text-center"><div class="text-3xl font-bold text-red-600">${data.power_meta.active_houses}</div><div class="text-xs text-red-400 mt-1">домов отключено</div></div>`;
-    }
-    if (data.power_meta.planned_houses != null) {
-      html += `<div class="bg-amber-50 rounded-xl p-4 text-center"><div class="text-3xl font-bold text-amber-600">${data.power_meta.planned_houses}</div><div class="text-xs text-amber-400 mt-1">плановых отключений</div></div>`;
-    }
-    html += '</div>';
-    body.innerHTML = html;
-    return;
-  }
-
-  // Fallback: raw JSON
-  if (data.error) {
-    body.innerHTML = `<div class="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">${esc(data.error)}</div>`;
-  } else {
-    body.innerHTML = `<pre class="text-xs text-slate-500 bg-slate-50 rounded-xl p-4 overflow-x-auto">${esc(JSON.stringify(data, null, 2))}</pre>`;
-  }
+  const echo = document.getElementById('query-echo');
+  echo.textContent = `⚠ ${query}`;
 }
-
-function switchToResults() {
-  document.getElementById('qr-section').classList.add('hidden');
-  document.getElementById('result-section').classList.remove('hidden');
-  document.getElementById('qr-toggle').classList.remove('hidden');
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function show(id) { document.getElementById(id).classList.remove('hidden'); }
-function hide(id) { document.getElementById(id).classList.add('hidden'); }
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
 // ── Init ────────────────────────────────────────────────────────────────────
 init();

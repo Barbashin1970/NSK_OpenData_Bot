@@ -29,9 +29,9 @@
       background: linear-gradient(135deg, #dc2626, #e11d48) !important;
     }
     @keyframes micPulse {
-      0%   { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5); }
-      70%  { box-shadow: 0 0 0 20px rgba(99, 102, 241, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+      0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+      70%  { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
     }
 
     /* Chip style */
@@ -44,12 +44,21 @@
     }
     .chip:active { transform: scale(.95); background: rgba(99,102,241,.3) !important; }
     .chip.chip-sent { background: rgba(16,185,129,.25) !important; border-color: rgba(16,185,129,.4) !important; }
+
+    /* Role chip active state */
+    .role-chip.active { background: rgba(99,102,241,.25) !important; border-color: rgba(99,102,241,.5) !important; color: #a5b4fc !important; }
+
+    /* Section labels */
+    .section-label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgba(148,163,184,.6); }
+
+    /* Scrollable area */
+    .chips-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; }
   </style>
 </head>
 <body class="bg-slate-900 text-white min-h-screen font-sans flex flex-col">
 
   <!-- ── Header ──────────────────────────────────────────────────────────── -->
-  <header class="px-5 pt-6 pb-3">
+  <header class="px-5 pt-5 pb-2">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2.5">
         <img src="/static/img/sigma-cat.png" alt="" class="w-8 h-8 rounded-xl" onerror="this.style.display='none'">
@@ -63,43 +72,41 @@
   </header>
 
   <!-- ── Main ────────────────────────────────────────────────────────────── -->
-  <main class="flex-1 flex flex-col px-5 pb-5">
+  <main class="flex-1 flex flex-col px-5 pb-4 overflow-hidden">
 
-    <!-- Mic button — hero element, always visible -->
-    <div class="flex flex-col items-center pt-6 pb-4">
+    <!-- Mic button — hero element -->
+    <div class="flex flex-col items-center pt-4 pb-3 flex-shrink-0">
       <button
         onclick="toggleVoice()"
         id="micBtn"
-        class="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-[3px] border-white/20 flex items-center justify-center shadow-xl shadow-blue-500/25 active:scale-95 transition-transform mb-3"
+        class="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 border-[3px] border-white/20 flex items-center justify-center shadow-xl shadow-blue-500/25 active:scale-95 transition-transform mb-2"
       >
-        <svg id="micIcon" class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24">
+        <svg id="micIcon" class="w-9 h-9 text-white" fill="none" viewBox="0 0 24 24">
           <rect x="9" y="2" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.8"/>
           <path d="M5 11a7 7 0 0014 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
           <path d="M12 18v3m-3 0h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
-        <svg id="micStopIcon" class="w-10 h-10 text-white hidden" fill="none" viewBox="0 0 24 24">
+        <svg id="micStopIcon" class="w-9 h-9 text-white hidden" fill="none" viewBox="0 0 24 24">
           <rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/>
         </svg>
       </button>
-      <p id="mic-hint" class="text-[11px] text-slate-500">Нажмите для голосового ввода</p>
+      <p id="mic-hint" class="text-[10px] text-slate-500">Нажмите для голосового ввода</p>
       <p id="mic-listening" class="text-xs text-blue-400 font-medium hidden fade-in">Слушаю... говорите</p>
-      <div id="no-voice" class="hidden text-[11px] text-slate-500 mt-1">
-        Голос доступен в Chrome и Safari
-      </div>
+      <div id="no-voice" class="hidden text-[10px] text-slate-500 mt-1">Голос доступен в Chrome и Safari</div>
     </div>
 
     <!-- Last sent echo -->
-    <div id="last-query" class="hidden text-xs text-slate-500 mb-3 fade-in text-center">
+    <div id="last-query" class="hidden text-xs text-slate-500 mb-2 fade-in text-center flex-shrink-0">
       <span class="text-emerald-400 mr-1">✓</span> <span id="last-query-text"></span>
     </div>
 
     <!-- Input area -->
-    <div class="relative mb-3">
+    <div class="relative mb-3 flex-shrink-0">
       <input
         type="text"
         id="queryInput"
-        class="w-full bg-white/10 border border-white/15 text-white placeholder:text-white/35 rounded-2xl pl-4 pr-14 py-3.5 text-[15px] outline-none focus:border-blue-400/50 focus:bg-white/12 transition-all"
-        placeholder="Или введите текстом..."
+        class="w-full bg-white/10 border border-white/15 text-white placeholder:text-white/35 rounded-2xl pl-4 pr-14 py-3 text-[15px] outline-none focus:border-blue-400/50 focus:bg-white/12 transition-all"
+        placeholder="Введите запрос..."
         autocomplete="off"
         enterkeyhint="send"
       >
@@ -114,13 +121,51 @@
       </button>
     </div>
 
-    <!-- Quick chips -->
-    <div class="flex flex-wrap gap-2" id="chips">
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Сколько школ</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Парковки по районам</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Отключения ЖКХ</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Топ-5 аптек</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Экология сейчас</button>
+    <!-- Scrollable chips area -->
+    <div class="chips-scroll flex-1 min-h-0 space-y-3">
+
+      <!-- Role chips -->
+      <div>
+        <div class="section-label mb-1.5">Роль</div>
+        <div class="flex flex-wrap gap-1.5">
+          <button class="role-chip chip bg-white/6 border border-white/10 rounded-full px-3 py-1.5 text-xs text-slate-400 active" data-role="citizen" onclick="sendRole(this)">👤 Горожанин</button>
+          <button class="role-chip chip bg-white/6 border border-white/10 rounded-full px-3 py-1.5 text-xs text-slate-400" data-role="official" onclick="sendRole(this)">🏙️ Служащий</button>
+          <button class="role-chip chip bg-white/6 border border-white/10 rounded-full px-3 py-1.5 text-xs text-slate-400" data-role="mayor" onclick="sendRole(this)">🏛️ Мэр</button>
+        </div>
+      </div>
+
+      <!-- Quick demo queries -->
+      <div>
+        <div class="section-label mb-1.5">Данные</div>
+        <div class="flex flex-wrap gap-1.5" id="chips-data">
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Сколько школ</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Парковки по районам</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Топ-5 аптек</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Список библиотек</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Детские сады</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label mb-1.5">Инфраструктура</div>
+        <div class="flex flex-wrap gap-1.5">
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Отключения ЖКХ</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Экология сейчас</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Стройки по районам</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Станции метро</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Камеры на дорогах</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label mb-1.5">Навигация</div>
+        <div class="flex flex-wrap gap-1.5">
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Что ты умеешь</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Районы города</button>
+          <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-sm text-slate-300" onclick="sendChip(this)">Эко-рейтинг</button>
+        </div>
+      </div>
+
     </div>
   </main>
 
@@ -133,7 +178,6 @@ async function init() {
     document.body.innerHTML = '<div class="flex items-center justify-center min-h-screen text-slate-400 text-center p-8"><div><p class="text-lg mb-2">Нет сессии</p><p class="text-sm">Отсканируйте QR-код на экране презентации</p></div></div>';
     return;
   }
-  // Check session exists
   try {
     const resp = await fetch(`/session/${SID}/info`);
     if (!resp.ok) throw new Error();
@@ -141,14 +185,12 @@ async function init() {
   } catch {
     setStatus('error', 'Сессия не найдена');
   }
-  // Check voice support
   const hasVoice = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   if (!hasVoice) {
     document.getElementById('micBtn').classList.add('opacity-40');
     document.getElementById('mic-hint').classList.add('hidden');
     document.getElementById('no-voice').classList.remove('hidden');
   }
-  // Enter to send
   document.getElementById('queryInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFromInput(); }
   });
@@ -182,7 +224,6 @@ async function sendQuery(q) {
     if (resp.ok) {
       showLastQuery(q.trim());
       document.getElementById('queryInput').value = '';
-      // Haptic feedback if available
       if (navigator.vibrate) navigator.vibrate(30);
     } else {
       const err = await resp.json().catch(() => ({}));
@@ -209,12 +250,29 @@ function sendChip(el) {
   setTimeout(() => el.classList.remove('chip-sent'), 1200);
 }
 
+// ── Role switching ──────────────────────────────────────────────────────────
+function sendRole(el) {
+  const role = el.dataset.role;
+  // Map to text commands that _trySpecialQuery in index.html recognizes
+  const roleCommands = {
+    citizen: 'горожанин',
+    official: 'служащий',
+    mayor: 'мэр',
+  };
+  const cmd = roleCommands[role];
+  if (cmd) sendQuery(cmd);
+
+  // Update active state
+  document.querySelectorAll('.role-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
 function showLastQuery(q) {
   const el = document.getElementById('last-query');
   document.getElementById('last-query-text').textContent = q;
   el.classList.remove('hidden');
   el.classList.remove('fade-in');
-  void el.offsetWidth; // trigger reflow
+  void el.offsetWidth;
   el.classList.add('fade-in');
 }
 
@@ -235,7 +293,6 @@ function toggleVoice() {
 
   _recognition.onresult = (e) => {
     let text = e.results[0][0].transcript;
-    // Strip wake-word "Сигма" / "Сима" / "sigma" / "sima"
     text = text.replace(/^(?:с[ие]г?м[ао]|si(?:gm?a|ma))[!,.:)?\s]*/i, '').trim();
     resetMic();
     if (text) sendQuery(text);

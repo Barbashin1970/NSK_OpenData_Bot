@@ -34,6 +34,12 @@
     .search-glow:focus { box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
     input::placeholder { color: #94a3b8; }
 
+    /* ── Display mode (presenter iframe) ──────────────────────────────────── */
+    .display-mode { background: #f8fafc; }
+    .display-mode #queryInput { display: none; }
+    .display-mode .search-glow { display: none; }
+    .display-mode main { padding-top: 1rem; }
+
     /* ── Role system ────────────────────────────────────────────────────────── */
     #roleSwitcher { position: relative; }
     #roleBtn {
@@ -256,6 +262,35 @@
 
 <!-- ═══════════════════ SCRIPT ═══════════════════ -->
 <script>
+
+// ─── Display mode (for presenter iframe) ─────────────────────────────────────
+const _DISPLAY_MODE = new URLSearchParams(location.search).get('mode') === 'display';
+if (_DISPLAY_MODE) {
+  document.body.classList.add('display-mode');
+  document.querySelector('header')?.remove();
+  document.getElementById('roleDashboard')?.remove();
+  document.querySelector('footer')?.remove();
+  const main = document.querySelector('main');
+  if (main) {
+    main.classList.remove('max-w-4xl', 'pt-4', 'pb-7');
+    main.classList.add('max-w-6xl', 'pt-6', 'pb-4');
+  }
+  // Hide topics grid — display shows only results
+  const topicsSection = document.querySelector('main > section');
+  if (topicsSection) topicsSection.remove();
+  // Listen for queries from parent display.html
+  window.addEventListener('message', (ev) => {
+    if (!ev.data || typeof ev.data !== 'object') return;
+    if (ev.data.type === 'query') {
+      const q = (ev.data.q || '').trim();
+      if (!q) return;
+      document.getElementById('queryInput').value = q;
+      ask();
+    } else if (ev.data.type === 'role') {
+      setRole(ev.data.role, ev.data.district);
+    }
+  });
+}
 
 // ─── Example queries ────────────────────────────────────────────────────────
 // ─── Role config ──────────────────────────────────────────────────────────────
@@ -5665,7 +5700,7 @@ updateRoleBtn();
 buildChips();
 loadTopics();
 initMapgl();
-document.getElementById('queryInput').focus();
+if (!_DISPLAY_MODE) document.getElementById('queryInput').focus();
 if (currentRole !== 'citizen') {
   document.getElementById('roleDashboard').classList.remove('hidden');
   loadRoleDashboard();
