@@ -187,26 +187,65 @@
   <div id="tab-overview" class="tab-pane active">
     <div class="flex items-center justify-between mb-5">
       <div>
-        <h2 class="text-lg font-semibold text-slate-800">Обзор системы</h2>
+        <h2 class="text-lg font-semibold text-slate-800">Матрица подключений</h2>
         <p class="text-xs text-slate-400 mt-0.5" id="overview-city-label">Загрузка...</p>
       </div>
-    </div>
-
-    <!-- Карточки источников данных -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6" id="overview-sources-grid">
-      <div class="text-slate-400 text-sm col-span-full py-8 text-center">Загрузка статусов...</div>
-    </div>
-
-    <!-- Поддерживаемые темы -->
-    <div>
-      <h3 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">Поддерживаемые темы</h3>
-      <div id="overview-topics-grid" class="flex flex-wrap gap-2">
-        <span class="text-sm text-slate-400">Загрузка...</span>
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 text-[10px] text-slate-400">
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>свежие
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 ml-1"></span>просрочены
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 ml-1"></span>ошибка
+          <span class="inline-block w-2.5 h-2.5 rounded-sm bg-slate-200 ml-1"></span>н/д
+        </div>
+        <button onclick="loadOverview(true)" id="overview-refresh-btn"
+          class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" id="overview-refresh-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M5.6 15.6A8 8 0 0119.4 8.4M18.4 8.4A8 8 0 015.6 15.6"/></svg>
+          Обновить всё
+        </button>
       </div>
     </div>
 
-    <!-- Быстрая информация -->
-    <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4" id="overview-kpi-row">
+    <!-- Матрица городов × источники -->
+    <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white mb-5">
+      <table class="w-full text-xs" id="overview-matrix">
+        <thead>
+          <tr class="bg-slate-50 border-b border-slate-200">
+            <th class="text-left px-3 py-2.5 font-semibold text-slate-600 sticky left-0 bg-slate-50 z-10 min-w-[140px]">Город</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Открытые данные мэрии (CSV)">📊 CSV</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Отключения ЖКХ">⚡ ЖКХ</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Экология (Open-Meteo + CityAir)">🌿 Эко</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Камеры ПДД (OSM)">📷 Камеры</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Медучреждения (OSM)">🏥 Мед</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Метрополитен">🚇 Метро</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Аэропорт">✈️ Аэро</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Выбросы (2-ТП)">🏭 Выбр</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Тепловые источники">🔥 Тепло</th>
+            <th class="px-3 py-2.5 font-medium text-slate-500 text-center" title="Районы">Р-ны</th>
+          </tr>
+        </thead>
+        <tbody id="overview-matrix-body">
+          <tr><td colspan="11" class="text-center text-slate-400 py-6">Загрузка...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Статус обновления -->
+    <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-5">
+      <div class="flex items-center gap-2 text-xs text-slate-500">
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>Данные обновляются автоматически по расписанию (TTL)</span>
+        <span class="text-slate-300">·</span>
+        <span id="overview-last-check" class="text-slate-400">—</span>
+      </div>
+      <div id="overview-update-status" class="text-xs text-slate-400"></div>
+    </div>
+
+    <!-- Активный город: детальный статус -->
+    <div class="mb-5">
+      <h3 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3" id="overview-active-header">Активный город</h3>
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" id="overview-active-topics">
+        <span class="text-sm text-slate-400">Загрузка тем...</span>
+      </div>
     </div>
   </div>
 
@@ -217,7 +256,6 @@
         <h2 class="text-lg font-semibold text-slate-800">API Документация</h2>
         <p class="text-xs text-slate-400 mt-0.5">OpenAPI 3.1 · Swagger UI · интерактивное тестирование эндпоинтов</p>
       </div>
-      <a href="/openapi.json" target="_blank" class="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors">/openapi.json</a>
     </div>
     <div class="bg-white border border-slate-200 rounded-xl overflow-hidden" style="height: calc(100vh - 200px); min-height:500px;">
       <iframe id="api-iframe" src="" class="w-full h-full border-0" style="display:none;"></iframe>
@@ -909,81 +947,130 @@ function _loadApiDocs() {
   if (placeholder) placeholder.style.display = 'none';
 }
 
-// ── Обзор (Dashboard) ──────────────────────────────────────────────────
+// ── Обзор (Dashboard) — матрица подключений ────────────────────────────
 let _overviewLoaded = false;
-async function loadOverview() {
-  if (_overviewLoaded) return;
+
+function _dot(status, title) {
+  const colors = {
+    ok:      'bg-emerald-500',
+    stale:   'bg-amber-400',
+    error:   'bg-red-500',
+    off:     'bg-slate-200',
+    spin:    'bg-blue-400 animate-pulse',
+  };
+  const cls = colors[status] || colors.off;
+  return `<span class="${cls} inline-block w-3 h-3 rounded-full" title="${esc(title || status)}"></span>`;
+}
+
+async function loadOverview(force) {
+  if (_overviewLoaded && !force) return;
   _overviewLoaded = true;
 
-  // Load city config
-  let cityName = 'Город', cityId = '', hasCsv = false, hasPower = false;
+  const refreshIcon = document.getElementById('overview-refresh-icon');
+  if (force && refreshIcon) refreshIcon.classList.add('animate-spin');
+
+  // 1. Load all city profiles
+  let profiles = [], activeCityId = '';
   try {
-    const r = await fetch('/api/city-config');
-    const cfg = await r.json();
-    cityName = cfg.city_name || cityName;
-    cityId = cfg.city_id || '';
-    hasCsv = !!cfg.has_opendata_csv;
-    hasPower = !!cfg.power_outages_url;
+    const [prRes, cfgRes] = await Promise.all([
+      fetch('/studio/api/profiles'),
+      fetch('/api/city-config'),
+    ]);
+    const prData = await prRes.json();
+    const cfgData = await cfgRes.json();
+    profiles = prData.profiles || [];
+    activeCityId = cfgData.city_id || '';
+    const cityName = cfgData.city_name || '';
     document.getElementById('studio-city-name').textContent = cityName;
-    document.getElementById('overview-city-label').textContent = cityName + ' · ' + (cfg.timezone || '');
+    document.getElementById('overview-city-label').textContent =
+      profiles.length + ' городов · активный: ' + cityName;
   } catch(_) {}
 
-  // Source status cards
-  const sources = [
-    { name: 'Открытые данные мэрии', desc: 'CSV-файлы: парковки, школы, аптеки и др.', icon: '📊', ttl: '24 ч', enabled: hasCsv },
-    { name: 'Отключения ЖКХ', desc: 'Электричество, тепло, вода, газ', icon: '⚡', ttl: '30 мин', enabled: hasPower },
-    { name: 'Экология (Open-Meteo)', desc: 'PM2.5, PM10, AQI, температура, ветер', icon: '🌿', ttl: '15 мин', enabled: true },
-    { name: 'CityAir API', desc: 'Физические датчики качества воздуха', icon: '🏭', ttl: '15 мин', enabled: true },
-    { name: 'Камеры (OSM)', desc: 'Камеры фиксации нарушений ПДД', icon: '📷', ttl: '7 дн', enabled: true },
-    { name: 'Медучреждения (OSM)', desc: 'Больницы, поликлиники', icon: '🏥', ttl: '72 ч', enabled: true },
-  ];
+  // 2. Build matrix rows
+  const tbody = document.getElementById('overview-matrix-body');
+  tbody.innerHTML = profiles.map(p => {
+    const f = p.features || {};
+    const ds = {};
+    (p.static_datasets || []).forEach(d => { ds[d.name] = d; });
+    const isActive = p.city_id === activeCityId;
 
-  const grid = document.getElementById('overview-sources-grid');
-  grid.innerHTML = sources.map(s => `
-    <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3 ${s.enabled ? '' : 'opacity-50'}">
-      <span class="text-2xl flex-shrink-0">${s.icon}</span>
-      <div class="min-w-0">
-        <div class="font-semibold text-slate-800 text-sm">${esc(s.name)}</div>
-        <div class="text-xs text-slate-500 mt-0.5">${esc(s.desc)}</div>
-        <div class="flex items-center gap-2 mt-2">
-          <span class="text-[10px] px-2 py-0.5 rounded-full font-medium ${s.enabled ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-400 border border-slate-200'}">${s.enabled ? 'Подключён' : 'Не подключён'}</span>
-          <span class="text-[10px] text-slate-400">TTL: ${s.ttl}</span>
+    const hasCsv  = !!f.opendata_csv_enabled;
+    const hasPow  = !!f.power_outages_url;
+    const hasEco  = true;   // Open-Meteo доступен для всех
+    const hasCam  = true;   // OSM доступен для всех
+    const hasMed  = true;   // OSM доступен для всех
+    const hasMet  = !!f.has_metro;
+    const hasAir  = !!f.has_airport;
+    const hasEmis = !!(ds.emissions && ds.emissions.enabled);
+    const hasHeat = !!(ds.heat_sources && ds.heat_sources.enabled);
+
+    function cell(has, fileCheck) {
+      if (!has) return `<td class="px-2 py-2 text-center">${_dot('off', 'Не поддерживается')}</td>`;
+      if (fileCheck !== undefined && !fileCheck) return `<td class="px-2 py-2 text-center">${_dot('error', 'Файл не найден')}</td>`;
+      if (isActive) return `<td class="px-2 py-2 text-center" data-live="1">${_dot('ok', 'Подключён')}</td>`;
+      return `<td class="px-2 py-2 text-center">${_dot('ok', 'Настроен')}</td>`;
+    }
+
+    const rowCls = isActive
+      ? 'bg-blue-50/50 border-l-2 border-l-blue-500'
+      : 'hover:bg-slate-50';
+
+    return `<tr class="${rowCls} border-b border-slate-100">
+      <td class="px-3 py-2 sticky left-0 ${isActive ? 'bg-blue-50/50' : 'bg-white'} z-10">
+        <div class="flex items-center gap-2">
+          <span class="font-medium text-slate-700">${esc(p.city_name || p.city_id)}</span>
+          ${isActive ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">активный</span>' : ''}
         </div>
-      </div>
-    </div>
-  `).join('');
+        <div class="text-[10px] text-slate-400">${p.districts_count || 0} р-нов · ${p.timezone || ''}</div>
+      </td>
+      ${cell(hasCsv)}
+      ${cell(hasPow)}
+      ${cell(hasEco)}
+      ${cell(hasCam)}
+      ${cell(hasMed)}
+      ${cell(hasMet)}
+      ${cell(hasAir)}
+      ${cell(hasEmis, ds.emissions?.file_exists)}
+      ${cell(hasHeat, ds.heat_sources?.file_exists)}
+      <td class="px-3 py-2 text-center text-xs text-slate-600 font-medium">${p.districts_count || 0}</td>
+    </tr>`;
+  }).join('');
 
-  // Topics
+  // 3. Active city: topic details with freshness
   try {
     const r = await fetch('/topics');
     const topics = await r.json();
-    const grid2 = document.getElementById('overview-topics-grid');
-    grid2.innerHTML = (topics || []).map(t => `
-      <span class="text-xs px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 font-medium">${esc(t.name || t.id || t)}</span>
-    `).join('');
+    const grid = document.getElementById('overview-active-topics');
+    document.getElementById('overview-active-header').textContent =
+      'Темы данных · ' + (topics.length || 0) + ' загружено';
+
+    grid.innerHTML = (topics || []).map(t => {
+      const stale = t.stale;
+      const rows = t.rows || 0;
+      const updated = t.last_updated || '';
+      const statusCls = stale ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white';
+      const dotCls = stale ? 'bg-amber-400' : 'bg-emerald-500';
+      const timeStr = updated ? new Date(updated).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+
+      return `<div class="rounded-lg border ${statusCls} px-3 py-2.5">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="${dotCls} w-2 h-2 rounded-full flex-shrink-0"></span>
+          <span class="font-medium text-slate-700 text-xs truncate">${esc(t.name || t.id)}</span>
+        </div>
+        <div class="text-[10px] text-slate-400 flex items-center justify-between">
+          <span>${rows.toLocaleString('ru-RU')} строк</span>
+          <span>${timeStr}</span>
+        </div>
+      </div>`;
+    }).join('');
   } catch(_) {}
 
-  // KPI row
-  const kpi = document.getElementById('overview-kpi-row');
-  try {
-    const r = await fetch('/api/city-config');
-    const cfg = await r.json();
-    const districts = cfg.districts || [];
-    kpi.innerHTML = `
-      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
-        <div class="text-2xl font-bold text-blue-600">${districts.length}</div>
-        <div class="text-xs text-slate-500 mt-1">Районов</div>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
-        <div class="text-2xl font-bold text-emerald-600">${hasCsv ? 'CSV' : '—'}</div>
-        <div class="text-xs text-slate-500 mt-1">OpenData</div>
-      </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-4 text-center">
-        <div class="text-2xl font-bold text-purple-600">v1.2.0</div>
-        <div class="text-xs text-slate-500 mt-1">Версия API</div>
-      </div>
-    `;
-  } catch(_) {}
+  // 4. Timestamp
+  const now = new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+  document.getElementById('overview-last-check').textContent = 'проверено в ' + now;
+  document.getElementById('overview-update-status').textContent = '';
+
+  if (refreshIcon) refreshIcon.classList.remove('animate-spin');
 }
 
 // ── Тестирование (Studio Tests) ─────────────────────────────────────────

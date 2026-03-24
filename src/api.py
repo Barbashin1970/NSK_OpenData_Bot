@@ -310,8 +310,15 @@ _NAV_BAR_HTML = """
     padding: 2px 9px; font-size: 11px; color: #cbd5e1;
   }
   body { padding-top: 44px !important; }
+  /* Hide nav bar when loaded inside an iframe (e.g. Studio API tab) */
+  @media all {
+    body.in-iframe #nsk-nav { display: none !important; }
+    body.in-iframe { padding-top: 0 !important; }
+  }
 
 </style>
+
+<script>if (window !== window.top) document.body.classList.add('in-iframe');</script>
 
 <div id="nsk-nav">
   <a href="/" class="back">← На главную</a>
