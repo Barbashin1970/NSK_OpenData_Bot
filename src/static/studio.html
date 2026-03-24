@@ -42,7 +42,11 @@
       <span class="font-bold text-base">Studio</span>
     </a>
     <span class="text-slate-500">|</span>
-    <span class="text-xs text-slate-400 hidden sm:inline" id="studio-city-name">City OpenData Bot</span>
+    <span class="text-xs text-slate-400 hidden sm:inline">City OpenData Bot</span>
+    <span id="studio-city-badge" class="hidden sm:inline-flex items-center gap-1.5 text-[11px] ml-2 px-2.5 py-1 rounded-full bg-blue-500/15 border border-blue-400/25 text-blue-300">
+      <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+      <span id="studio-city-name">...</span>
+    </span>
   </div>
   <div class="flex items-center gap-3">
     <a href="/news-editor" target="_blank"
@@ -271,7 +275,13 @@
     <div class="flex items-center justify-between mb-4">
       <div>
         <h2 class="text-lg font-semibold text-slate-800">Тестирование системы</h2>
-        <p class="text-xs text-slate-400 mt-0.5">pytest + проверка состояния данных</p>
+        <div class="flex items-center gap-2 mt-0.5">
+          <p class="text-xs text-slate-400">pytest + проверка состояния данных</p>
+          <span id="st-city-indicator" class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-600 font-medium">
+            <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+            <span id="st-city-name">—</span>
+          </span>
+        </div>
       </div>
       <div class="flex gap-2">
         <button id="st-update-btn" onclick="STTests.updateAll()"
@@ -923,6 +933,25 @@ function _switchDataSub(sub) {
   if (sub === 'sources') initSourcesTab();
 }
 
+// ── Global city label (загружается один раз, обновляет все индикаторы) ────
+let _cityLoaded = false;
+async function _loadCityLabel() {
+  if (_cityLoaded) return;
+  _cityLoaded = true;
+  try {
+    const resp = await fetch('/api/city-config');
+    const cfg = await resp.json();
+    const name = cfg.city_name || cfg.city_id || '';
+    if (!name) return;
+    // Header badge
+    document.getElementById('studio-city-name').textContent = name;
+    document.getElementById('studio-city-badge').classList.remove('hidden');
+    // Testing tab indicator
+    const stName = document.getElementById('st-city-name');
+    if (stName) stName.textContent = name;
+  } catch(_) {}
+}
+
 // ── Hash-роутинг ─────────────────────────────────────────────────────────
 const VALID_TABS = ['overview','api','testing','profiles','data','schemas','rules'];
 function _initFromHash() {
@@ -981,7 +1010,6 @@ async function loadOverview(force) {
     profiles = prData.profiles || [];
     activeCityId = cfgData.city_id || '';
     const cityName = cfgData.city_name || '';
-    document.getElementById('studio-city-name').textContent = cityName;
     document.getElementById('overview-city-label').textContent =
       profiles.length + ' городов · активный: ' + cityName;
   } catch(_) {}
@@ -2953,6 +2981,7 @@ function _showDsNotify(type, msg) {
 }
 
 // ── Инициализация: загружаем по хэшу или обзор ──────────────────────────
+_loadCityLabel();
 _initFromHash();
 </script>
 </body>
