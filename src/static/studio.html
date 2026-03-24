@@ -34,6 +34,59 @@
 </head>
 <body class="bg-slate-50 min-h-screen">
 
+<!-- ── Auth gate ──────────────────────────────────────────────────────────── -->
+<div id="auth-gate" class="fixed inset-0 z-[9999] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+  <div class="w-full max-w-sm mx-4">
+    <div class="text-center mb-8">
+      <img src="/static/img/sigma-cat.png" class="h-16 w-auto mx-auto mb-4 opacity-80" alt="" onerror="this.style.display='none'">
+      <h1 class="text-xl font-bold text-white">Data Studio</h1>
+      <p class="text-sm text-slate-400 mt-1">Введите пароль для доступа</p>
+    </div>
+    <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-6 shadow-2xl">
+      <input id="auth-pwd" type="password" placeholder="Пароль разработчика"
+        class="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-white text-sm placeholder:text-slate-500 outline-none focus:border-blue-500 transition-colors mb-3"
+        onkeydown="if(event.key==='Enter') _studioAuth()">
+      <button onclick="_studioAuth()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors text-sm">
+        Войти
+      </button>
+      <div id="auth-msg" class="mt-3 text-xs text-center min-h-[18px]"></div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+  // Если уже авторизован в сессии — сразу пускаем
+  if (sessionStorage.getItem('dev_auth_ok') === '1') {
+    document.getElementById('auth-gate').style.display = 'none';
+    return;
+  }
+  // Блокируем скролл пока gate виден
+  document.body.style.overflow = 'hidden';
+})();
+
+async function _studioAuth() {
+  const pwd = document.getElementById('auth-pwd')?.value || '';
+  const msg = document.getElementById('auth-msg');
+  if (!pwd) { msg.style.color = '#f87171'; msg.textContent = 'Введите пароль'; return; }
+  msg.style.color = '#94a3b8'; msg.textContent = 'Проверяю…';
+  try {
+    const r = await fetch('/dev-auth?password=' + encodeURIComponent(pwd));
+    const d = await r.json();
+    if (d.valid) {
+      sessionStorage.setItem('dev_auth_ok', '1');
+      document.getElementById('auth-gate').style.display = 'none';
+      document.body.style.overflow = '';
+    } else {
+      msg.style.color = '#f87171'; msg.textContent = 'Неверный пароль';
+      document.getElementById('auth-pwd').value = '';
+      document.getElementById('auth-pwd').focus();
+    }
+  } catch(e) {
+    msg.style.color = '#f87171'; msg.textContent = 'Ошибка сети';
+  }
+}
+</script>
+
 <!-- ── Шапка ──────────────────────────────────────────────────────────────── -->
 <header class="bg-gradient-to-r from-slate-800 to-slate-900 text-white px-6 py-3 flex items-center justify-between shadow-md">
   <div class="flex items-center gap-3">
