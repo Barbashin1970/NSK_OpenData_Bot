@@ -318,8 +318,6 @@ _NAV_BAR_HTML = """
   <span class="sep">|</span>
   <span class="title">NSK OpenData Bot</span>
   <span class="sub">API Документация</span>
-  <a href="/studio" class="back" style="background:rgba(34,197,94,.15);border-color:rgba(34,197,94,.4);color:#86efac;">Studio</a>
-  <a href="/studio#testing" class="back" style="background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.4);color:#93c5fd;">Тестирование</a>
   <span class="badge">v1.2.0</span>
 </div>
 
