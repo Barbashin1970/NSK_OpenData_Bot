@@ -19,6 +19,7 @@
   <style>
     * { -webkit-tap-highlight-color: transparent; }
     body { overscroll-behavior: none; }
+    button, input { touch-action: manipulation; }
     .fade-in { animation: fadeIn .25s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
@@ -36,8 +37,13 @@
     /* Chip style */
     .chip {
       transition: all .12s ease;
+      -webkit-user-select: none;
+      user-select: none;
+      cursor: pointer;
+      touch-action: manipulation;
     }
-    .chip:active { transform: scale(.95); opacity: .8; }
+    .chip:active { transform: scale(.95); background: rgba(99,102,241,.3) !important; }
+    .chip.chip-sent { background: rgba(16,185,129,.25) !important; border-color: rgba(16,185,129,.4) !important; }
   </style>
 </head>
 <body class="bg-slate-900 text-white min-h-screen font-sans flex flex-col">
@@ -110,11 +116,11 @@
 
     <!-- Quick chips -->
     <div class="flex flex-wrap gap-2" id="chips">
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Сколько школ</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Парковки по районам</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Отключения ЖКХ</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Топ-5 аптек</button>
-      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Экология сейчас</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Сколько школ</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Парковки по районам</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Отключения ЖКХ</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Топ-5 аптек</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-4 py-2.5 text-sm text-slate-300" onclick="sendChip(this)">Экология сейчас</button>
     </div>
   </main>
 
@@ -199,6 +205,8 @@ function sendFromInput() {
 
 function sendChip(el) {
   sendQuery(el.textContent);
+  el.classList.add('chip-sent');
+  setTimeout(() => el.classList.remove('chip-sent'), 1200);
 }
 
 function showLastQuery(q) {

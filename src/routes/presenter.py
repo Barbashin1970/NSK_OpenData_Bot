@@ -240,7 +240,7 @@ def _execute_query(q: str) -> dict[str, Any]:
     return {
         "query": q,
         "topic": topic,
-        "topic_name": route_result.topic_name,
+        "topic_name": route_result.name,
         "confidence": route_result.confidence,
         "operation": plan.operation,
         "district": plan.district,

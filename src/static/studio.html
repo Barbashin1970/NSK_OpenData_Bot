@@ -254,11 +254,14 @@ async function _studioAuth() {
           <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 ml-1"></span>ошибка
           <span class="inline-block w-2.5 h-2.5 rounded-sm bg-slate-200 ml-1"></span>н/д
         </div>
-        <button onclick="loadOverview(true)" id="overview-refresh-btn"
-          class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" id="overview-refresh-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M5.6 15.6A8 8 0 0119.4 8.4M18.4 8.4A8 8 0 015.6 15.6"/></svg>
-          Обновить всё
-        </button>
+        <div class="flex items-center gap-2">
+          <span id="overview-refresh-status" class="text-[10px] text-slate-400 hidden"></span>
+          <button onclick="loadOverview(true)" id="overview-refresh-btn"
+            class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" id="overview-refresh-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M5.6 15.6A8 8 0 0119.4 8.4M18.4 8.4A8 8 0 015.6 15.6"/></svg>
+            Обновить таблицу
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1049,7 +1052,12 @@ async function loadOverview(force) {
   _overviewLoaded = true;
 
   const refreshIcon = document.getElementById('overview-refresh-icon');
-  if (force && refreshIcon) refreshIcon.classList.add('animate-spin');
+  const refreshStatus = document.getElementById('overview-refresh-status');
+  if (force && refreshIcon) {
+    refreshIcon.classList.add('animate-spin');
+    refreshStatus.textContent = 'Обновление…';
+    refreshStatus.classList.remove('hidden');
+  }
 
   // 1. Load all city profiles
   let profiles = [], activeCityId = '';
@@ -1122,29 +1130,37 @@ async function loadOverview(force) {
     const r = await fetch('/topics');
     const topics = await r.json();
     const grid = document.getElementById('overview-active-topics');
-    document.getElementById('overview-active-header').textContent =
-      'Темы данных · ' + (topics.length || 0) + ' загружено';
+    const hdr = document.getElementById('overview-active-header');
 
-    grid.innerHTML = (topics || []).map(t => {
-      const stale = t.stale;
-      const rows = t.rows || 0;
-      const updated = t.last_updated || '';
-      const statusCls = stale ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white';
-      const dotCls = stale ? 'bg-amber-400' : 'bg-emerald-500';
-      const timeStr = updated ? new Date(updated).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+    if (!topics || topics.length === 0) {
+      hdr.textContent = 'Темы данных';
+      grid.innerHTML = '<div class="col-span-full text-sm text-slate-400 py-4 text-center">Данные ещё не загружены. Перейдите в «Тестирование» → «Загрузить все данные».</div>';
+    } else {
+      hdr.textContent = 'Темы данных · ' + topics.length + ' загружено';
+      grid.innerHTML = topics.map(t => {
+        const stale = t.stale;
+        const rows = t.rows || 0;
+        const updated = t.last_updated || '';
+        const statusCls = stale ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white';
+        const dotCls = stale ? 'bg-amber-400' : 'bg-emerald-500';
+        const timeStr = updated ? new Date(updated).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
 
-      return `<div class="rounded-lg border ${statusCls} px-3 py-2.5">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="${dotCls} w-2 h-2 rounded-full flex-shrink-0"></span>
-          <span class="font-medium text-slate-700 text-xs truncate">${esc(t.name || t.id)}</span>
-        </div>
-        <div class="text-[10px] text-slate-400 flex items-center justify-between">
-          <span>${rows.toLocaleString('ru-RU')} строк</span>
-          <span>${timeStr}</span>
-        </div>
-      </div>`;
-    }).join('');
-  } catch(_) {}
+        return `<div class="rounded-lg border ${statusCls} px-3 py-2.5">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="${dotCls} w-2 h-2 rounded-full flex-shrink-0"></span>
+            <span class="font-medium text-slate-700 text-xs truncate">${esc(t.name || t.id)}</span>
+          </div>
+          <div class="text-[10px] text-slate-400 flex items-center justify-between">
+            <span>${rows.toLocaleString('ru-RU')} строк</span>
+            <span>${timeStr}</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  } catch(_) {
+    const grid = document.getElementById('overview-active-topics');
+    grid.innerHTML = '<div class="col-span-full text-sm text-slate-400 py-4 text-center">Не удалось загрузить темы</div>';
+  }
 
   // 4. Timestamp
   const now = new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
@@ -1152,6 +1168,11 @@ async function loadOverview(force) {
   document.getElementById('overview-update-status').textContent = '';
 
   if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+  if (refreshStatus && force) {
+    const t = new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+    refreshStatus.textContent = 'Обновлено в ' + t;
+    setTimeout(() => { refreshStatus.classList.add('hidden'); }, 4000);
+  }
 }
 
 // ── Тестирование (Studio Tests) ─────────────────────────────────────────
