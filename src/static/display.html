@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="/static/img/sigma-cat.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script>
     if (window.tailwind) {
       tailwind.config = {
@@ -56,7 +56,7 @@
     <!-- QR section (shown initially) -->
     <div id="qr-section" class="text-center max-w-md fade-in">
       <div class="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 mb-4">
-        <canvas id="qr-canvas" class="mx-auto mb-5"></canvas>
+        <div id="qr-canvas" class="mx-auto mb-5 inline-block"></div>
         <h2 class="text-xl font-bold text-slate-800 mb-2">Отсканируйте QR-код</h2>
         <p class="text-slate-500 text-sm mb-4">Откройте камеру смартфона и наведите на код — браузер откроет пульт управления</p>
         <div class="bg-slate-50 rounded-xl px-4 py-2.5 text-xs text-slate-400 font-mono break-all" id="mobile-url"></div>
@@ -128,11 +128,16 @@ async function init() {
 function renderQR() {
   const url = `${location.origin}/mobile?s=${SID}`;
   document.getElementById('mobile-url').textContent = url;
-  QRCode.toCanvas(document.getElementById('qr-canvas'), url, {
+  const el = document.getElementById('qr-canvas');
+  el.innerHTML = '';
+  new QRCode(el, {
+    text: url,
     width: 240,
-    margin: 2,
-    color: { dark: '#1e293b', light: '#ffffff' },
-  }, (err) => { if (err) console.error('QR error:', err); });
+    height: 240,
+    colorDark: '#1e293b',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M,
+  });
 }
 
 function showQR() {
