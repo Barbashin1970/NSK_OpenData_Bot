@@ -198,8 +198,10 @@ function connectSSE() {
         setStatus('connected', 'Подключено');
         break;
       case 'query':
-        // New simplified flow: backend just relays query text, iframe calls /ask
         handleQuery(msg.query);
+        break;
+      case 'set-city':
+        handleCitySwitch(msg.city_id);
         break;
       // Legacy events (backwards compat)
       case 'loading':
@@ -305,6 +307,18 @@ function handleError(query, error) {
 
   const echo = document.getElementById('query-echo');
   echo.textContent = `⚠ ${query}`;
+}
+
+// ── City switch ─────────────────────────────────────────────────────────────
+function handleCitySwitch(cityId) {
+  // Tell iframe to switch city — it will call _setActiveCity()
+  const frame = document.getElementById('mainFrame');
+  if (frame.contentWindow) {
+    frame.contentWindow.postMessage({ type: 'set-city', city_id: cityId }, '*');
+  }
+  const echo = document.getElementById('query-echo');
+  echo.textContent = '🏙️ Город переключён';
+  echo.classList.remove('hidden');
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────

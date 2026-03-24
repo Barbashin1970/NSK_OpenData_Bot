@@ -288,6 +288,8 @@ if (_DISPLAY_MODE) {
       ask();
     } else if (ev.data.type === 'role') {
       setRole(ev.data.role, ev.data.district);
+    } else if (ev.data.type === 'set-city') {
+      _setActiveCity(ev.data.city_id);
     }
   });
 }

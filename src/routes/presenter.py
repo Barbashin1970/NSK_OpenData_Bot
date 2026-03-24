@@ -166,3 +166,30 @@ async def session_ask(sid: str, request: Request):
         await queue.put(query_msg)
 
     return {"ok": True, "query": q}
+
+
+@router.post(
+    "/session/{sid}/set-city",
+    tags=["Presenter"],
+    summary="Сменить город из mobile → display",
+)
+async def session_set_city(sid: str, request: Request):
+    s = _get_session(sid)
+    if not s:
+        return JSONResponse(status_code=404, content={"error": "session not found"})
+
+    body = await request.json()
+    city_id = (body.get("city_id") or "").strip()
+    if not city_id:
+        return JSONResponse(status_code=400, content={"error": "empty city_id"})
+
+    # Actually switch the city on the server
+    from .studio import studio_set_active_city
+    studio_set_active_city({"city_id": city_id})
+
+    # Notify all displays
+    msg = {"type": "set-city", "city_id": city_id}
+    for queue in s.queues:
+        await queue.put(msg)
+
+    return {"ok": True, "city_id": city_id}

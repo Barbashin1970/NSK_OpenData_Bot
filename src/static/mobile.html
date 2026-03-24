@@ -45,8 +45,9 @@
     .chip:active { transform: scale(.95); background: rgba(99,102,241,.3) !important; }
     .chip.chip-sent { background: rgba(16,185,129,.25) !important; border-color: rgba(16,185,129,.4) !important; }
 
-    /* Role chip active state */
+    /* Role / City chip active state */
     .role-chip.active { background: rgba(99,102,241,.25) !important; border-color: rgba(99,102,241,.5) !important; color: #a5b4fc !important; }
+    .city-chip.active { background: rgba(16,185,129,.2) !important; border-color: rgba(16,185,129,.4) !important; color: #6ee7b7 !important; }
 
     /* Section labels */
     .section-label { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgba(148,163,184,.6); }
@@ -134,6 +135,12 @@
         </div>
       </div>
 
+      <!-- City chips (loaded dynamically) -->
+      <div id="city-section" class="hidden">
+        <div class="section-label mb-1.5">Город</div>
+        <div class="flex flex-wrap gap-1.5" id="city-chips"></div>
+      </div>
+
       <!-- Quick demo queries -->
       <div>
         <div class="section-label mb-1.5">Данные</div>
@@ -194,6 +201,8 @@ async function init() {
   document.getElementById('queryInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFromInput(); }
   });
+  // Load cities
+  loadCities();
 }
 
 function setStatus(state, text) {
@@ -265,6 +274,58 @@ function sendRole(el) {
   // Update active state
   document.querySelectorAll('.role-chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
+}
+
+// ── City switching ──────────────────────────────────────────────────────────
+let _activeCityId = '';
+
+async function loadCities() {
+  try {
+    const [profResp, cfgResp] = await Promise.all([
+      fetch('/studio/api/profiles'),
+      fetch('/api/city-config'),
+    ]);
+    const profiles = (await profResp.json()).profiles || [];
+    const cfg = await cfgResp.json();
+    _activeCityId = cfg.city_id || '';
+
+    const cities = profiles.filter(p => !p.error && p.city_id);
+    if (cities.length < 2) return; // Only show if multiple cities
+
+    const container = document.getElementById('city-chips');
+    container.innerHTML = cities.map(c => {
+      const isActive = c.city_id === _activeCityId;
+      return `<button class="city-chip chip bg-white/6 border border-white/10 rounded-full px-3 py-1.5 text-xs text-slate-400${isActive ? ' active' : ''}"
+        data-city="${c.city_id}" onclick="switchCity(this)">${c.city_name}</button>`;
+    }).join('');
+    document.getElementById('city-section').classList.remove('hidden');
+  } catch (e) {
+    // Cities not available — hide section
+  }
+}
+
+async function switchCity(el) {
+  const cityId = el.dataset.city;
+  if (cityId === _activeCityId) return;
+
+  // Update UI immediately
+  document.querySelectorAll('.city-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  _activeCityId = cityId;
+
+  try {
+    // Switch city via presenter session endpoint (switches server + notifies display)
+    await fetch(`/session/${SID}/set-city`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ city_id: cityId }),
+    });
+    showLastQuery('Город: ' + el.textContent);
+    if (navigator.vibrate) navigator.vibrate(30);
+  } catch {
+    setStatus('error', 'Ошибка смены города');
+    setTimeout(() => setStatus('ok', 'Подключено'), 2000);
+  }
 }
 
 function showLastQuery(q) {
