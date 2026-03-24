@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Сигма — Пульт</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+  <link rel="icon" type="image/png" href="/static/img/sigma-cat.png">
+  <link rel="apple-touch-icon" href="/static/img/sigma-cat.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    if (window.tailwind) {
+      tailwind.config = {
+        theme: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } }
+      }
+    }
+  </script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { overscroll-behavior: none; }
+    .fade-in { animation: fadeIn .25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* Mic button pulse when recording */
+    .mic-recording {
+      animation: micPulse 1.2s ease-in-out infinite;
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+    }
+    @keyframes micPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+      70%  { box-shadow: 0 0 0 18px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    /* Chip style */
+    .chip {
+      transition: all .12s ease;
+    }
+    .chip:active { transform: scale(.95); opacity: .8; }
+  </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen font-sans flex flex-col">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header class="px-5 pt-6 pb-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <img src="/static/img/sigma-cat.png" alt="" class="w-8 h-8 rounded-xl" onerror="this.style.display='none'">
+        <span class="text-base font-bold tracking-tight">Сигма</span>
+      </div>
+      <span id="status" class="flex items-center gap-1.5 text-[11px] text-slate-400">
+        <span id="status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+        <span id="status-text">Подключение...</span>
+      </span>
+    </div>
+  </header>
+
+  <!-- ── Main ────────────────────────────────────────────────────────────── -->
+  <main class="flex-1 flex flex-col px-5 pb-6">
+
+    <!-- Last sent echo -->
+    <div id="last-query" class="hidden text-xs text-slate-500 mb-3 fade-in">
+      <span class="text-emerald-400 mr-1">✓</span> <span id="last-query-text"></span>
+    </div>
+
+    <!-- Spacer pushes input to bottom on tall screens -->
+    <div class="flex-1 min-h-[40px]"></div>
+
+    <!-- Quick chips -->
+    <div class="mb-4 flex flex-wrap gap-2" id="chips">
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Сколько школ</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Парковки по районам</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Отключения ЖКХ</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Топ-5 аптек</button>
+      <button class="chip bg-white/8 border border-white/10 rounded-full px-3.5 py-2 text-xs text-slate-300" onclick="sendChip(this)">Экология сейчас</button>
+    </div>
+
+    <!-- Input area -->
+    <div class="relative mb-4">
+      <input
+        type="text"
+        id="queryInput"
+        class="w-full bg-white/10 border border-white/15 text-white placeholder:text-white/35 rounded-2xl pl-4 pr-14 py-4 text-base outline-none focus:border-blue-400/50 focus:bg-white/12 transition-all"
+        placeholder="Введите вопрос..."
+        autocomplete="off"
+        enterkeyhint="send"
+      >
+      <button
+        onclick="sendFromInput()"
+        id="sendBtn"
+        class="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl w-10 h-10 flex items-center justify-center transition-colors"
+      >
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19V5m0 0l-7 7m7-7l7 7"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Mic button -->
+    <div class="flex justify-center mb-2">
+      <button
+        onclick="toggleVoice()"
+        id="micBtn"
+        class="w-20 h-20 rounded-full bg-gradient-to-br from-red-500 to-rose-600 border-4 border-white/15 flex items-center justify-center shadow-2xl shadow-red-500/30 active:scale-95 transition-transform"
+      >
+        <svg id="micIcon" class="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 7v4m-4 0h8m-4-16a3 3 0 00-3 3v4a3 3 0 006 0V6a3 3 0 00-3-3z"/>
+        </svg>
+        <svg id="micStopIcon" class="w-9 h-9 text-white hidden" fill="currentColor" viewBox="0 0 24 24">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </svg>
+      </button>
+    </div>
+    <p id="mic-hint" class="text-center text-[11px] text-slate-500">Нажмите для голосового ввода</p>
+    <p id="mic-listening" class="text-center text-xs text-red-400 font-medium hidden fade-in">Слушаю... говорите</p>
+
+    <!-- Voice not supported -->
+    <div id="no-voice" class="hidden text-center text-xs text-slate-500 mt-2">
+      Голосовой ввод доступен только в Chrome и Safari
+    </div>
+  </main>
+
+<script>
+// ── Session ─────────────────────────────────────────────────────────────────
+const SID = new URLSearchParams(location.search).get('s');
+
+async function init() {
+  if (!SID) {
+    document.body.innerHTML = '<div class="flex items-center justify-center min-h-screen text-slate-400 text-center p-8"><div><p class="text-lg mb-2">Нет сессии</p><p class="text-sm">Отсканируйте QR-код на экране презентации</p></div></div>';
+    return;
+  }
+  // Check session exists
+  try {
+    const resp = await fetch(`/session/${SID}/info`);
+    if (!resp.ok) throw new Error();
+    setStatus('ok', 'Подключено');
+  } catch {
+    setStatus('error', 'Сессия не найдена');
+  }
+  // Check voice support
+  const hasVoice = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  if (!hasVoice) {
+    document.getElementById('micBtn').classList.add('opacity-40');
+    document.getElementById('mic-hint').classList.add('hidden');
+    document.getElementById('no-voice').classList.remove('hidden');
+  }
+  // Enter to send
+  document.getElementById('queryInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFromInput(); }
+  });
+}
+
+function setStatus(state, text) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  txt.textContent = text;
+  dot.className = 'w-2 h-2 rounded-full';
+  if (state === 'ok')    dot.classList.add('bg-emerald-400');
+  else if (state === 'error') dot.classList.add('bg-red-400');
+  else dot.classList.add('bg-amber-400');
+}
+
+// ── Send query ──────────────────────────────────────────────────────────────
+let _sending = false;
+
+async function sendQuery(q) {
+  if (_sending || !q.trim()) return;
+  _sending = true;
+  const btn = document.getElementById('sendBtn');
+  btn.classList.add('opacity-50');
+
+  try {
+    const resp = await fetch(`/session/${SID}/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: q.trim() }),
+    });
+    if (resp.ok) {
+      showLastQuery(q.trim());
+      document.getElementById('queryInput').value = '';
+      // Haptic feedback if available
+      if (navigator.vibrate) navigator.vibrate(30);
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      setStatus('error', err.error || 'Ошибка');
+      setTimeout(() => setStatus('ok', 'Подключено'), 2000);
+    }
+  } catch {
+    setStatus('error', 'Нет связи');
+    setTimeout(() => setStatus('ok', 'Подключено'), 2000);
+  } finally {
+    _sending = false;
+    btn.classList.remove('opacity-50');
+  }
+}
+
+function sendFromInput() {
+  const input = document.getElementById('queryInput');
+  sendQuery(input.value);
+}
+
+function sendChip(el) {
+  sendQuery(el.textContent);
+}
+
+function showLastQuery(q) {
+  const el = document.getElementById('last-query');
+  document.getElementById('last-query-text').textContent = q;
+  el.classList.remove('hidden');
+  el.classList.remove('fade-in');
+  void el.offsetWidth; // trigger reflow
+  el.classList.add('fade-in');
+}
+
+// ── Voice Input (Web Speech API) ────────────────────────────────────────────
+let _recognition = null;
+
+function toggleVoice() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) return;
+  if (_recognition) { _recognition.stop(); return; }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  _recognition = new SR();
+  _recognition.lang = 'ru-RU';
+  _recognition.continuous = false;
+  _recognition.interimResults = false;
+
+  setMicRecording(true);
+
+  _recognition.onresult = (e) => {
+    let text = e.results[0][0].transcript;
+    // Strip wake-word "Сигма" / "Сима" / "sigma" / "sima"
+    text = text.replace(/^(?:с[ие]г?м[ао]|si(?:gm?a|ma))[!,.:)?\s]*/i, '').trim();
+    resetMic();
+    if (text) sendQuery(text);
+  };
+  _recognition.onerror = () => resetMic();
+  _recognition.onend = () => resetMic();
+  _recognition.start();
+}
+
+function setMicRecording(on) {
+  const btn = document.getElementById('micBtn');
+  const iconMic = document.getElementById('micIcon');
+  const iconStop = document.getElementById('micStopIcon');
+  const hint = document.getElementById('mic-hint');
+  const listening = document.getElementById('mic-listening');
+
+  if (on) {
+    btn.classList.add('mic-recording');
+    btn.classList.replace('from-red-500', 'from-red-600');
+    iconMic.classList.add('hidden');
+    iconStop.classList.remove('hidden');
+    hint.classList.add('hidden');
+    listening.classList.remove('hidden');
+    if (navigator.vibrate) navigator.vibrate(50);
+  }
+}
+
+function resetMic() {
+  _recognition = null;
+  const btn = document.getElementById('micBtn');
+  const iconMic = document.getElementById('micIcon');
+  const iconStop = document.getElementById('micStopIcon');
+  const hint = document.getElementById('mic-hint');
+  const listening = document.getElementById('mic-listening');
+
+  btn.classList.remove('mic-recording');
+  btn.classList.replace('from-red-600', 'from-red-500');
+  iconMic.classList.remove('hidden');
+  iconStop.classList.add('hidden');
+  hint.classList.remove('hidden');
+  listening.classList.add('hidden');
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

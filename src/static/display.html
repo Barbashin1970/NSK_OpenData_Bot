@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Сигма — Презентация</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+  <link rel="icon" type="image/png" href="/static/img/sigma-cat.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script>
+    if (window.tailwind) {
+      tailwind.config = {
+        theme: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } }
+      }
+    }
+  </script>
+  <style>
+    .fade-in { animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .pulse-dot { animation: pulseDot 2s ease-in-out infinite; }
+    @keyframes pulseDot { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
+    .bar-fill { transition: width .7s cubic-bezier(.4,0,.2,1); }
+    .spinner { animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .slide-up { animation: slideUp .4s ease; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans flex flex-col">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header class="bg-gradient-to-r from-blue-900 via-blue-700 to-indigo-700 text-white px-6 py-4 flex items-center justify-between shadow-lg">
+    <div class="flex items-center gap-3">
+      <img src="/static/img/sigma-cat.png" alt="" class="w-9 h-9 rounded-xl" onerror="this.style.display='none'">
+      <div>
+        <h1 class="text-lg font-bold tracking-tight">Сигма — Режим презентации</h1>
+        <p class="text-blue-200 text-xs">Голосовое управление с мобильного устройства</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="status-badge" class="flex items-center gap-1.5 text-xs bg-white/10 border border-white/20 rounded-full px-3 py-1.5">
+        <span id="status-dot" class="w-2 h-2 rounded-full bg-amber-400 pulse-dot"></span>
+        <span id="status-text">Ожидание подключения</span>
+      </span>
+      <button onclick="showQR()" id="qr-toggle" class="text-xs bg-white/15 hover:bg-white/25 border border-white/20 rounded-lg px-3 py-1.5 transition-colors hidden">
+        QR
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Main content ────────────────────────────────────────────────────── -->
+  <main class="flex-1 flex items-center justify-center p-6">
+
+    <!-- QR section (shown initially) -->
+    <div id="qr-section" class="text-center max-w-md fade-in">
+      <div class="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 mb-4">
+        <canvas id="qr-canvas" class="mx-auto mb-5"></canvas>
+        <h2 class="text-xl font-bold text-slate-800 mb-2">Отсканируйте QR-код</h2>
+        <p class="text-slate-500 text-sm mb-4">Откройте камеру смартфона и наведите на код — браузер откроет пульт управления</p>
+        <div class="bg-slate-50 rounded-xl px-4 py-2.5 text-xs text-slate-400 font-mono break-all" id="mobile-url"></div>
+      </div>
+      <p class="text-slate-400 text-xs">Сессия: <span id="session-label" class="font-mono font-semibold text-slate-500"></span></p>
+    </div>
+
+    <!-- Result section (shown after first query) -->
+    <div id="result-section" class="w-full max-w-5xl hidden">
+
+      <!-- Loading state -->
+      <div id="result-loading" class="hidden text-center py-20 slide-up">
+        <svg class="w-10 h-10 text-blue-500 spinner mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <p class="text-slate-500 text-lg" id="loading-query">Обработка запроса...</p>
+      </div>
+
+      <!-- Result card -->
+      <div id="result-card" class="hidden slide-up">
+        <div class="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+          <!-- Query echo -->
+          <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 px-6 py-4">
+            <div class="flex items-center gap-2 text-sm text-slate-500 mb-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+              Запрос
+            </div>
+            <p class="text-lg font-semibold text-slate-800" id="result-query"></p>
+          </div>
+          <!-- Meta line -->
+          <div class="px-6 py-3 border-b border-slate-100 flex items-center gap-4 text-xs text-slate-400" id="result-meta"></div>
+          <!-- Body -->
+          <div class="px-6 py-5" id="result-body"></div>
+        </div>
+      </div>
+
+      <!-- Error -->
+      <div id="result-error" class="hidden text-center py-16 slide-up">
+        <div class="text-5xl mb-4">😕</div>
+        <p class="text-slate-600 text-lg" id="error-text">Ошибка</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── Footer ──────────────────────────────────────────────────────────── -->
+  <footer class="text-center text-xs text-slate-300 py-3">
+    Сигма · Открытые данные · Режим презентации
+  </footer>
+
+<script>
+// ── Session management ──────────────────────────────────────────────────────
+let SID = new URLSearchParams(location.search).get('s');
+let _evtSource = null;
+
+async function init() {
+  if (!SID) {
+    // Create new session
+    const resp = await fetch('/session/create', { method: 'POST' });
+    const data = await resp.json();
+    SID = data.sid;
+    history.replaceState(null, '', `/display?s=${SID}`);
+  }
+  document.getElementById('session-label').textContent = SID;
+  renderQR();
+  connectSSE();
+}
+
+function renderQR() {
+  const url = `${location.origin}/mobile?s=${SID}`;
+  document.getElementById('mobile-url').textContent = url;
+  QRCode.toCanvas(document.getElementById('qr-canvas'), url, {
+    width: 240,
+    margin: 2,
+    color: { dark: '#1e293b', light: '#ffffff' },
+  }, (err) => { if (err) console.error('QR error:', err); });
+}
+
+function showQR() {
+  document.getElementById('qr-section').classList.remove('hidden');
+  document.getElementById('result-section').classList.add('hidden');
+}
+
+// ── SSE connection ──────────────────────────────────────────────────────────
+function connectSSE() {
+  if (_evtSource) { _evtSource.close(); }
+  _evtSource = new EventSource(`/session/${SID}/stream`);
+
+  _evtSource.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    switch (msg.type) {
+      case 'connected':
+        setStatus('connected', 'Подключено');
+        break;
+      case 'loading':
+        showLoading(msg.query);
+        break;
+      case 'result':
+        showResult(msg.query, msg.data);
+        break;
+      case 'error':
+        showError(msg.query, msg.error);
+        break;
+    }
+  };
+
+  _evtSource.onerror = () => {
+    setStatus('error', 'Переподключение...');
+    setTimeout(() => {
+      if (_evtSource.readyState === EventSource.CLOSED) connectSSE();
+    }, 3000);
+  };
+}
+
+function setStatus(state, text) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  txt.textContent = text;
+  dot.className = 'w-2 h-2 rounded-full';
+  if (state === 'connected') { dot.classList.add('bg-emerald-400'); }
+  else if (state === 'error')  { dot.classList.add('bg-red-400', 'pulse-dot'); }
+  else { dot.classList.add('bg-amber-400', 'pulse-dot'); }
+}
+
+// ── Result rendering ────────────────────────────────────────────────────────
+function showLoading(query) {
+  switchToResults();
+  hide('result-card'); hide('result-error');
+  show('result-loading');
+  document.getElementById('loading-query').textContent = `«${query}»`;
+}
+
+function showError(query, error) {
+  switchToResults();
+  hide('result-loading'); hide('result-card');
+  show('result-error');
+  document.getElementById('error-text').textContent = error || 'Не удалось обработать запрос';
+}
+
+function showResult(query, data) {
+  switchToResults();
+  hide('result-loading'); hide('result-error');
+  show('result-card');
+
+  document.getElementById('result-query').textContent = query;
+
+  // Meta line
+  const meta = document.getElementById('result-meta');
+  const parts = [];
+  if (data.topic_name) parts.push(`<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">${esc(data.topic_name)}</span>`);
+  if (data.operation) parts.push(`<span class="text-slate-500">${esc(data.operation)}</span>`);
+  if (data.district) parts.push(`<span>📍 ${esc(data.district)}</span>`);
+  if (data.count != null) parts.push(`<span>${data.count} записей</span>`);
+  meta.innerHTML = parts.join('<span class="text-slate-200">·</span>');
+
+  // Body
+  const body = document.getElementById('result-body');
+  body.innerHTML = '';
+
+  // COUNT — big number
+  if (data.operation === 'COUNT' && data.count != null) {
+    body.innerHTML = `
+      <div class="text-center py-8">
+        <div class="text-6xl font-bold text-blue-600 mb-2">${data.count.toLocaleString('ru-RU')}</div>
+        <div class="text-slate-400 text-sm">${esc(data.topic_name || 'объектов')}</div>
+      </div>`;
+    return;
+  }
+
+  // GROUP — horizontal bars
+  if (data.operation === 'GROUP' && data.rows && data.rows.length) {
+    const maxVal = Math.max(...data.rows.map(r => {
+      const vals = Object.values(r).filter(v => typeof v === 'number');
+      return vals.length ? Math.max(...vals) : 0;
+    }));
+    let html = '<div class="space-y-2">';
+    for (const row of data.rows) {
+      const keys = Object.keys(row);
+      const label = row[keys[0]];
+      const value = row[keys[1]] || 0;
+      const pct = maxVal ? (value / maxVal * 100) : 0;
+      html += `
+        <div class="flex items-center gap-3">
+          <div class="w-40 text-right text-sm text-slate-600 truncate">${esc(String(label))}</div>
+          <div class="flex-1 bg-slate-100 rounded-full h-7 overflow-hidden">
+            <div class="bar-fill bg-gradient-to-r from-blue-500 to-indigo-500 h-full rounded-full flex items-center justify-end pr-2" style="width:${pct}%">
+              <span class="text-white text-xs font-semibold">${Number(value).toLocaleString('ru-RU')}</span>
+            </div>
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+    body.innerHTML = html;
+    // Animate bars
+    requestAnimationFrame(() => {
+      body.querySelectorAll('.bar-fill').forEach(el => { el.style.width = el.style.width; });
+    });
+    return;
+  }
+
+  // TABLE — for FILTER, TOP_N, etc.
+  if (data.rows && data.rows.length) {
+    const cols = data.columns || Object.keys(data.rows[0]);
+    let html = '<div class="overflow-x-auto"><table class="w-full text-sm">';
+    html += '<thead><tr class="border-b-2 border-slate-200">';
+    for (const c of cols) {
+      html += `<th class="text-left py-2 px-3 text-slate-500 font-medium text-xs uppercase">${esc(c)}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+    for (const row of data.rows.slice(0, 50)) {
+      html += '<tr class="border-b border-slate-100 hover:bg-slate-50">';
+      for (const c of cols) {
+        html += `<td class="py-2.5 px-3 text-slate-700">${esc(String(row[c] ?? ''))}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+    if (data.rows.length > 50) {
+      html += `<p class="text-xs text-slate-400 mt-3 text-center">Показано 50 из ${data.rows.length}</p>`;
+    }
+    body.innerHTML = html;
+    return;
+  }
+
+  // POWER results
+  if (data.power_meta) {
+    let html = '<div class="grid grid-cols-2 gap-4 mb-4">';
+    if (data.power_meta.active_houses != null) {
+      html += `<div class="bg-red-50 rounded-xl p-4 text-center"><div class="text-3xl font-bold text-red-600">${data.power_meta.active_houses}</div><div class="text-xs text-red-400 mt-1">домов отключено</div></div>`;
+    }
+    if (data.power_meta.planned_houses != null) {
+      html += `<div class="bg-amber-50 rounded-xl p-4 text-center"><div class="text-3xl font-bold text-amber-600">${data.power_meta.planned_houses}</div><div class="text-xs text-amber-400 mt-1">плановых отключений</div></div>`;
+    }
+    html += '</div>';
+    body.innerHTML = html;
+    return;
+  }
+
+  // Fallback: raw JSON
+  if (data.error) {
+    body.innerHTML = `<div class="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">${esc(data.error)}</div>`;
+  } else {
+    body.innerHTML = `<pre class="text-xs text-slate-500 bg-slate-50 rounded-xl p-4 overflow-x-auto">${esc(JSON.stringify(data, null, 2))}</pre>`;
+  }
+}
+
+function switchToResults() {
+  document.getElementById('qr-section').classList.add('hidden');
+  document.getElementById('result-section').classList.remove('hidden');
+  document.getElementById('qr-toggle').classList.remove('hidden');
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Init ────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
