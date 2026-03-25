@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <radialGradient id="bg" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </radialGradient>
+  </defs>
+  <circle cx="50" cy="50" r="50" fill="url(#bg)"/>
+  <!-- Gear: 8 teeth around center -->
+  <g transform="translate(50,50)" fill="white" opacity="0.9">
+    <!-- Tooth rectangles rotated at 0,45,90,135,180,225,270,315 degrees -->
+    <rect x="-5" y="-30" width="10" height="12" rx="2"/>
+    <rect x="-5" y="-30" width="10" height="12" rx="2" transform="rotate(45)"/>
+    <rect x="-5" y="-30" width="10" height="12" rx="2" transform="rotate(90)"/>
+    <rect x="-5" y="-30" width="10" height="12" rx="2" transform="rotate(135)"/>
+    <rect x="-5" y="-30" width="10" height="12" rx="2" transform="rotate(180)"/>
+    <rect x="-5" y="-30" width="10" height="12" rx="2" transform="rotate(225)"/>
+    <rect x="-5" y="-30" width="10" height="12" rx="2" transform="rotate(270)"/>
+    <rect x="-5" y="-30" width="10" height="12" rx="2" transform="rotate(315)"/>
+    <!-- Gear body -->
+    <circle cx="0" cy="0" r="20" fill="white" opacity="0.9"/>
+  </g>
+  <!-- Center hole -->
+  <circle cx="50" cy="50" r="9" fill="url(#bg)"/>
+  <!-- Center shine -->
+  <circle cx="50" cy="50" r="4" fill="white" opacity="0.5"/>
+</svg>

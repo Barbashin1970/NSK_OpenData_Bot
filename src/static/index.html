@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Сигма — Открытые данные Новосибирска</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
-  <link rel="icon" type="image/png" href="/static/img/sigma-cat.png">
+  <link rel="icon" type="image/png" href="/static/img/sigma-cat-sm.png">
   <link rel="apple-touch-icon" href="/static/img/sigma-cat.png">
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="stylesheet" href="/static/tailwind.css">
+  <link rel="preload" as="image" href="/static/img/sigma-cat-sm.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -123,7 +123,7 @@
 
       <!-- Left: cat + title -->
       <div class="flex items-center gap-3 min-w-0">
-        <img src="/static/img/sigma-cat.png"
+        <img src="/static/img/sigma-cat-sm.png"
              class="h-14 sm:h-20 w-auto object-contain flex-shrink-0 cursor-pointer active:scale-95 transition-transform"
              alt="Сигма"
              title="Что умеет Сигма?"
@@ -3854,7 +3854,7 @@ function renderInfo(_data) {
       <!-- Шапка-приветствие -->
       <div class="bg-gradient-to-br from-blue-900 via-blue-700 to-indigo-700 px-5 py-4 text-white">
         <div class="flex items-start gap-3">
-          <img src="/static/img/sigma-cat.png" class="h-16 w-auto flex-shrink-0 object-contain drop-shadow-md" alt="Сима">
+          <img src="/static/img/sigma-cat-sm.png" class="h-16 w-auto flex-shrink-0 object-contain drop-shadow-md" alt="Сима">
           <div class="min-w-0">
             <p class="font-semibold text-base leading-snug">Привет! Я — Сима</p>
             <p class="text-blue-100 text-xs mt-0.5 leading-relaxed">Ваш голосовой навигатор по открытым данным${_cityCfg?.city_name_genitive ? ' ' + esc(_cityCfg.city_name_genitive) : ' города'}. Спросите меня о городе — голосом или текстом.</p>
