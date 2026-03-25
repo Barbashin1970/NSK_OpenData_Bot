@@ -64,8 +64,8 @@ def _get_with_retry(url: str, params: dict, timeout: int = SCRAPER_TIMEOUT) -> d
             log.warning(f"Таймаут ({attempt}/4): {url} — {e}")
             last_exc = e
         except requests.exceptions.HTTPError as e:
-            status = e.response.status_code if e.response else "?"
-            if status and int(status) < 500:
+            status = e.response.status_code if e.response is not None else None
+            if status is not None and status < 500:
                 log.error(f"Клиентская ошибка {status}: {url} — запрос не повторяем")
                 return None
             log.warning(f"Серверная ошибка {status} ({attempt}/4): {url}")
