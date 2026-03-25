@@ -212,6 +212,39 @@ def _load_dotenv() -> None:
 # ── Startup events ───────────────────────────────────────────────────────────
 
 @app.on_event("startup")
+def _seed_volume_data() -> None:
+    """Copy seed data from Docker image to Volume if missing.
+
+    When Railway mounts a Volume at /app/data, the image's COPY data/ is hidden.
+    On first deploy (empty Volume) this ensures news, api_keys, emissions, etc.
+    are available. Existing files on the Volume are NEVER overwritten.
+    """
+    import shutil
+
+    seed_dir = Path("/app/_seed_data")
+    data_dir = Path(__file__).parent.parent / "data"
+
+    if not seed_dir.exists():
+        return  # local dev or no seed — skip
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for src in seed_dir.rglob("*"):
+        if src.is_dir():
+            continue
+        rel = src.relative_to(seed_dir)
+        dst = data_dir / rel
+        if dst.exists():
+            continue  # never overwrite user data on Volume
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        copied += 1
+
+    if copied:
+        log.info("Volume seed: скопировано %d файлов из образа в data/", copied)
+
+
+@app.on_event("startup")
 def _load_saved_api_keys() -> None:
     """При старте: загружает ключи из .env, затем из data/api_keys.json (если ENV не задан)."""
     _load_dotenv()

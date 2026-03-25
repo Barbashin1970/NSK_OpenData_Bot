@@ -6,7 +6,7 @@ WORKDIR /app
 COPY pyproject.toml SKILL.md ./
 RUN pip install --no-cache-dir -e . 2>/dev/null || true
 
-# Копируем весь код (кроме data/ — он монтируется как volume)
+# Копируем весь код
 COPY src/ ./src/
 COPY config/ ./config/
 COPY pyproject.toml SKILL.md ./
@@ -14,11 +14,11 @@ COPY pyproject.toml SKILL.md ./
 # Финальная установка с полным кодом
 RUN pip install --no-cache-dir -e .
 
-# Статические данные (api_keys, cities GeoJSON/JSON, emissions)
-# На Railway нет volume — включаем в образ; docker-compose может перекрыть volume'ом
-COPY data/ ./data/
+# Seed-данные: копируем в отдельную директорию внутри образа.
+# При старте скрипт синхронизирует недостающие файлы из _seed → /app/data (Volume).
+# Это решает проблему "пустой Volume при первом деплое".
+COPY data/ ./_seed_data/
 
 EXPOSE 8000
 
-# Railway задаёт $PORT динамически; локально fallback на 8000
 CMD bot serve --host 0.0.0.0 --port ${PORT:-8000}
