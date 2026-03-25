@@ -1306,6 +1306,14 @@ function _trySpecialQuery(raw) {
   }
   // ── [/PUZZLE GAME] ────────────────────────────────────────────────────────
 
+  // ── Экологический отчёт за месяц ──────────────────────────────────────────
+  if (/(?:статистик\S*\s+(?:погод|эколог|воздух|aqi))|(?:(?:покажи|отчёт|отчет|сводк\S*)\s+(?:по\s+)?(?:экологи|погод|воздух|aqi))|(?:экологи\S*\s+за\s+(?:последн|мес|нед|\d+\s*дн))|(?:погод\S*\s+за\s+(?:последн|мес|нед|\d+\s*дн))|(?:(?:aqi|качеств\S+\s+воздуха)\s+за\s+(?:последн|мес))/i.test(ql)) {
+    document.getElementById('queryInput').value = '';
+    document.getElementById('loadingState').className = 'hidden';
+    _showEcoReport();
+    return true;
+  }
+
   // ── Риски для жизни → таблица выбросов по МО НСО ─────────────────────────
   if (/риск[иа]?\s+(для\s+)?жизни|экологическ\S+\s+риск/i.test(ql)) {
     document.getElementById('queryInput').value = '';
@@ -1454,6 +1462,312 @@ async function _showRisksView() {
     } catch(e2) {
       el.innerHTML = '<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка загрузки экологических данных</div>';
     }
+  }
+}
+
+// ─── Ecology Report (30-day dashboard) ────────────────────────────────────────
+async function _showEcoReport() {
+  const el = document.getElementById('resultArea');
+  el.className = 'fade-in';
+  el.innerHTML = '<div class="text-center py-10 text-slate-400 text-sm">⏳ Загрузка экологического отчёта…</div>';
+
+  try {
+    const [histR, excR, statusR] = await Promise.all([
+      fetch('/ecology/history?days=30'),
+      fetch('/ecology/aqi-exceedances?days=30&aqi_threshold=40'),
+      fetch('/ecology/status'),
+    ]);
+    const hist    = await histR.json();
+    const exc     = await excR.json();
+    const status  = await statusR.json();
+    const rows    = hist.rows || [];
+    const excRows = exc.hourly || [];
+    const dailySummary = exc.daily_summary || [];
+    const currentRows = status.rows || [];
+
+    // ── Aggregate by day (average across all districts) ──────────────────────
+    const byDay = {};
+    for (const r of rows) {
+      const d = r['день'];
+      if (!byDay[d]) byDay[d] = { day: d, pm25: [], aqi: [], temp: [], wind: [], snapshots: 0 };
+      if (r['pm25_ср'] != null) byDay[d].pm25.push(r['pm25_ср']);
+      if (r['aqi_ср'] != null) byDay[d].aqi.push(r['aqi_ср']);
+      if (r['темп_ср'] != null) byDay[d].temp.push(r['темп_ср']);
+      if (r['ветер_ср'] != null) byDay[d].wind.push(r['ветер_ср']);
+      byDay[d].snapshots += (r['снимков'] || 0);
+    }
+    const days = Object.values(byDay)
+      .map(d => ({
+        day: d.day,
+        pm25: d.pm25.length ? +(d.pm25.reduce((a,b)=>a+b,0)/d.pm25.length).toFixed(1) : null,
+        aqi:  d.aqi.length  ? Math.round(d.aqi.reduce((a,b)=>a+b,0)/d.aqi.length) : null,
+        temp: d.temp.length ? +(d.temp.reduce((a,b)=>a+b,0)/d.temp.length).toFixed(1) : null,
+        wind: d.wind.length ? +(d.wind.reduce((a,b)=>a+b,0)/d.wind.length).toFixed(1) : null,
+        snapshots: d.snapshots,
+      }))
+      .sort((a,b) => a.day.localeCompare(b.day));
+
+    // ── Stats ────────────────────────────────────────────────────────────────
+    const realDays = days.filter(d => d.snapshots > 0);
+    const avgAqi   = realDays.length ? Math.round(realDays.reduce((s,d)=>s+(d.aqi||0),0)/realDays.length) : null;
+    const maxAqi   = realDays.length ? Math.max(...realDays.map(d=>d.aqi||0)) : null;
+    const avgPm25  = realDays.length ? +(realDays.reduce((s,d)=>s+(d.pm25||0),0)/realDays.length).toFixed(1) : null;
+    const avgTemp  = realDays.length ? +(realDays.reduce((s,d)=>s+(d.temp||0),0)/realDays.length).toFixed(1) : null;
+    const minTemp  = realDays.length ? +(Math.min(...realDays.map(d=>d.temp??99))).toFixed(1) : null;
+    const maxTemp  = realDays.length ? +(Math.max(...realDays.map(d=>d.temp??-99))).toFixed(1) : null;
+    const avgWind  = realDays.length ? +(realDays.reduce((s,d)=>s+(d.wind||0),0)/realDays.length).toFixed(1) : null;
+    const excDays  = exc.days_exceeded || 0;
+
+    // ── Commentary ───────────────────────────────────────────────────────────
+    function _ecoComment() {
+      const parts = [];
+      // AQI verdict
+      if (avgAqi != null) {
+        if (avgAqi <= 20) parts.push({icon: '🟢', text: 'Отличное качество воздуха за весь период. Показатели стабильно ниже порога ВОЗ.', color: 'text-emerald-700', bg: 'bg-emerald-50'});
+        else if (avgAqi <= 35) parts.push({icon: '🟢', text: 'Хорошее качество воздуха. Средний AQI в пределах нормы, серьёзных превышений не зафиксировано.', color: 'text-green-700', bg: 'bg-green-50'});
+        else if (avgAqi <= 50) parts.push({icon: '🟡', text: 'Качество воздуха удовлетворительное. Отмечены отдельные эпизоды повышения AQI.', color: 'text-yellow-700', bg: 'bg-yellow-50'});
+        else if (avgAqi <= 70) parts.push({icon: '🟠', text: 'Качество воздуха ниже нормы. Частые превышения порога 40 AQI — рекомендуется ограничить прогулки.', color: 'text-orange-700', bg: 'bg-orange-50'});
+        else parts.push({icon: '🔴', text: 'Неблагоприятная экологическая обстановка. Высокие концентрации загрязнителей, рекомендуется минимизировать пребывание на улице.', color: 'text-red-700', bg: 'bg-red-50'});
+      }
+      // Exceedances
+      if (excDays === 0) parts.push({icon: '✅', text: 'За 30 дней превышений AQI > 40 не было. Атмосфера города в отличном состоянии.', color: 'text-emerald-700', bg: 'bg-emerald-50'});
+      else if (excDays <= 3) parts.push({icon: '🔔', text: `Зафиксировано ${excDays} ${_pluralDays(excDays)} с превышением AQI > 40 — единичные эпизоды, не систематические.`, color: 'text-yellow-700', bg: 'bg-yellow-50'});
+      else if (excDays <= 10) parts.push({icon: '⚠️', text: `${excDays} ${_pluralDays(excDays)} с повышенным AQI. Устойчивый паттерн — стоит отслеживать тренд.`, color: 'text-orange-700', bg: 'bg-orange-50'});
+      else parts.push({icon: '🚨', text: `${excDays} ${_pluralDays(excDays)} с превышениями AQI — неблагоприятная тенденция. Рекомендован детальный анализ источников загрязнения.`, color: 'text-red-700', bg: 'bg-red-50'});
+      // Temperature
+      if (avgTemp != null) {
+        if (avgTemp < -20) parts.push({icon: '🥶', text: `Экстремальный холод: средняя температура ${avgTemp}°C. Усиленная нагрузка на теплосети.`, color: 'text-blue-700', bg: 'bg-blue-50'});
+        else if (avgTemp < -10) parts.push({icon: '❄️', text: `Холодный период: средняя ${avgTemp}°C (мин. ${minTemp}°C, макс. ${maxTemp}°C).`, color: 'text-blue-700', bg: 'bg-blue-50'});
+        else if (avgTemp < 5) parts.push({icon: '🌡️', text: `Умеренно-прохладно: средняя ${avgTemp}°C (от ${minTemp}°C до ${maxTemp}°C).`, color: 'text-sky-700', bg: 'bg-sky-50'});
+        else parts.push({icon: '☀️', text: `Тёплый период: средняя ${avgTemp}°C. Диапазон ${minTemp}°C — ${maxTemp}°C.`, color: 'text-amber-700', bg: 'bg-amber-50'});
+      }
+      // Wind
+      if (avgWind != null && avgWind < 2) parts.push({icon: '🌫', text: `Слабый ветер (ср. ${avgWind} м/с) — повышенный риск накопления смога в котловине.`, color: 'text-slate-600', bg: 'bg-slate-50'});
+      return parts;
+    }
+    function _pluralDays(n) { const m = n % 10, c = n % 100; if (c >= 11 && c <= 19) return 'дней'; if (m === 1) return 'день'; if (m >= 2 && m <= 4) return 'дня'; return 'дней'; }
+
+    const comments = _ecoComment();
+
+    // ── AQI bar chart (30 days) ──────────────────────────────────────────────
+    const maxBarAqi = Math.max(60, maxAqi || 0);
+    function _aqiBarColor(v) {
+      if (v == null) return '#cbd5e1';
+      if (v <= 20) return '#34d399';
+      if (v <= 40) return '#4ade80';
+      if (v <= 60) return '#facc15';
+      if (v <= 80) return '#fb923c';
+      return '#ef4444';
+    }
+    function _dayLabel(d) { const dt = new Date(d + 'T00:00:00'); return dt.toLocaleDateString('ru-RU', {day:'numeric', month:'short'}); }
+
+    const barChartHtml = days.length ? `
+      <div class="overflow-x-auto pb-2">
+        <div style="min-width:${Math.max(days.length * 24, 300)}px; height:180px;" class="flex items-end gap-px px-1">
+          ${days.map(d => {
+            const h = d.aqi != null ? Math.max(4, Math.round(d.aqi / maxBarAqi * 150)) : 4;
+            const bg = _aqiBarColor(d.aqi);
+            const title = `${_dayLabel(d.day)}: AQI ${d.aqi ?? '—'}, PM2.5 ${d.pm25 ?? '—'} мкг/м³, ${d.temp ?? '—'}°C`;
+            return `<div class="flex flex-col items-center flex-1 min-w-[18px]" title="${title}">
+              <span class="text-[9px] text-slate-400 mb-0.5 leading-none">${d.aqi ?? ''}</span>
+              <div style="height:${h}px;background:${bg}" class="w-full rounded-t-sm transition-all"></div>
+              <span class="text-[8px] text-slate-400 mt-0.5 leading-none whitespace-nowrap">${d.day.slice(8)}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="flex items-center gap-3 mt-2 px-1 text-[10px] text-slate-400">
+          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#34d399"></span>≤20</span>
+          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#4ade80"></span>21-40</span>
+          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#facc15"></span>41-60</span>
+          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#fb923c"></span>61-80</span>
+          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#ef4444"></span>>80</span>
+          <span class="ml-auto">AQI по дням</span>
+        </div>
+      </div>` : '<div class="text-sm text-slate-400 text-center py-4">Нет данных за период</div>';
+
+    // ── Temperature sparkline (SVG) ──────────────────────────────────────────
+    const tempDays = days.filter(d => d.temp != null);
+    let tempSvgHtml = '';
+    if (tempDays.length >= 2) {
+      const tMin = Math.min(...tempDays.map(d=>d.temp));
+      const tMax = Math.max(...tempDays.map(d=>d.temp));
+      const tRange = Math.max(tMax - tMin, 1);
+      const svgW = 600, svgH = 100, pad = 20;
+      const pts = tempDays.map((d, i) => {
+        const x = pad + i / (tempDays.length - 1) * (svgW - pad * 2);
+        const y = pad + (1 - (d.temp - tMin) / tRange) * (svgH - pad * 2);
+        return {x, y, d};
+      });
+      const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+      const zeroY = tMin < 0 && tMax > 0 ? pad + (1 - (0 - tMin) / tRange) * (svgH - pad * 2) : null;
+      const dots = pts.filter((_, i) => i % Math.max(1, Math.floor(pts.length / 10)) === 0 || i === pts.length - 1)
+        .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#3b82f6"/><text x="${p.x.toFixed(1)}" y="${(p.y - 8).toFixed(1)}" text-anchor="middle" fill="#64748b" font-size="9">${p.d.temp}°</text>`).join('');
+
+      tempSvgHtml = `
+        <svg viewBox="0 0 ${svgW} ${svgH}" class="w-full" style="max-height:120px">
+          ${zeroY != null ? `<line x1="${pad}" y1="${zeroY.toFixed(1)}" x2="${svgW-pad}" y2="${zeroY.toFixed(1)}" stroke="#cbd5e1" stroke-dasharray="4,3" stroke-width="1"/>
+            <text x="${svgW-pad+4}" y="${(zeroY+3).toFixed(1)}" fill="#94a3b8" font-size="9">0°</text>` : ''}
+          <path d="${linePath}" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+          ${dots}
+        </svg>`;
+    }
+
+    // ── Exceedance heatmap (hour × day) ──────────────────────────────────────
+    let heatmapHtml = '';
+    if (excRows.length > 0) {
+      // Build hourly pattern: which hours of day have most exceedances
+      const hourBuckets = Array(24).fill(0);
+      for (const r of excRows) hourBuckets[r.hour] = (hourBuckets[r.hour] || 0) + 1;
+      const maxH = Math.max(...hourBuckets);
+      heatmapHtml = `
+        <div class="mt-3">
+          <div class="text-xs font-semibold text-slate-600 mb-2">Часы превышений AQI > 40 (суммарно за 30 дней)</div>
+          <div class="flex items-end gap-px" style="height:60px">
+            ${hourBuckets.map((v, h) => {
+              const ht = maxH > 0 ? Math.max(3, Math.round(v / maxH * 50)) : 3;
+              const bg = v === 0 ? '#e2e8f0' : v <= 2 ? '#fde68a' : v <= 5 ? '#fb923c' : '#ef4444';
+              return `<div class="flex flex-col items-center flex-1" title="${h}:00 — ${v} превыш.">
+                <div style="height:${ht}px;background:${bg}" class="w-full rounded-t-sm"></div>
+                <span class="text-[8px] text-slate-400 mt-0.5">${h}</span>
+              </div>`;
+            }).join('')}
+          </div>
+          <div class="text-[10px] text-slate-400 mt-1 text-center">Час UTC</div>
+        </div>`;
+    }
+
+    // ── Current status summary ───────────────────────────────────────────────
+    const nowAqi = currentRows.length ? Math.round(currentRows.reduce((s,r) => s+(r.aqi||0),0)/currentRows.length) : null;
+    const nowC   = aqiColor(nowAqi);
+    const nowTemp = currentRows.length ? +(currentRows.reduce((s,r) => s+(r.temperature_c||0),0)/currentRows.length).toFixed(1) : null;
+    const nowWind = currentRows.length ? +(currentRows.reduce((s,r) => s+(r.wind_speed_ms||0),0)/currentRows.length).toFixed(1) : null;
+    const nowPm25 = currentRows.length ? +(currentRows.reduce((s,r) => s+(r.pm25||0),0)/currentRows.length).toFixed(1) : null;
+    const measuredAt = status.measured_at ? new Date(status.measured_at).toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'}) : '';
+
+    // ── Render ────────────────────────────────────────────────────────────────
+    el.innerHTML = `
+      <div class="space-y-4">
+        <!-- Header -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="bg-gradient-to-r from-sky-50 to-emerald-50 border-b border-slate-200 px-5 py-4 flex items-center gap-3">
+            <span class="text-2xl">🌍</span>
+            <div class="flex-1">
+              <div class="font-semibold text-slate-800">Экологический отчёт за 30 дней</div>
+              <div class="text-xs text-slate-500">Качество воздуха, погода, превышения AQI · ${_cityCfg?.city_name || 'город'}</div>
+            </div>
+            ${measuredAt ? `<div class="text-xs text-slate-400 text-right">Обновлено<br>${measuredAt}</div>` : ''}
+          </div>
+
+          <!-- Current status strip -->
+          <div class="px-5 py-3 flex flex-wrap gap-3 border-b border-slate-100 bg-white">
+            <div class="flex items-center gap-2 px-3 py-2 rounded-xl ${nowC.bg} flex-1 min-w-[120px]">
+              <span class="text-lg">💨</span>
+              <div>
+                <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Сейчас AQI</div>
+                <div class="text-lg font-bold ${nowC.text}">${nowAqi ?? '—'} <span class="text-xs font-medium">${nowC.label}</span></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 flex-1 min-w-[100px]">
+              <span class="text-lg">🌡️</span>
+              <div>
+                <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Температура</div>
+                <div class="text-lg font-bold text-blue-700">${nowTemp != null ? nowTemp + '°C' : '—'}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 flex-1 min-w-[100px]">
+              <span class="text-lg">🌬️</span>
+              <div>
+                <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Ветер</div>
+                <div class="text-lg font-bold text-slate-700">${nowWind != null ? nowWind + ' м/с' : '—'}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-50 flex-1 min-w-[100px]">
+              <span class="text-lg">🫁</span>
+              <div>
+                <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">PM2.5</div>
+                <div class="text-lg font-bold text-violet-700">${nowPm25 != null ? nowPm25 + ' мкг/м³' : '—'}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Comments -->
+          <div class="px-5 py-3 space-y-2">
+            ${comments.map(c => `
+              <div class="flex items-start gap-2 px-3 py-2.5 rounded-xl ${c.bg}">
+                <span class="text-base flex-shrink-0 mt-0.5">${c.icon}</span>
+                <span class="text-sm ${c.color} leading-snug">${c.text}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- AQI Chart -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-lg">📊</span>
+            <div class="font-semibold text-sm text-slate-800">Динамика AQI</div>
+            <div class="ml-auto text-xs text-slate-400">Среднее: <strong class="${aqiColor(avgAqi).text}">${avgAqi ?? '—'}</strong> · Макс: <strong>${maxAqi ?? '—'}</strong></div>
+          </div>
+          ${barChartHtml}
+        </div>
+
+        <!-- Temperature Chart -->
+        ${tempSvgHtml ? `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-lg">🌡️</span>
+            <div class="font-semibold text-sm text-slate-800">Температура</div>
+            <div class="ml-auto text-xs text-slate-400">${minTemp}°C — ${maxTemp}°C · ср. ${avgTemp}°C</div>
+          </div>
+          ${tempSvgHtml}
+        </div>` : ''}
+
+        <!-- Exceedance heatmap -->
+        ${heatmapHtml ? `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-lg">🔥</span>
+            <div class="font-semibold text-sm text-slate-800">Превышения AQI</div>
+            <div class="ml-auto text-xs text-slate-400">${excDays} ${_pluralDays(excDays)} · ${exc.total_records || 0} записей</div>
+          </div>
+          ${heatmapHtml}
+        </div>` : ''}
+
+        <!-- 30-day KPI summary -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-5 py-3 border-b border-slate-100">
+            <div class="font-semibold text-sm text-slate-800">📋 Сводка за 30 дней</div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100">
+            <div class="px-4 py-3 text-center">
+              <div class="text-2xl font-bold ${aqiColor(avgAqi).text}">${avgAqi ?? '—'}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Ср. AQI</div>
+            </div>
+            <div class="px-4 py-3 text-center">
+              <div class="text-2xl font-bold text-violet-600">${avgPm25 ?? '—'}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Ср. PM2.5</div>
+            </div>
+            <div class="px-4 py-3 text-center">
+              <div class="text-2xl font-bold text-blue-600">${avgTemp ?? '—'}°</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Ср. t°C</div>
+            </div>
+            <div class="px-4 py-3 text-center">
+              <div class="text-2xl font-bold ${excDays === 0 ? 'text-emerald-600' : excDays <= 3 ? 'text-yellow-600' : 'text-red-600'}">${excDays}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Дней AQI>40</div>
+            </div>
+          </div>
+          <div class="px-5 py-2.5 border-t border-slate-100 flex items-center text-xs text-slate-400 gap-3">
+            <span>Источник: Open-Meteo · ${realDays.length} дней данных</span>
+            <button onclick="askNow('качество воздуха в городе')"
+              class="ml-auto text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors whitespace-nowrap">
+              Текущие данные →
+            </button>
+          </div>
+        </div>
+      </div>`;
+  } catch (e) {
+    console.error('Eco report error:', e);
+    el.innerHTML = '<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка загрузки экологического отчёта</div>';
   }
 }
 
@@ -3763,6 +4077,7 @@ function renderInfo(_data) {
         { icon: '😷', name: 'Превышения ПДК PM2.5',      q: 'превышение ПДК по PM2.5' },
         { icon: '🌡️', name: 'Прогноз погоды',            q: 'прогноз погоды на неделю' },
         { icon: '⚠️', name: 'Риски для жизни',           q: 'риски для жизни в городе' },
+        { icon: '📊', name: 'Отчёт за 30 дней',             q: 'статистика экологии за месяц' },
         { icon: '📉', name: 'Динамика загрязнения',       q: 'динамика качества воздуха' },
         _hasMeta('emissions') ? { icon: '🏭', name: 'Выбросы по предприятиям', q: 'выбросы в атмосферу' } : null,
         { icon: '🏙️', name: 'Рейтинг городов по чистоте', q: 'рейтинг городов' },
