@@ -1008,12 +1008,13 @@ async function _studioAuth() {
               <th class="px-3 py-2.5 w-20 text-center">Уверенность</th>
               <th class="px-3 py-2.5 w-24">Операция</th>
               <th class="px-3 py-2.5 w-28">Район</th>
+              <th class="px-3 py-2.5 w-20">Город</th>
               <th class="px-3 py-2.5 w-32">Ключевые слова</th>
               <th class="px-3 py-2.5 w-16">Источник</th>
             </tr>
           </thead>
           <tbody id="history-tbody" class="divide-y divide-slate-100">
-            <tr><td colspan="8" class="px-3 py-8 text-center text-slate-400">Загрузка...</td></tr>
+            <tr><td colspan="9" class="px-3 py-8 text-center text-slate-400">Загрузка...</td></tr>
           </tbody>
         </table>
       </div>
@@ -3258,7 +3259,7 @@ async function loadHistory() {
     const tbody = document.getElementById('history-tbody');
 
     if (!data.rows?.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-8 text-center text-slate-400">Нет записей</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="px-3 py-8 text-center text-slate-400">Нет записей</td></tr>';
     } else {
       tbody.innerHTML = data.rows.map(r => {
         const conf = r.confidence != null ? r.confidence : null;
@@ -3288,6 +3289,7 @@ async function loadHistory() {
           <td class="px-3 py-2 text-center">${confBadge}</td>
           <td class="px-3 py-2">${opBadge}</td>
           <td class="px-3 py-2 text-slate-500">${r.district || r.sub_district || ''}</td>
+          <td class="px-3 py-2 text-slate-400">${r.city_id || ''}</td>
           <td class="px-3 py-2 text-slate-400 max-w-[200px] truncate" title="${(r.matched_keywords||'').replace(/"/g,'&quot;')}">${r.matched_keywords || ''}</td>
           <td class="px-3 py-2">${r.source === 'test' ? '<span class="bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-md">тест</span>' : '<span class="text-slate-400">' + (r.source || 'web') + '</span>'}</td>
         </tr>`;
@@ -3302,7 +3304,7 @@ async function loadHistory() {
     document.getElementById('history-next-btn').disabled = _historyOffset + _HISTORY_PAGE >= total;
   } catch (e) {
     document.getElementById('history-tbody').innerHTML =
-      `<tr><td colspan="8" class="px-3 py-8 text-center text-red-400">Ошибка загрузки: ${e.message}</td></tr>`;
+      `<tr><td colspan="9" class="px-3 py-8 text-center text-red-400">Ошибка загрузки: ${e.message}</td></tr>`;
   }
 }
 

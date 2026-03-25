@@ -76,7 +76,9 @@ def api_run_test_queries():
     """Run ~20 test queries through router+planner and log with source='test'."""
     from ..router import best_topic
     from ..planner import make_plan
+    from ..city_config import get_city_id
 
+    city_id = get_city_id()
     results = []
     for q in _TEST_QUERIES:
         try:
@@ -95,6 +97,7 @@ def api_run_test_queries():
                 extra_filters=plan.extra_filters if plan else None,
                 matched_keywords=route_result.matched_keywords if route_result else None,
                 utility_type=route_result.utility_type if route_result else None,
+                city_id=city_id,
                 source="test",
             )
             results.append({
