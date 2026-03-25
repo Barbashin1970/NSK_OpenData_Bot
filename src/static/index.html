@@ -1310,7 +1310,8 @@ function _trySpecialQuery(raw) {
   if (/(?:статистик\S*\s+(?:погод|эколог|воздух|aqi))|(?:(?:покажи|отчёт|отчет|сводк\S*)\s+(?:по\s+)?(?:экологи|погод|воздух|aqi))|(?:экологи\S*\s+за\s+(?:последн|мес|нед|\d+\s*дн))|(?:погод\S*\s+за\s+(?:последн|мес|нед|\d+\s*дн))|(?:(?:aqi|качеств\S+\s+воздуха)\s+за\s+(?:последн|мес))/i.test(ql)) {
     document.getElementById('queryInput').value = '';
     document.getElementById('loadingState').className = 'hidden';
-    _showEcoReport();
+    const _ecoDistrict = _extractDistrict(ql);
+    _showEcoReport(_ecoDistrict || undefined);
     return true;
   }
 
@@ -1466,16 +1467,18 @@ async function _showRisksView() {
 }
 
 // ─── Ecology Report (30-day dashboard) ────────────────────────────────────────
-async function _showEcoReport() {
+async function _showEcoReport(districtFilter) {
   const el = document.getElementById('resultArea');
   el.className = 'fade-in';
+  const distLabel = districtFilter ? districtFilter.replace(/\s*район$/i, '') : null;
   el.innerHTML = '<div class="text-center py-10 text-slate-400 text-sm">⏳ Загрузка экологического отчёта…</div>';
 
   try {
+    const dq = districtFilter ? `&district=${encodeURIComponent(districtFilter)}` : '';
     const [histR, excR, statusR] = await Promise.all([
-      fetch('/ecology/history?days=30'),
-      fetch('/ecology/aqi-exceedances?days=30&aqi_threshold=40'),
-      fetch('/ecology/status'),
+      fetch('/ecology/history?days=30' + dq),
+      fetch('/ecology/aqi-exceedances?days=30&aqi_threshold=40' + dq),
+      fetch('/ecology/status' + (districtFilter ? '?district=' + encodeURIComponent(districtFilter) : '')),
     ]);
     const hist    = await histR.json();
     const exc     = await excR.json();
@@ -1652,10 +1655,19 @@ async function _showEcoReport() {
           <div class="bg-gradient-to-r from-sky-50 to-emerald-50 border-b border-slate-200 px-5 py-4 flex items-center gap-3">
             <span class="text-2xl">🌍</span>
             <div class="flex-1">
-              <div class="font-semibold text-slate-800">Экологический отчёт за 30 дней</div>
+              <div class="font-semibold text-slate-800">Экологический отчёт за 30 дней${distLabel ? ` · ${esc(distLabel)}` : ''}</div>
               <div class="text-xs text-slate-500">Качество воздуха, погода, превышения AQI · ${_cityCfg?.city_name || 'город'}</div>
             </div>
-            ${measuredAt ? `<div class="text-xs text-slate-400 text-right">Обновлено<br>${measuredAt}</div>` : ''}
+            <div class="flex items-center gap-2">
+              <select id="_ecoReportDistrictSelect" onchange="_showEcoReport(this.value || undefined)"
+                class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-600 focus:outline-none focus:border-sky-400 cursor-pointer max-w-[150px]">
+                <option value="">Весь город</option>
+                ${(_cityCfg?.districts || []).filter(d => d.val).map(d =>
+                  `<option value="${esc(d.val)}"${districtFilter === d.val ? ' selected' : ''}>${esc(d.label)}</option>`
+                ).join('')}
+              </select>
+              ${measuredAt ? `<div class="text-xs text-slate-400 text-right hidden sm:block">⏱ ${measuredAt}</div>` : ''}
+            </div>
           </div>
 
           <!-- Current status strip -->
@@ -1756,12 +1768,18 @@ async function _showEcoReport() {
               <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Дней AQI>40</div>
             </div>
           </div>
-          <div class="px-5 py-2.5 border-t border-slate-100 flex items-center text-xs text-slate-400 gap-3">
-            <span>Источник: Open-Meteo · ${realDays.length} дней данных</span>
-            <button onclick="askNow('качество воздуха в городе')"
-              class="ml-auto text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors whitespace-nowrap">
-              Текущие данные →
-            </button>
+          <div class="px-5 py-2.5 border-t border-slate-100 flex flex-wrap items-center text-xs text-slate-400 gap-3">
+            <span>Источник: Open-Meteo · ${realDays.length} дней данных${distLabel ? ` · ${esc(distLabel)}` : ''}</span>
+            <div class="ml-auto flex items-center gap-2">
+              ${districtFilter ? `<button onclick="_showEcoReport()"
+                class="text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:border-sky-300 hover:text-sky-600 transition-colors whitespace-nowrap">
+                Весь город
+              </button>` : ''}
+              <button onclick="askNow('качество воздуха в городе')"
+                class="text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors whitespace-nowrap">
+                Текущие данные →
+              </button>
+            </div>
           </div>
         </div>
       </div>`;
@@ -3549,7 +3567,7 @@ function renderEcology(data) {
       const hum  = r.humidity_pct != null  ? Number(r.humidity_pct).toFixed(0)  + '%'    : '—';
       const dist = (r.district || '').replace(' район', '');
       return `
-        <div class="bg-white border border-slate-200 rounded-2xl p-4 hover:shadow-md transition-shadow cursor-pointer"
+        <div class="bg-white border border-slate-200 rounded-2xl p-4 hover:shadow-md transition-shadow cursor-pointer group"
              onclick="setQuery('качество воздуха в ${esc(dist)}')">
           <div class="flex items-start justify-between mb-1">
             <div class="text-sm font-semibold text-slate-800 leading-tight">${esc(dist)}</div>
@@ -3563,6 +3581,10 @@ function renderEcology(data) {
             <span class="text-slate-400">Темп.</span><span class="font-medium text-slate-700">${temp}</span>
             <span class="text-slate-400">Ветер</span><span class="font-medium text-slate-700">${wind}</span>
             <span class="text-slate-400">Влажн.</span><span class="font-medium text-slate-700">${hum}</span>
+          </div>
+          <div class="mt-2 pt-1.5 border-t border-slate-100 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span onclick="event.stopPropagation(); _showEcoReport('${esc(r.district)}')"
+              class="text-[10px] text-sky-600 hover:text-sky-800 font-medium cursor-pointer">📊 Отчёт за месяц →</span>
           </div>
         </div>`;
     }).join('');
@@ -3584,7 +3606,13 @@ function renderEcology(data) {
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
             <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🍃 Качество воздуха по районам</span>
-            <span class="text-xs text-slate-400">⏱ ${metaTs}</span>
+            <div class="flex items-center gap-3">
+              <button onclick="_showEcoReport()"
+                class="text-xs px-3 py-1.5 bg-sky-50 border border-sky-200 rounded-xl text-sky-700 hover:bg-sky-100 hover:border-sky-300 transition-colors whitespace-nowrap font-medium">
+                📊 Отчёт за 30 дней
+              </button>
+              <span class="text-xs text-slate-400">⏱ ${metaTs}</span>
+            </div>
           </div>
           ${risksBanner}
           <div class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${cards}</div>
