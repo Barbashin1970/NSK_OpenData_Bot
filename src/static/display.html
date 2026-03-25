@@ -80,7 +80,7 @@
   <!-- ── Status bar (always on top) ─────────────────────────────────────────── -->
   <div class="status-bar" id="statusBar">
     <div class="flex items-center gap-3">
-      <img src="/static/img/sigma-cat.png" alt="" class="w-7 h-7 rounded-lg" onerror="this.style.display='none'">
+      <img src="/static/img/sigma-cat.png" alt="" class="h-8 w-auto" onerror="this.style.display='none'">
       <div>
         <span class="text-sm font-bold tracking-tight">Сигма</span>
         <span class="text-[11px] text-blue-300 ml-2">Режим презентации</span>
@@ -101,10 +101,6 @@
   <!-- ── Idle screen (before first query) ───────────────────────────────────── -->
   <div class="idle-screen" id="idleScreen">
     <div class="text-center fade-in">
-      <img src="/static/img/sigma-cat.png" alt="" class="w-24 h-24 mx-auto mb-6 rounded-2xl shadow-lg" onerror="this.style.display='none'">
-      <h1 class="text-3xl font-bold text-slate-800 mb-2">Сигма — Открытые данные</h1>
-      <p class="text-slate-500 text-lg mb-8">Голосовое управление с мобильного устройства</p>
-
       <div class="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 max-w-sm mx-auto mb-6">
         <div id="qr-idle" class="mx-auto mb-4 inline-block"></div>
         <h2 class="text-lg font-bold text-slate-800 mb-1">Отсканируйте QR-код</h2>

@@ -267,7 +267,8 @@
 const _DISPLAY_MODE = new URLSearchParams(location.search).get('mode') === 'display';
 if (_DISPLAY_MODE) {
   document.body.classList.add('display-mode');
-  document.querySelector('header')?.remove();
+  const _hdr = document.querySelector('header');
+  if (_hdr) _hdr.style.display = 'none';
   document.getElementById('roleDashboard')?.remove();
   document.querySelector('footer')?.remove();
   const main = document.querySelector('main');
