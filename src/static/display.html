@@ -97,6 +97,9 @@
       <button onclick="toggleQR()" class="text-xs bg-white/15 hover:bg-white/25 border border-white/15 rounded-lg px-3 py-1.5 transition-colors" title="Показать QR-код">
         QR
       </button>
+      <button onclick="endSession()" class="text-xs bg-red-500/20 hover:bg-red-500/40 border border-red-400/30 text-red-200 rounded-lg px-3 py-1.5 transition-colors" title="Завершить сеанс">
+        Завершить
+      </button>
     </div>
   </div>
 
@@ -162,6 +165,7 @@ async function init() {
   renderQR();
   connectSSE();
   loadCityName();
+  updateRoleBadge('citizen');
 }
 
 async function loadCityName() {
@@ -232,6 +236,9 @@ function connectSSE() {
         break;
       case 'set-role':
         handleRoleSwitch(msg.role, msg.district);
+        break;
+      case 'session-end':
+        handleSessionEnd();
         break;
       // Legacy events (backwards compat)
       case 'loading':
@@ -377,6 +384,22 @@ function dismissIdle() {
     idle.classList.add('hiding');
     setTimeout(() => idle.remove(), 500);
   }
+}
+
+// ── Session end ──────────────────────────────────────────────────────────────
+async function endSession() {
+  if (!confirm('Завершить сеанс презентации?')) return;
+  try {
+    await fetch(`/session/${SID}/end`, { method: 'POST' });
+  } catch (e) {}
+  handleSessionEnd();
+}
+
+function handleSessionEnd() {
+  if (_evtSource) { _evtSource.close(); _evtSource = null; }
+  setStatus('error', 'Сеанс завершён');
+  // Reset to idle — reload page to create new session
+  setTimeout(() => { location.href = '/display'; }, 2000);
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────

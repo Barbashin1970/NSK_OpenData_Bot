@@ -223,3 +223,22 @@ async def session_set_role(sid: str, request: Request):
         await queue.put(msg)
 
     return {"ok": True, "role": role}
+
+
+@router.post(
+    "/session/{sid}/end",
+    tags=["Presenter"],
+    summary="Завершить сессию презентации",
+)
+async def session_end(sid: str):
+    s = _sessions.pop(sid, None)
+    if not s:
+        return JSONResponse(status_code=404, content={"error": "session not found"})
+
+    # Notify all displays about session end
+    msg = {"type": "session-end"}
+    for queue in s.queues:
+        await queue.put(msg)
+
+    log.info("Presenter session ended: %s", sid)
+    return {"ok": True}

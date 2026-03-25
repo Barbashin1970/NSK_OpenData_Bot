@@ -65,10 +65,13 @@
         <img src="/static/img/sigma-cat.png" alt="" class="w-8 h-8 rounded-xl" onerror="this.style.display='none'">
         <span class="text-base font-bold tracking-tight">Сигма</span>
       </div>
-      <span id="status" class="flex items-center gap-1.5 text-[11px] text-slate-400">
-        <span id="status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
-        <span id="status-text">Подключение...</span>
-      </span>
+      <div class="flex items-center gap-2">
+        <span id="role-label" class="text-[11px] text-indigo-300 font-medium hidden"></span>
+        <span id="status" class="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <span id="status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span id="status-text">Подключение...</span>
+        </span>
+      </div>
     </div>
   </header>
 
@@ -173,6 +176,13 @@
         </div>
       </div>
 
+      <!-- End session -->
+      <div class="pt-2">
+        <button onclick="endSession()" class="w-full bg-red-500/15 hover:bg-red-500/25 border border-red-400/20 text-red-300 rounded-2xl py-2.5 text-sm font-medium transition-colors">
+          Завершить сеанс
+        </button>
+      </div>
+
     </div>
   </main>
 
@@ -201,6 +211,10 @@ async function init() {
   document.getElementById('queryInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendFromInput(); }
   });
+  // Show initial role
+  const lbl = document.getElementById('role-label');
+  lbl.textContent = '👤 Горожанин';
+  lbl.classList.remove('hidden');
   // Load cities
   loadCities();
 }
@@ -260,6 +274,8 @@ function sendChip(el) {
 }
 
 // ── Role switching ──────────────────────────────────────────────────────────
+const _ROLE_LABELS = { citizen: '👤 Горожанин', official: '🏙️ Служащий', mayor: '🏛️ Мэр' };
+
 function sendRole(el) {
   const role = el.dataset.role;
   // Map to text commands that _trySpecialQuery in index.html recognizes
@@ -280,9 +296,12 @@ function sendRole(el) {
     }).catch(() => {});
   }
 
-  // Update active state
+  // Update active state + role label in header
   document.querySelectorAll('.role-chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
+  const lbl = document.getElementById('role-label');
+  lbl.textContent = _ROLE_LABELS[role] || role;
+  lbl.classList.remove('hidden');
 }
 
 // ── City switching ──────────────────────────────────────────────────────────
@@ -402,6 +421,15 @@ function resetMic() {
   iconStop.classList.add('hidden');
   hint.classList.remove('hidden');
   listening.classList.add('hidden');
+}
+
+// ── End session ──────────────────────────────────────────────────────────────
+async function endSession() {
+  if (!confirm('Завершить сеанс?')) return;
+  try {
+    await fetch(`/session/${SID}/end`, { method: 'POST' });
+  } catch (e) {}
+  document.body.innerHTML = '<div class="flex items-center justify-center min-h-screen text-slate-400 text-center p-8"><div><p class="text-lg mb-2">Сеанс завершён</p><p class="text-sm">Отсканируйте QR-код для нового сеанса</p></div></div>';
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────
