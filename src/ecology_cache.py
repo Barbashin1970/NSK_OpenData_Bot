@@ -889,3 +889,51 @@ def query_history(district_filter: str | None = None, days: int = 7) -> list[dic
         return []
     finally:
         conn.close()
+
+
+def query_aqi_exceedance_history(
+    aqi_threshold: int = 40,
+    days: int = 30,
+    district_filter: str | None = None,
+) -> list[dict]:
+    """Почасовая история превышений AQI за N дней.
+
+    Возвращает записи, где AQI >= aqi_threshold, сгруппированные по дням и часам.
+    Используется для построения паттернов загрязнения (утро/вечер, дни недели).
+    """
+    init_ecology_tables()
+    conn = _get_conn()
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        wheres = ["f.measured_at >= ?", f"f.aqi >= {int(aqi_threshold)}"]
+        params: list = [cutoff]
+        if district_filter:
+            wheres.append("s.district ILIKE ?")
+            params.append(f"%{district_filter.split()[0]}%")
+        where_sql = "WHERE " + " AND ".join(wheres)
+
+        sql = f"""
+            SELECT
+                STRFTIME(CAST(f.measured_at AS TIMESTAMP), '%Y-%m-%d') AS day,
+                EXTRACT(HOUR FROM CAST(f.measured_at AS TIMESTAMP))   AS hour,
+                s.district,
+                ROUND(AVG(f.aqi), 0)   AS aqi_avg,
+                ROUND(MAX(f.aqi), 0)   AS aqi_max,
+                ROUND(AVG(f.pm25), 1)  AS pm25_avg,
+                ROUND(AVG(f.wind_speed_ms), 1) AS wind_avg,
+                ROUND(AVG(f.temperature_c), 1) AS temp_avg,
+                COUNT(*)               AS measurements
+            FROM fact_measurements f
+            JOIN dim_stations s ON f.station_id = s.station_id
+            {where_sql}
+            GROUP BY day, hour, s.district
+            ORDER BY day DESC, hour, s.district
+        """
+        cursor = conn.execute(sql, params)
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+    except Exception as e:
+        log.error(f"Ошибка query_aqi_exceedance_history: {e}")
+        return []
+    finally:
+        conn.close()

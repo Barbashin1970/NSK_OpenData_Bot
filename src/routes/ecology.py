@@ -258,8 +258,8 @@ def get_ecology_history(
     days: int = Query(
         7,
         ge=1,
-        le=7,
-        description="Глубина истории в днях (1–7). История хранится 7 дней.",
+        le=30,
+        description="Глубина истории в днях (1–30). Хранение: 30 дней снимков + 365 дней архив.",
     ),
     district: str | None = Query(
         None,
@@ -299,6 +299,67 @@ def get_ecology_history(
         "count": len(rows),
         "rows": [{k: r.get(k) for k in cols} for r in rows],
         "columns": cols,
+    }
+
+
+@router.get(
+    "/ecology/aqi-exceedances",
+    tags=["Экология"],
+    summary="История превышений AQI по часам и дням",
+)
+def get_aqi_exceedance_history(
+    aqi_threshold: int = Query(
+        40,
+        ge=20,
+        le=200,
+        description="Порог AQI (по умолчанию 40 — начало категории «Умеренный»)",
+    ),
+    days: int = Query(
+        30,
+        ge=1,
+        le=30,
+        description="Глубина истории в днях (1–30)",
+    ),
+    district: str | None = Query(
+        None,
+        description="Фильтр по району",
+    ),
+) -> dict:
+    """
+    Почасовая история превышений AQI за N дней.
+
+    Используется для:
+    - построения графиков загрязнения по часам суток (паттерны утро/вечер)
+    - анализа дней с плохим воздухом
+    - прогнозной аналитики по паттернам
+    """
+    from ..ecology_cache import query_aqi_exceedance_history
+    rows = query_aqi_exceedance_history(
+        aqi_threshold=aqi_threshold, days=days, district_filter=district,
+    )
+
+    # Сводка по дням
+    day_summary: dict = {}
+    for r in rows:
+        d = r["day"]
+        if d not in day_summary:
+            day_summary[d] = {"day": d, "hours_exceeded": 0, "aqi_max": 0, "districts": set()}
+        day_summary[d]["hours_exceeded"] += 1
+        day_summary[d]["aqi_max"] = max(day_summary[d]["aqi_max"], r["aqi_max"])
+        day_summary[d]["districts"].add(r["district"])
+    summary = sorted(day_summary.values(), key=lambda x: x["day"], reverse=True)
+    for s in summary:
+        s["districts"] = sorted(s["districts"])
+
+    return {
+        "operation": "AQI_EXCEEDANCE_HISTORY",
+        "aqi_threshold": aqi_threshold,
+        "days": days,
+        "district": district,
+        "total_records": len(rows),
+        "days_exceeded": len(summary),
+        "hourly": rows,
+        "daily_summary": summary,
     }
 
 

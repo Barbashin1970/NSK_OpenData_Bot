@@ -1269,7 +1269,30 @@ async function loadOverview(force) {
       profiles.length + ' городов · активный: ' + cityName;
   } catch(_) {}
 
-  // 2. Build matrix rows
+  // 2. Fetch freshness data for active city
+  let _topicFreshness = {};  // { topic_id: {stale: bool, rows: N, last_updated: str} }
+  let _ecoStale = null;
+  try {
+    const [topicsRes, ecoRes] = await Promise.all([
+      fetch('/topics'),
+      fetch('/ecology/status').catch(() => null),
+    ]);
+    const td = await topicsRes.json();
+    for (const t of (td.topics || [])) { _topicFreshness[t.id] = t; }
+    if (ecoRes && ecoRes.ok) {
+      const ed = await ecoRes.json();
+      // Проверяем свежесть по measured_at (TTL = 15 мин)
+      const measuredAt = ed.measured_at || ed.ecology_meta?.last_updated;
+      if (measuredAt) {
+        const age = Date.now() - new Date(measuredAt).getTime();
+        _ecoStale = age > 30 * 60 * 1000; // >30 мин = stale
+      } else {
+        _ecoStale = true; // нет данных = stale
+      }
+    }
+  } catch(_) {}
+
+  // 3. Build matrix rows
   const tbody = document.getElementById('overview-matrix-body');
   tbody.innerHTML = profiles.map(p => {
     const f = p.features || {};
@@ -1287,11 +1310,43 @@ async function loadOverview(force) {
     const hasEmis = !!(ds.emissions && ds.emissions.enabled);
     const hasHeat = !!(ds.heat_sources && ds.heat_sources.enabled);
 
-    function cell(has, fileCheck) {
+    // Для активного города: проверяем реальную свежесть данных
+    function cellActive(has, fileCheck, topicIds) {
       if (!has) return `<td class="px-2 py-2 text-center">${_dot('off', 'Не поддерживается')}</td>`;
       if (fileCheck !== undefined && !fileCheck) return `<td class="px-2 py-2 text-center">${_dot('error', 'Файл не найден')}</td>`;
-      if (isActive) return `<td class="px-2 py-2 text-center" data-live="1">${_dot('ok', 'Подключён')}</td>`;
+      // Проверяем свежесть: хотя бы одна тема загружена?
+      if (topicIds && topicIds.length) {
+        const matched = topicIds.map(id => _topicFreshness[id]).filter(Boolean);
+        if (matched.length === 0) {
+          // Тема поддержана но данные не загружены
+          const hasAnyRows = matched.some(m => m.rows > 0);
+          return `<td class="px-2 py-2 text-center">${_dot('stale', 'Данные не загружены')}</td>`;
+        }
+        const anyStale = matched.some(m => m.stale);
+        const anyLoaded = matched.some(m => m.rows > 0);
+        if (!anyLoaded) return `<td class="px-2 py-2 text-center">${_dot('stale', 'Данные не загружены')}</td>`;
+        if (anyStale) {
+          const ago = matched[0]?.last_updated ? new Date(matched[0].last_updated).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+          return `<td class="px-2 py-2 text-center">${_dot('stale', 'Устарело: ' + ago)}</td>`;
+        }
+        return `<td class="px-2 py-2 text-center">${_dot('ok', 'Свежие данные')}</td>`;
+      }
+      return `<td class="px-2 py-2 text-center">${_dot('ok', 'Подключён')}</td>`;
+    }
+
+    function cell(has, fileCheck, topicIds) {
+      if (!has) return `<td class="px-2 py-2 text-center">${_dot('off', 'Не поддерживается')}</td>`;
+      if (fileCheck !== undefined && !fileCheck) return `<td class="px-2 py-2 text-center">${_dot('error', 'Файл не найден')}</td>`;
+      if (isActive) return cellActive(has, fileCheck, topicIds);
       return `<td class="px-2 py-2 text-center">${_dot('ok', 'Настроен')}</td>`;
+    }
+
+    // Специальная ячейка для экологии — у неё свой /ecology/status
+    function cellEco() {
+      if (!isActive) return `<td class="px-2 py-2 text-center">${_dot('ok', 'Настроен')}</td>`;
+      if (_ecoStale === true) return `<td class="px-2 py-2 text-center">${_dot('stale', 'Устаревшие данные')}</td>`;
+      if (_ecoStale === false) return `<td class="px-2 py-2 text-center">${_dot('ok', 'Свежие данные')}</td>`;
+      return `<td class="px-2 py-2 text-center">${_dot('ok', 'Подключён')}</td>`;
     }
 
     const rowCls = isActive
@@ -1306,9 +1361,9 @@ async function loadOverview(force) {
         </div>
         <div class="text-[10px] text-slate-400">${p.districts_count || 0} р-нов · ${p.timezone || ''}</div>
       </td>
-      ${cell(hasCsv)}
-      ${cell(hasPow)}
-      ${cell(hasEco)}
+      ${cell(hasCsv, undefined, ['parking','stops','culture','schools','kindergartens','libraries','parks','sport_grounds','pharmacies','sport_orgs'])}
+      ${cell(hasPow, undefined, ['power_outages'])}
+      ${cellEco()}
       ${cell(hasCam)}
       ${cell(hasMed)}
       ${cell(hasMet)}
