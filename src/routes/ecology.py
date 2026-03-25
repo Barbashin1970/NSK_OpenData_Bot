@@ -4,7 +4,7 @@ import logging
 import os
 import threading
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from ..city_config import get_feature
 
@@ -403,9 +403,15 @@ def post_ecology_update() -> dict:
     from ..ecology_fetcher import fetch_all_ecology
     from ..ecology_cache import upsert_stations, upsert_measurements, get_ecology_meta
 
-    upsert_stations()
-    records = fetch_all_ecology()
-    count = upsert_measurements(records)
+    try:
+        with _ecology_lock:
+            upsert_stations()
+            records = fetch_all_ecology()
+            count = upsert_measurements(records)
+    except Exception as exc:
+        log.error("ecology/update failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка обновления экологии: {exc}")
+
     meta = get_ecology_meta()
     has_cityair = bool(os.environ.get("CITYAIR_API_KEY", "").strip())
     return {
