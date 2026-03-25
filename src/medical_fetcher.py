@@ -66,7 +66,7 @@ def fetch_medical() -> list[dict[str, Any]]:
             last_err = e
             continue
         except requests.exceptions.HTTPError as e:
-            status = e.response.status_code if e.response else "?"
+            status = e.response.status_code if e.response is not None else None
             log.warning("Overpass API: HTTP %s от %s — %s", status, url, e)
             last_err = e
             continue

@@ -1272,10 +1272,12 @@ async function loadOverview(force) {
   // 2. Fetch freshness data for active city
   let _topicFreshness = {};  // { topic_id: {stale: bool, rows: N, last_updated: str} }
   let _ecoStale = null;
+  let _powerMeta = null;  // {stale: bool, last_scraped: str, ...}
   try {
-    const [topicsRes, ecoRes] = await Promise.all([
+    const [topicsRes, ecoRes, powRes] = await Promise.all([
       fetch('/topics'),
       fetch('/ecology/status').catch(() => null),
+      fetch('/power/meta').catch(() => null),
     ]);
     const td = await topicsRes.json();
     for (const t of (td.topics || [])) { _topicFreshness[t.id] = t; }
@@ -1289,6 +1291,9 @@ async function loadOverview(force) {
       } else {
         _ecoStale = true; // нет данных = stale
       }
+    }
+    if (powRes && powRes.ok) {
+      _powerMeta = await powRes.json();
     }
   } catch(_) {}
 
@@ -1341,6 +1346,18 @@ async function loadOverview(force) {
       return `<td class="px-2 py-2 text-center">${_dot('ok', 'Настроен')}</td>`;
     }
 
+    // Специальная ячейка для ЖКХ — у неё свой /power/meta (не в /topics)
+    function cellPow() {
+      if (!hasPow) return `<td class="px-2 py-2 text-center">${_dot('off', 'Не поддерживается')}</td>`;
+      if (!isActive) return `<td class="px-2 py-2 text-center">${_dot('ok', 'Настроен')}</td>`;
+      if (!_powerMeta) return `<td class="px-2 py-2 text-center">${_dot('stale', 'Нет данных')}</td>`;
+      if (_powerMeta.stale) {
+        const ago = _powerMeta.last_scraped ? new Date(_powerMeta.last_scraped).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+        return `<td class="px-2 py-2 text-center">${_dot('stale', 'Устарело: ' + ago)}</td>`;
+      }
+      return `<td class="px-2 py-2 text-center">${_dot('ok', 'Свежие данные')}</td>`;
+    }
+
     // Специальная ячейка для экологии — у неё свой /ecology/status
     function cellEco() {
       if (!isActive) return `<td class="px-2 py-2 text-center">${_dot('ok', 'Настроен')}</td>`;
@@ -1362,7 +1379,7 @@ async function loadOverview(force) {
         <div class="text-[10px] text-slate-400">${p.districts_count || 0} р-нов · ${p.timezone || ''}</div>
       </td>
       ${cell(hasCsv, undefined, ['parking','stops','culture','schools','kindergartens','libraries','parks','sport_grounds','pharmacies','sport_orgs'])}
-      ${cell(hasPow, undefined, ['power_outages'])}
+      ${cellPow()}
       ${cellEco()}
       ${cell(hasCam)}
       ${cell(hasMed)}
@@ -1425,15 +1442,17 @@ async function loadOverview(force) {
     } else {
       el.innerHTML = `<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${st.cities.map(c => {
         const pct = st.total_rows > 0 ? Math.round(c.total_rows / st.total_rows * 100) : 0;
-        return `<div class="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+        const isEmpty = c.total_rows === 0 && c.tables.length === 0;
+        const borderCls = isEmpty ? 'border-slate-100 bg-slate-50/50' : 'border-slate-200 bg-white';
+        return `<div class="rounded-lg border ${borderCls} px-3 py-2.5">
           <div class="flex items-center justify-between mb-1">
-            <span class="font-medium text-slate-700 text-xs truncate">${esc(c.city_id)}</span>
-            <span class="text-[10px] text-slate-400">${c.size_mb} МБ</span>
+            <span class="font-medium ${isEmpty ? 'text-slate-400' : 'text-slate-700'} text-xs truncate">${esc(c.city_id)}</span>
+            <span class="text-[10px] text-slate-400">${c.size_mb ? c.size_mb + ' МБ' : 'нет БД'}</span>
           </div>
           <div class="w-full bg-slate-100 rounded-full h-1.5 mb-1">
-            <div class="bg-blue-500 h-1.5 rounded-full" style="width:${Math.max(pct, 2)}%"></div>
+            <div class="${isEmpty ? 'bg-slate-300' : 'bg-blue-500'} h-1.5 rounded-full" style="width:${isEmpty ? 0 : Math.max(pct, 2)}%"></div>
           </div>
-          <div class="text-[10px] text-slate-400">${c.total_rows.toLocaleString('ru-RU')} строк · ${c.tables.length} табл.</div>
+          <div class="text-[10px] text-slate-400">${isEmpty ? 'ожидает обновления' : c.total_rows.toLocaleString('ru-RU') + ' строк · ' + c.tables.length + ' табл.'}</div>
         </div>`;
       }).join('')}</div>` +
       (st.query_log_mb ? `<div class="mt-2 text-[10px] text-slate-400">Лог запросов: ${st.query_log_mb} МБ</div>` : '');

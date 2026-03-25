@@ -299,11 +299,36 @@ def admin_storage_stats():
     if not cities_dir.is_dir():
         return result
 
-    for city_dir in sorted(cities_dir.iterdir()):
-        if not city_dir.is_dir():
-            continue
+    # Собираем все city_id из профилей, чтобы показать даже города без cache.db
+    import yaml as _yaml
+    _cfg_dir = Path(__file__).parent.parent.parent / "config"
+    all_city_ids: set[str] = set()
+    for p in _cfg_dir.glob("city_profile*.yaml"):
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = _yaml.safe_load(f)
+            if d and "city" in d:
+                all_city_ids.add(d["city"].get("id", ""))
+        except Exception:
+            pass
+    # Добавляем города из директорий data/cities/
+    if cities_dir.is_dir():
+        for city_dir in cities_dir.iterdir():
+            if city_dir.is_dir():
+                all_city_ids.add(city_dir.name)
+    all_city_ids.discard("")
+
+    for city_id in sorted(all_city_ids):
+        city_dir = cities_dir / city_id
         db_path = city_dir / "cache.db"
         if not db_path.exists():
+            # Город без данных — показываем с нулями
+            result["cities"].append({
+                "city_id": city_id,
+                "size_mb": 0,
+                "tables": [],
+                "total_rows": 0,
+            })
             continue
         size_mb = round(db_path.stat().st_size / (1024 * 1024), 2)
         tables = []
@@ -322,7 +347,7 @@ def admin_storage_stats():
             tables = [{"table": "error", "rows": 0, "error": str(exc)}]
 
         result["cities"].append({
-            "city_id": city_dir.name,
+            "city_id": city_id,
             "size_mb": size_mb,
             "tables": tables,
             "total_rows": total_city_rows,

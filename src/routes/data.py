@@ -904,6 +904,23 @@ def post_update(
     return {"updated": results}
 
 
+@router.get(
+    "/power/meta",
+    tags=["Данные"],
+    summary="Метаданные отключений ЖКХ (свежесть, кол-во записей)",
+)
+def get_power_meta_endpoint() -> dict:
+    """Лёгкий read-only эндпоинт для проверки свежести данных ЖКХ."""
+    from ..power_cache import is_power_stale, get_power_meta as _gpm
+    try:
+        meta = _gpm()
+    except Exception:
+        meta = {}
+    meta["stale"] = is_power_stale()
+    meta["source"] = get_feature("power_outages_url", "")
+    return meta
+
+
 @router.post(
     "/power/update",
     tags=["Управление"],
