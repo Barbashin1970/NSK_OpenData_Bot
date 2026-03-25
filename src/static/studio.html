@@ -1784,8 +1784,9 @@ async function setActiveCity(cityId, idx) {
     const data = await resp.json();
     if (data.ok) {
       _activeCityId = cityId;
-      // Перерисовываем карточки чтобы обновить бейджи
+      // Перерисовываем карточки и обновляем бейдж города в шапке
       await loadProfiles();
+      await _loadCityLabel();
     } else {
       if (btn) { btn.disabled = false; btn.textContent = 'Сделать активным'; }
       alert('Ошибка: ' + (data.detail || JSON.stringify(data)));

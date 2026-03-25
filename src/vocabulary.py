@@ -45,6 +45,13 @@ ALL_TOPICS: dict[str, str] = {
     "medical": "Медицинские учреждения",
     "traffic_index": "Индекс пробок",
     "transit": "Маршруты транспорта",
+    # ЦИИ НГУ (фронтенд-темы, обработка в _trySpecialQuery)
+    "ciinsu_center": "ЦИИ НГУ — о центре",
+    "ciinsu_projects": "ЦИИ НГУ — проекты",
+    "ciinsu_news": "ЦИИ НГУ — новости",
+    "ciinsu_team": "ЦИИ НГУ — команда",
+    "ciinsu_publications": "ЦИИ НГУ — публикации",
+    "ciinsu_contacts": "ЦИИ НГУ — контакты",
 }
 
 

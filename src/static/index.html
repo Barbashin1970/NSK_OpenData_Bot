@@ -1153,6 +1153,26 @@ function _showInfoCard(icon, msg) {
   el.innerHTML = `<div class="flex items-center gap-2 text-violet-800"><span class="text-xl">${icon}</span><span class="font-semibold text-sm">${msg}</span></div>`;
 }
 
+// ── Vocabulary terms for ЦИИ topics (loaded once from API) ──────────────────
+let _ciiVocabTerms = {};  // { ciinsu_projects: ['здравоохранен', ...], ... }
+const _CII_TOPIC_SECTION = {
+  ciinsu_center: 'center', ciinsu_projects: 'projects', ciinsu_news: 'news',
+  ciinsu_team: 'team', ciinsu_publications: 'publications', ciinsu_contacts: 'contacts',
+};
+
+(async function _loadCiiVocab() {
+  try {
+    const r = await fetch('/api/vocabulary');
+    const d = await r.json();
+    for (const t of (d.terms || [])) {
+      const topic = t.topic;
+      if (!topic || !topic.startsWith('ciinsu_')) continue;
+      if (!_ciiVocabTerms[topic]) _ciiVocabTerms[topic] = [];
+      _ciiVocabTerms[topic].push(t.term.toLowerCase());
+    }
+  } catch(_) {}
+})();
+
 function _trySpecialQuery(raw) {
   // Strip «Сигма» wake-word prefix
   const q = raw.replace(/^(?:с[ие]г?м[ао]|si(?:gm?a|ma))[!,.:)?\s]*/i, '').trim();
@@ -1255,6 +1275,19 @@ function _trySpecialQuery(raw) {
     if (!_ciiPanelOpen) toggleCiiPanel();
     loadCiiSection('contacts');
     return true;
+  }
+
+  // ── Vocabulary-расширение ЦИИ тем ──────────────────────────────────────
+  for (const [topic, terms] of Object.entries(_ciiVocabTerms)) {
+    const section = _CII_TOPIC_SECTION[topic];
+    if (!section || !terms.length) continue;
+    for (const term of terms) {
+      if (ql.includes(term)) {
+        if (!_ciiPanelOpen) toggleCiiPanel();
+        loadCiiSection(section);
+        return true;
+      }
+    }
   }
 
   // ── Экологический рейтинг городов ───────────────────────────────────────
