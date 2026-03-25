@@ -271,6 +271,15 @@ function sendRole(el) {
   const cmd = roleCommands[role];
   if (cmd) sendQuery(cmd);
 
+  // Also notify display directly about role change (for badge + dashboard)
+  if (SID) {
+    fetch(`/session/${SID}/set-role`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ role }),
+    }).catch(() => {});
+  }
+
   // Update active state
   document.querySelectorAll('.role-chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');

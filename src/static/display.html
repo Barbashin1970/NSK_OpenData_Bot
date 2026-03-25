@@ -87,6 +87,8 @@
       </div>
     </div>
     <div class="flex items-center gap-3">
+      <span id="city-badge" class="text-xs bg-blue-500/20 border border-blue-400/30 text-blue-200 rounded-full px-3 py-1 hidden"></span>
+      <span id="role-badge" class="text-xs bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 rounded-full px-3 py-1 hidden"></span>
       <span id="query-echo" class="text-xs text-blue-200 max-w-[400px] truncate hidden"></span>
       <span class="flex items-center gap-1.5 text-xs bg-white/10 border border-white/15 rounded-full px-3 py-1">
         <span id="status-dot" class="w-2 h-2 rounded-full bg-amber-400 pulse-dot"></span>
@@ -140,6 +142,14 @@
 let SID = new URLSearchParams(location.search).get('s');
 let _evtSource = null;
 let _firstQuery = true;
+let _currentCityName = '';
+let _currentRole = 'citizen';
+
+const _ROLE_LABELS = {
+  citizen:  '👤 Горожанин',
+  official: '🏙️ Служащий',
+  mayor:    '🏛️ Мэр',
+};
 
 async function init() {
   if (!SID) {
@@ -151,6 +161,27 @@ async function init() {
   document.getElementById('session-label').textContent = SID;
   renderQR();
   connectSSE();
+  loadCityName();
+}
+
+async function loadCityName() {
+  try {
+    const r = await fetch('/api/city-config');
+    const d = await r.json();
+    if (d.city_name) {
+      _currentCityName = d.city_name;
+      const badge = document.getElementById('city-badge');
+      badge.textContent = d.city_name;
+      badge.classList.remove('hidden');
+    }
+  } catch(e) {}
+}
+
+function updateRoleBadge(role) {
+  _currentRole = role;
+  const badge = document.getElementById('role-badge');
+  badge.textContent = _ROLE_LABELS[role] || role;
+  badge.classList.remove('hidden');
 }
 
 function renderQR() {
@@ -197,7 +228,10 @@ function connectSSE() {
         handleQuery(msg.query);
         break;
       case 'set-city':
-        handleCitySwitch(msg.city_id);
+        handleCitySwitch(msg.city_id, msg.city_name);
+        break;
+      case 'set-role':
+        handleRoleSwitch(msg.role, msg.district);
         break;
       // Legacy events (backwards compat)
       case 'loading':
@@ -232,13 +266,7 @@ function setStatus(state, text) {
 
 // ── Query → iframe ──────────────────────────────────────────────────────────
 function handleQuery(query) {
-  // Hide idle screen on first query
-  if (_firstQuery) {
-    _firstQuery = false;
-    const idle = document.getElementById('idleScreen');
-    idle.classList.add('hiding');
-    setTimeout(() => idle.remove(), 500);
-  }
+  dismissIdle();
 
   // Show query echo in status bar
   const echo = document.getElementById('query-echo');
@@ -256,13 +284,7 @@ function handleQuery(query) {
 }
 
 function showLoading(query) {
-  // Hide idle screen on first query
-  if (_firstQuery) {
-    _firstQuery = false;
-    const idle = document.getElementById('idleScreen');
-    idle.classList.add('hiding');
-    setTimeout(() => idle.remove(), 500);
-  }
+  dismissIdle();
 
   // Show loading overlay
   const lo = document.getElementById('loadingOverlay');
@@ -306,15 +328,55 @@ function handleError(query, error) {
 }
 
 // ── City switch ─────────────────────────────────────────────────────────────
-function handleCitySwitch(cityId) {
+function handleCitySwitch(cityId, cityName) {
+  // Hide idle screen
+  dismissIdle();
+
   // Tell iframe to switch city — it will call _setActiveCity()
   const frame = document.getElementById('mainFrame');
   if (frame.contentWindow) {
     frame.contentWindow.postMessage({ type: 'set-city', city_id: cityId }, '*');
   }
+
+  // Update city badge
+  if (cityName) {
+    _currentCityName = cityName;
+  }
+  const badge = document.getElementById('city-badge');
+  badge.textContent = cityName || cityId;
+  badge.classList.remove('hidden');
+
   const echo = document.getElementById('query-echo');
-  echo.textContent = '🏙️ Город переключён';
+  echo.textContent = `🏙️ ${cityName || cityId}`;
   echo.classList.remove('hidden');
+}
+
+// ── Role switch ─────────────────────────────────────────────────────────────
+function handleRoleSwitch(role, district) {
+  // Hide idle screen
+  dismissIdle();
+
+  updateRoleBadge(role);
+
+  // Tell iframe to switch role
+  const frame = document.getElementById('mainFrame');
+  if (frame.contentWindow) {
+    frame.contentWindow.postMessage({ type: 'role', role: role, district: district || '' }, '*');
+  }
+
+  const echo = document.getElementById('query-echo');
+  echo.textContent = _ROLE_LABELS[role] || role;
+  echo.classList.remove('hidden');
+}
+
+function dismissIdle() {
+  if (!_firstQuery) return;
+  _firstQuery = false;
+  const idle = document.getElementById('idleScreen');
+  if (idle) {
+    idle.classList.add('hiding');
+    setTimeout(() => idle.remove(), 500);
+  }
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────

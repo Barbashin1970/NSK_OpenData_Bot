@@ -187,9 +187,39 @@ async def session_set_city(sid: str, request: Request):
     from .studio import studio_set_active_city
     studio_set_active_city({"city_id": city_id})
 
+    # Get city name for display
+    city_name = city_id
+    try:
+        from ..city_config import get_city_name
+        city_name = get_city_name()
+    except Exception:
+        pass
+
     # Notify all displays
-    msg = {"type": "set-city", "city_id": city_id}
+    msg = {"type": "set-city", "city_id": city_id, "city_name": city_name}
     for queue in s.queues:
         await queue.put(msg)
 
     return {"ok": True, "city_id": city_id}
+
+
+@router.post(
+    "/session/{sid}/set-role",
+    tags=["Presenter"],
+    summary="Сменить роль из mobile → display",
+)
+async def session_set_role(sid: str, request: Request):
+    s = _get_session(sid)
+    if not s:
+        return JSONResponse(status_code=404, content={"error": "session not found"})
+
+    body = await request.json()
+    role = (body.get("role") or "").strip()
+    if not role:
+        return JSONResponse(status_code=400, content={"error": "empty role"})
+
+    msg = {"type": "set-role", "role": role, "district": body.get("district", "")}
+    for queue in s.queues:
+        await queue.put(msg)
+
+    return {"ok": True, "role": role}

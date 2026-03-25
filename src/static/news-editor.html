@@ -50,8 +50,8 @@
 
   <!-- Top bar -->
   <header class="bg-gradient-to-r from-violet-900 to-purple-700 text-white px-6 py-3 flex items-center gap-4 shadow-lg sticky top-0 z-10">
-    <a href="/" class="flex items-center gap-1.5 text-violet-300 hover:text-white text-sm transition-colors border border-violet-600 rounded-lg px-3 py-1.5">
-      ← На главную
+    <a href="/studio#overview" onclick="clearToken()" class="flex items-center gap-1.5 text-violet-300 hover:text-white text-sm transition-colors border border-violet-600 rounded-lg px-3 py-1.5">
+      ← В студию
     </a>
     <span class="text-violet-500">|</span>
     <span class="text-lg">🧠</span>
@@ -59,9 +59,9 @@
     <button onclick="newPost()" class="ml-auto flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors">
       + Новый пост
     </button>
-    <button onclick="logout()" class="text-violet-300 hover:text-white text-sm transition-colors ml-2">
-      Выйти
-    </button>
+    <a href="/" onclick="clearToken()" class="text-violet-300 hover:text-white text-sm transition-colors ml-2">
+      На главную
+    </a>
   </header>
 
   <!-- Content -->
