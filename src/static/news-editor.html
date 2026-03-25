@@ -5,11 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Редактор новостей — ЦИИ НГУ</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; }
     .post-item.active { background: #ede9fe; border-color: #7c3aed; }
     textarea { resize: vertical; }
     #photoPreview img { max-height: 180px; border-radius: 12px; object-fit: cover; }
+    /* Markdown preview styles */
+    .md-preview h2 { font-size: 1rem; font-weight: 700; color: #1e293b; margin: 0.75rem 0 0.25rem; }
+    .md-preview h3 { font-size: 0.875rem; font-weight: 600; color: #334155; margin: 0.5rem 0 0.25rem; }
+    .md-preview p { margin: 0.25rem 0; }
+    .md-preview strong { color: #1e293b; }
+    .md-preview ul, .md-preview ol { padding-left: 1.25rem; margin: 0.25rem 0; }
+    .md-preview ul { list-style: disc; }
+    .md-preview ol { list-style: decimal; }
+    .md-preview a { color: #2563eb; text-decoration: underline; }
+    .md-preview hr { margin: 0.5rem 0; border-color: #e2e8f0; }
+    .md-preview blockquote { border-left: 2px solid #cbd5e1; padding-left: 0.75rem; color: #64748b; font-style: italic; }
+    .md-preview table { width: 100%; border-collapse: collapse; font-size: 0.75rem; margin: 0.5rem 0; }
+    .md-preview th { background: #f1f5f9; border: 1px solid #e2e8f0; padding: 4px 8px; text-align: left; font-weight: 600; }
+    .md-preview td { border: 1px solid #e2e8f0; padding: 4px 8px; }
+    .md-preview code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; font-size: 0.75rem; }
+    .md-preview img { max-width: 100%; border-radius: 0.75rem; margin: 0.5rem 0; }
   </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
@@ -116,9 +133,23 @@
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Текст *</label>
-            <textarea id="postBody" rows="10" placeholder="Текст новости..."
-              class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm leading-relaxed"></textarea>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Текст *</label>
+              <div class="flex items-center gap-2">
+                <select id="postFormat"
+                  onchange="toggleMdPreview()"
+                  class="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:border-violet-400">
+                  <option value="txt">Простой текст</option>
+                  <option value="md">Markdown</option>
+                </select>
+                <button type="button" id="previewToggle" onclick="toggleMdPreview()" class="hidden text-xs text-violet-500 hover:text-violet-700 font-medium">
+                  👁 Предпросмотр
+                </button>
+              </div>
+            </div>
+            <textarea id="postBody" rows="12" placeholder="Текст новости..."
+              class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 text-sm leading-relaxed font-mono"></textarea>
+            <div id="mdPreview" class="hidden mt-2 p-4 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 md-preview max-h-96 overflow-y-auto"></div>
           </div>
 
           <div class="flex gap-3 pt-2">
@@ -225,7 +256,10 @@ function renderPostsList() {
     <div class="post-item p-3 bg-white border border-slate-200 rounded-xl cursor-pointer hover:border-violet-300 transition-colors ${_editingId === p.id ? 'active' : ''}"
          onclick="editPost('${p.id}')">
       <div class="font-semibold text-sm text-slate-800 leading-snug line-clamp-2">${esc(p.title)}</div>
-      <div class="text-xs text-violet-500 mt-1">${p.date}</div>
+      <div class="flex items-center gap-2 mt-1">
+        <span class="text-xs text-violet-500">${p.date}</span>
+        ${p.format === 'md' ? '<span class="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-200 rounded font-mono font-semibold">MD</span>' : ''}
+      </div>
       ${p.photo ? '<div class="text-xs text-slate-400 mt-0.5">📷 есть фото</div>' : ''}
       <div class="flex gap-2 mt-2">
         <button onclick="event.stopPropagation();editPost('${p.id}')"
@@ -245,6 +279,42 @@ function esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ─── Markdown preview ──────────────────────────────────────────────────────
+function toggleMdPreview() {
+  const fmt = document.getElementById('postFormat').value;
+  const preview = document.getElementById('mdPreview');
+  const toggleBtn = document.getElementById('previewToggle');
+  const textarea = document.getElementById('postBody');
+
+  if (fmt === 'md') {
+    toggleBtn.classList.remove('hidden');
+    // Обновляем предпросмотр
+    const body = textarea.value;
+    if (body.trim() && typeof marked !== 'undefined') {
+      preview.innerHTML = marked.parse(body);
+      preview.classList.remove('hidden');
+    } else {
+      preview.innerHTML = '';
+      preview.classList.add('hidden');
+    }
+    textarea.classList.add('font-mono');
+  } else {
+    toggleBtn.classList.add('hidden');
+    preview.classList.add('hidden');
+    textarea.classList.remove('font-mono');
+  }
+}
+
+// Live preview при вводе текста
+document.addEventListener('DOMContentLoaded', () => {
+  const textarea = document.getElementById('postBody');
+  if (textarea) {
+    textarea.addEventListener('input', () => {
+      if (document.getElementById('postFormat').value === 'md') toggleMdPreview();
+    });
+  }
+});
+
 // ─── New / Edit post ────────────────────────────────────────────────────────
 function newPost() {
   _editingId = null;
@@ -252,10 +322,13 @@ function newPost() {
   document.getElementById('postTitle').value = '';
   document.getElementById('postDate').value = new Date().toISOString().split('T')[0];
   document.getElementById('postBody').value = '';
+  document.getElementById('postFormat').value = 'txt';
   document.getElementById('photoInput').value = '';
   document.getElementById('photoPreview').innerHTML = '';
   document.getElementById('photoPreview').classList.add('hidden');
   document.getElementById('clearPhotoBtn').classList.add('hidden');
+  document.getElementById('mdPreview').classList.add('hidden');
+  document.getElementById('previewToggle').classList.add('hidden');
   document.getElementById('formTitle').textContent = 'Новый пост';
   document.getElementById('emptyState').classList.add('hidden');
   document.getElementById('editFormWrap').classList.remove('hidden');
@@ -271,7 +344,9 @@ function editPost(id) {
   document.getElementById('postTitle').value = p.title;
   document.getElementById('postDate').value = p.date;
   document.getElementById('postBody').value = p.body;
+  document.getElementById('postFormat').value = p.format || 'txt';
   document.getElementById('photoInput').value = '';
+  toggleMdPreview();
 
   const preview = document.getElementById('photoPreview');
   const clearBtn = document.getElementById('clearPhotoBtn');
@@ -326,9 +401,10 @@ async function savePost(e) {
     alert('Заголовок и текст обязательны.');
     return;
   }
-  const date  = document.getElementById('postDate').value;
-  const id    = document.getElementById('postId').value;
-  const photo = document.getElementById('photoInput').files[0];
+  const date   = document.getElementById('postDate').value;
+  const format = document.getElementById('postFormat').value;
+  const id     = document.getElementById('postId').value;
+  const photo  = document.getElementById('photoInput').files[0];
   const btn = document.getElementById('saveBtn');
   btn.disabled = true;
   btn.textContent = 'Сохраняю...';
@@ -338,6 +414,7 @@ async function savePost(e) {
     fd.append('title', title);
     fd.append('body', body);
     fd.append('date', date);
+    fd.append('format', format);
     if (photo) fd.append('photo', photo);
 
     const url = id ? `/ciinsu/news/${id}` : '/ciinsu/news';

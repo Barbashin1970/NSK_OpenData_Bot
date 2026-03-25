@@ -130,8 +130,13 @@ def get_news() -> list[dict]:
     return _load_news()
 
 
-def create_news(title: str, body: str, photo: str = "", date: str = "") -> dict:
-    """Создаёт новый пост. Возвращает созданный объект."""
+def create_news(title: str, body: str, photo: str = "", date: str = "",
+                format: str = "txt") -> dict:
+    """Создаёт новый пост. Возвращает созданный объект.
+
+    Args:
+        format: 'txt' (plain text) или 'md' (Markdown).
+    """
     news = _load_news()
     post: dict = {
         "id": uuid.uuid4().hex[:8],
@@ -139,6 +144,7 @@ def create_news(title: str, body: str, photo: str = "", date: str = "") -> dict:
         "date": date.strip() or datetime.now().strftime("%Y-%m-%d"),
         "body": body.strip(),
         "photo": photo,
+        "format": format if format in ("txt", "md") else "txt",
         "created_at": datetime.now().isoformat(),
     }
     news.insert(0, post)
@@ -147,7 +153,8 @@ def create_news(title: str, body: str, photo: str = "", date: str = "") -> dict:
 
 
 def update_news(post_id: str, title: str | None = None, body: str | None = None,
-                photo: str | None = None, date: str | None = None) -> dict | None:
+                photo: str | None = None, date: str | None = None,
+                format: str | None = None) -> dict | None:
     """Обновляет пост. Возвращает обновлённый объект или None если не найден."""
     news = _load_news()
     for post in news:
@@ -160,6 +167,8 @@ def update_news(post_id: str, title: str | None = None, body: str | None = None,
                 post["photo"] = photo
             if date is not None:
                 post["date"] = date.strip()
+            if format is not None and format in ("txt", "md"):
+                post["format"] = format
             post["updated_at"] = datetime.now().isoformat()
             _save_news(news)
             return post

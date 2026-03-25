@@ -42,10 +42,14 @@ async def create_news_post(
     title: str = Form(...),
     body: str = Form(...),
     date: str = Form(""),
+    format: str = Form("txt"),
     photo: UploadFile = File(None),
     x_admin_token: str = Header(None, alias="x-admin-token"),
 ) -> dict:
-    """Создать новый пост (требует заголовок X-Admin-Token)."""
+    """Создать новый пост (требует заголовок X-Admin-Token).
+
+    format: 'txt' (plain text) или 'md' (Markdown).
+    """
     from ..ciinsu import verify_token, create_news as _create
     if not verify_token(x_admin_token or ""):
         raise HTTPException(status_code=401, detail="Требуется авторизация")
@@ -58,7 +62,7 @@ async def create_news_post(
         photo_filename = _uuid.uuid4().hex[:12] + ext
         content = await photo.read()
         (photos_dir / photo_filename).write_bytes(content)
-    return _create(title=title, body=body, photo=photo_filename, date=date)
+    return _create(title=title, body=body, photo=photo_filename, date=date, format=format)
 
 
 @router.put("/ciinsu/news/{post_id}", tags=["ЦИИ НГУ"])
@@ -67,6 +71,7 @@ async def update_news_post(
     title: str = Form(None),
     body: str = Form(None),
     date: str = Form(None),
+    format: str = Form(None),
     photo: UploadFile = File(None),
     x_admin_token: str = Header(None, alias="x-admin-token"),
 ) -> dict:
@@ -83,7 +88,7 @@ async def update_news_post(
         photo_filename = _uuid.uuid4().hex[:12] + ext
         content = await photo.read()
         (photos_dir / photo_filename).write_bytes(content)
-    result = _update(post_id, title=title, body=body, photo=photo_filename, date=date)
+    result = _update(post_id, title=title, body=body, photo=photo_filename, date=date, format=format)
     if result is None:
         raise HTTPException(status_code=404, detail="Пост не найден")
     return result
