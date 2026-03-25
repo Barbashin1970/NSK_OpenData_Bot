@@ -102,6 +102,7 @@ def get_history(
     topic: str | None = None,
     city_id: str | None = None,
     search: str | None = None,
+    source: str | None = None,
 ) -> dict[str, Any]:
     """Retrieve query history with optional filters."""
     try:
@@ -118,6 +119,9 @@ def get_history(
         if search:
             where_parts.append("query ILIKE ?")
             params.append(f"%{search}%")
+        if source:
+            where_parts.append("source = ?")
+            params.append(source)
 
         where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
 

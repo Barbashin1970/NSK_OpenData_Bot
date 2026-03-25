@@ -950,6 +950,16 @@ async function _studioAuth() {
           class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300">
           <option value="">Все темы</option>
         </select>
+        <select id="history-source-filter" onchange="loadHistory()"
+          class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300">
+          <option value="">Все источники</option>
+          <option value="web">Web</option>
+          <option value="test">Тест</option>
+        </select>
+        <button onclick="_runTestQueries()" id="history-test-btn"
+          class="text-xs bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+          Тест (20 запросов)
+        </button>
         <button onclick="loadHistory()" class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition-colors">
           Обновить
         </button>
@@ -999,7 +1009,7 @@ async function _studioAuth() {
               <th class="px-3 py-2.5 w-24">Операция</th>
               <th class="px-3 py-2.5 w-28">Район</th>
               <th class="px-3 py-2.5 w-32">Ключевые слова</th>
-              <th class="px-3 py-2.5 w-20">Город</th>
+              <th class="px-3 py-2.5 w-16">Источник</th>
             </tr>
           </thead>
           <tbody id="history-tbody" class="divide-y divide-slate-100">
@@ -3176,6 +3186,7 @@ function _historyPage(dir) {
 async function loadHistory() {
   const search = document.getElementById('history-search')?.value || '';
   const topic = document.getElementById('history-topic-filter')?.value || '';
+  const source = document.getElementById('history-source-filter')?.value || '';
 
   // Load stats
   try {
@@ -3240,6 +3251,7 @@ async function loadHistory() {
     const params = new URLSearchParams({ limit: _HISTORY_PAGE, offset: _historyOffset });
     if (search) params.set('search', search);
     if (topic) params.set('topic', topic);
+    if (source) params.set('source', source);
 
     const resp = await fetch('/api/query-history?' + params);
     const data = await resp.json();
@@ -3277,7 +3289,7 @@ async function loadHistory() {
           <td class="px-3 py-2">${opBadge}</td>
           <td class="px-3 py-2 text-slate-500">${r.district || r.sub_district || ''}</td>
           <td class="px-3 py-2 text-slate-400 max-w-[200px] truncate" title="${(r.matched_keywords||'').replace(/"/g,'&quot;')}">${r.matched_keywords || ''}</td>
-          <td class="px-3 py-2 text-slate-400">${r.city_id || ''}</td>
+          <td class="px-3 py-2">${r.source === 'test' ? '<span class="bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-md">тест</span>' : '<span class="text-slate-400">' + (r.source || 'web') + '</span>'}</td>
         </tr>`;
       }).join('');
     }
@@ -3300,6 +3312,22 @@ async function _clearHistory() {
     await fetch('/api/query-history', { method: 'DELETE' });
     loadHistory();
   } catch (e) {}
+}
+
+async function _runTestQueries() {
+  const btn = document.getElementById('history-test-btn');
+  btn.disabled = true;
+  btn.textContent = 'Выполняется...';
+  try {
+    const resp = await fetch('/api/query-history/test', { method: 'POST' });
+    const data = await resp.json();
+    btn.textContent = `Готово (${data.count})`;
+    setTimeout(() => { btn.textContent = 'Тест (20 запросов)'; btn.disabled = false; }, 2000);
+    loadHistory();
+  } catch (e) {
+    btn.textContent = 'Ошибка';
+    setTimeout(() => { btn.textContent = 'Тест (20 запросов)'; btn.disabled = false; }, 2000);
+  }
 }
 
 // ── Инициализация: загружаем по хэшу или обзор ──────────────────────────
