@@ -251,6 +251,28 @@ def _seed_volume_data() -> None:
     if copied:
         log.info("Volume seed: скопировано %d файлов из образа в data/", copied)
 
+    # Seed config files (vocabulary, rules) → data/ for Volume persistence
+    config_dir = Path(__file__).parent.parent / "config"
+    seed_pairs = [
+        (config_dir / "vocabulary.yaml", data_dir / "vocabulary.yaml"),
+    ]
+    rules_seed = config_dir / "rules"
+    if rules_seed.is_dir():
+        rules_dst = data_dir / "rules"
+        rules_dst.mkdir(parents=True, exist_ok=True)
+        for f in rules_seed.glob("*.yaml"):
+            seed_pairs.append((f, rules_dst / f.name))
+
+    config_copied = 0
+    for src, dst in seed_pairs:
+        if dst.exists() or not src.exists():
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        config_copied += 1
+    if config_copied:
+        log.info("Config seed: скопировано %d файлов в data/ для Volume-персистенции", config_copied)
+
 
 @app.on_event("startup")
 def _load_saved_api_keys() -> None:

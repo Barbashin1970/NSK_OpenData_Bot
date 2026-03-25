@@ -314,6 +314,12 @@ async function _studioAuth() {
         <span class="text-sm text-slate-400">Загрузка тем...</span>
       </div>
     </div>
+
+    <!-- Хранилище -->
+    <div class="mb-5">
+      <h3 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3" id="storage-header">Хранилище</h3>
+      <div id="storage-stats" class="text-sm text-slate-400">Загрузка...</div>
+    </div>
   </div>
 
   <!-- ══ Вкладка: API ═════════════════════════════════════════════════════ -->
@@ -1316,7 +1322,8 @@ async function loadOverview(force) {
   // 3. Active city: topic details with freshness
   try {
     const r = await fetch('/topics');
-    const topics = await r.json();
+    const data = await r.json();
+    const topics = data.topics || [];
     const grid = document.getElementById('overview-active-topics');
     const hdr = document.getElementById('overview-active-header');
 
@@ -1350,7 +1357,37 @@ async function loadOverview(force) {
     grid.innerHTML = '<div class="col-span-full text-sm text-slate-400 py-4 text-center">Не удалось загрузить темы</div>';
   }
 
-  // 4. Timestamp
+  // 4. Storage stats
+  try {
+    const sr = await fetch('/admin/storage-stats');
+    const st = await sr.json();
+    const hdr = document.getElementById('storage-header');
+    hdr.textContent = `Хранилище · ${st.total_size_mb} МБ · ${st.total_rows.toLocaleString('ru-RU')} строк · ${(st.cities||[]).length} городов`;
+
+    const el = document.getElementById('storage-stats');
+    if (!(st.cities||[]).length) {
+      el.innerHTML = '<span class="text-slate-400 text-xs">Нет данных</span>';
+    } else {
+      el.innerHTML = `<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${st.cities.map(c => {
+        const pct = st.total_rows > 0 ? Math.round(c.total_rows / st.total_rows * 100) : 0;
+        return `<div class="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-medium text-slate-700 text-xs truncate">${esc(c.city_id)}</span>
+            <span class="text-[10px] text-slate-400">${c.size_mb} МБ</span>
+          </div>
+          <div class="w-full bg-slate-100 rounded-full h-1.5 mb-1">
+            <div class="bg-blue-500 h-1.5 rounded-full" style="width:${Math.max(pct, 2)}%"></div>
+          </div>
+          <div class="text-[10px] text-slate-400">${c.total_rows.toLocaleString('ru-RU')} строк · ${c.tables.length} табл.</div>
+        </div>`;
+      }).join('')}</div>` +
+      (st.query_log_mb ? `<div class="mt-2 text-[10px] text-slate-400">Лог запросов: ${st.query_log_mb} МБ</div>` : '');
+    }
+  } catch(_) {
+    document.getElementById('storage-stats').innerHTML = '<span class="text-red-400 text-xs">Ошибка загрузки</span>';
+  }
+
+  // 5. Timestamp
   const now = new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
   document.getElementById('overview-last-check').textContent = 'проверено в ' + now;
   document.getElementById('overview-update-status').textContent = '';

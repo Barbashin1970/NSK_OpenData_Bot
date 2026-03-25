@@ -19,7 +19,9 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_RULES_DIR = Path(__file__).parent.parent.parent / "config" / "rules"
+_RULES_DIR_VOLUME = Path(__file__).parent.parent.parent / "data" / "rules"
+_RULES_DIR_SEED = Path(__file__).parent.parent.parent / "config" / "rules"
+_RULES_DIR = _RULES_DIR_VOLUME if _RULES_DIR_VOLUME.parent.exists() else _RULES_DIR_SEED
 _ALLOWED_RULES = {"traffic_rules", "holiday_calendar", "ecology_rules", "life_indices_rules", "mobile_index_rules"}
 _API_KEYS_FILE = Path(__file__).parent.parent.parent / "data" / "api_keys.json"
 
@@ -96,6 +98,9 @@ def admin_get_rule(name: str) -> dict:
     if name not in _ALLOWED_RULES:
         raise HTTPException(status_code=404, detail=f"Регламент '{name}' не найден. Доступны: {sorted(_ALLOWED_RULES)}")
     path = _RULES_DIR / f"{name}.yaml"
+    # Fallback к config/rules/ если нет в data/rules/
+    if not path.exists() and _RULES_DIR != _RULES_DIR_SEED:
+        path = _RULES_DIR_SEED / f"{name}.yaml"
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Файл {path} не найден на диске")
     yaml_text = path.read_text(encoding="utf-8")
@@ -279,3 +284,55 @@ def admin_boundaries_status() -> dict:
         "districts": districts,
         "polygons_count": len(boundaries) if boundaries else 0,
     }
+
+
+# ── Storage stats ─────────────────────────────────────────────────────────────
+
+@router.get("/admin/storage-stats", tags=["Администрирование"], summary="Статистика хранилища DuckDB")
+def admin_storage_stats():
+    """Размеры БД и количество строк по таблицам для всех городов."""
+    import duckdb
+    data_dir = Path(__file__).parent.parent.parent / "data"
+    cities_dir = data_dir / "cities"
+    result = {"cities": [], "total_size_mb": 0, "total_rows": 0}
+
+    if not cities_dir.is_dir():
+        return result
+
+    for city_dir in sorted(cities_dir.iterdir()):
+        if not city_dir.is_dir():
+            continue
+        db_path = city_dir / "cache.db"
+        if not db_path.exists():
+            continue
+        size_mb = round(db_path.stat().st_size / (1024 * 1024), 2)
+        tables = []
+        total_city_rows = 0
+        try:
+            con = duckdb.connect(str(db_path), read_only=True)
+            for (tname,) in con.execute("SHOW TABLES").fetchall():
+                try:
+                    row_count = con.execute(f"SELECT COUNT(*) FROM \"{tname}\"").fetchone()[0]
+                except Exception:
+                    row_count = 0
+                tables.append({"table": tname, "rows": row_count})
+                total_city_rows += row_count
+            con.close()
+        except Exception as exc:
+            tables = [{"table": "error", "rows": 0, "error": str(exc)}]
+
+        result["cities"].append({
+            "city_id": city_dir.name,
+            "size_mb": size_mb,
+            "tables": tables,
+            "total_rows": total_city_rows,
+        })
+        result["total_size_mb"] = round(result["total_size_mb"] + size_mb, 2)
+        result["total_rows"] += total_city_rows
+
+    # Query log DB
+    qlog = data_dir / "query_log.db"
+    if qlog.exists():
+        result["query_log_mb"] = round(qlog.stat().st_size / (1024 * 1024), 2)
+
+    return result

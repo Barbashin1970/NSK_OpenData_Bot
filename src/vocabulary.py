@@ -15,7 +15,11 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-_VOCAB_PATH = Path(__file__).parent.parent / "config" / "vocabulary.yaml"
+_VOCAB_PATH_VOLUME = Path(__file__).parent.parent / "data" / "vocabulary.yaml"
+_VOCAB_PATH_SEED = Path(__file__).parent.parent / "config" / "vocabulary.yaml"
+
+# Используем Volume-путь если существует data/, иначе config/ (local dev)
+_VOCAB_PATH = _VOCAB_PATH_VOLUME if _VOCAB_PATH_VOLUME.parent.exists() else _VOCAB_PATH_SEED
 
 # Кэш загруженных терминов
 _terms: list[dict[str, str]] = []

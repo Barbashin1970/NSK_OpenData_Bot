@@ -23,8 +23,10 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-# Директория с YAML-регламентами относительно пакета src/
-_RULES_DIR = Path(__file__).parent.parent / "config" / "rules"
+# Директория с YAML-регламентами: Volume-путь (data/) приоритетнее config/
+_RULES_DIR_VOLUME = Path(__file__).parent.parent / "data" / "rules"
+_RULES_DIR_SEED = Path(__file__).parent.parent / "config" / "rules"
+_RULES_DIR = _RULES_DIR_VOLUME if _RULES_DIR_VOLUME.parent.exists() else _RULES_DIR_SEED
 
 # Известные файлы — список для документации; загружаются лениво по имени
 _KNOWN_RULES = (
@@ -32,6 +34,7 @@ _KNOWN_RULES = (
     "holiday_calendar",
     "ecology_rules",
     "life_indices_rules",
+    "mobile_index_rules",
 )
 
 
@@ -133,6 +136,9 @@ class RuleEngine:
 
     def _load(self, name: str) -> dict[str, Any]:
         path = self._dir / f"{name}.yaml"
+        # Fallback: если нет в data/rules/, читаем из config/rules/
+        if not path.exists() and self._dir != _RULES_DIR_SEED:
+            path = _RULES_DIR_SEED / f"{name}.yaml"
         if not path.exists():
             log.warning("rule_engine: файл '%s' не найден, используем пустой dict", path)
             return {}
