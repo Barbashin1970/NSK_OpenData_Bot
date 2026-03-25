@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 _RULES_DIR = Path(__file__).parent.parent.parent / "config" / "rules"
-_ALLOWED_RULES = {"traffic_rules", "holiday_calendar", "ecology_rules", "life_indices_rules"}
+_ALLOWED_RULES = {"traffic_rules", "holiday_calendar", "ecology_rules", "life_indices_rules", "mobile_index_rules"}
 _API_KEYS_FILE = Path(__file__).parent.parent.parent / "data" / "api_keys.json"
 
 _DEV_DEFAULT_HASH = _hashlib.sha256(b"sigma2024").hexdigest()

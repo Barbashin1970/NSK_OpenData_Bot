@@ -723,11 +723,12 @@ async function _studioAuth() {
         </div>
 
         <div>
-          <div class="font-medium text-slate-800 mb-1">Четыре файла</div>
+          <div class="font-medium text-slate-800 mb-1">Пять файлов</div>
           <ul class="text-xs text-slate-600 space-y-1">
             <li>🚦 <strong>traffic_rules.yaml</strong> — индекс пробок: часы пик, погодные Δ, тексты советов</li>
             <li>📊 <strong>life_indices_rules.yaml</strong> — индексы водителя, прогулки, коммунальной нагрузки</li>
             <li>🌿 <strong>ecology_rules.yaml</strong> — пороги рисков PM2.5, гололёд, температурный шок</li>
+            <li>🚗 <strong>mobile_index_rules.yaml</strong> — транспортный индекс: веса формулы I<sub>total</sub>, компенсация ОТ, метео</li>
             <li>📅 <strong>holiday_calendar.yaml</strong> — производственный календарь 2025–2027</li>
           </ul>
         </div>
@@ -736,7 +737,7 @@ async function _studioAuth() {
           <div class="font-medium text-slate-800 mb-1">Рабочий процесс</div>
           <ol class="text-xs text-slate-600 space-y-1 list-decimal list-inside">
             <li>Выберите регламент в левой панели</li>
-            <li>Отредактируйте YAML в текстовом редакторе <em>или</em> передвиньте слайдер (только traffic_rules)</li>
+            <li>Отредактируйте YAML в текстовом редакторе <em>или</em> передвиньте слайдер (traffic_rules, mobile_index_rules)</li>
             <li>Нажмите <strong>✓ Применить</strong> — файл сохранится и логика перезагрузится</li>
             <li>Проверьте результат в <a href="/" class="text-blue-600 underline" target="_blank">главном интерфейсе</a></li>
           </ol>
@@ -790,6 +791,10 @@ async function _studioAuth() {
         <button class="rules-nav-btn w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
                 data-rule="ecology_rules">
           🌿 Экология
+        </button>
+        <button class="rules-nav-btn w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                data-rule="mobile_index_rules">
+          🚗 Транспортный индекс
         </button>
         <button class="rules-nav-btn w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
                 data-rule="holiday_calendar">
@@ -2636,13 +2641,14 @@ async function saveSource(idx, cityId, key) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const RULE_LABELS = {
-  traffic_rules:      '🚦 Индекс пробок (traffic_rules.yaml)',
-  life_indices_rules: '📊 Индексы жизни (life_indices_rules.yaml)',
-  ecology_rules:      '🌿 Экология (ecology_rules.yaml)',
-  holiday_calendar:   '📅 Производственный календарь (holiday_calendar.yaml)',
+  traffic_rules:       '🚦 Индекс пробок (traffic_rules.yaml)',
+  life_indices_rules:  '📊 Индексы жизни (life_indices_rules.yaml)',
+  ecology_rules:       '🌿 Экология (ecology_rules.yaml)',
+  mobile_index_rules:  '🚗 Транспортный индекс (mobile_index_rules.yaml)',
+  holiday_calendar:    '📅 Производственный календарь (holiday_calendar.yaml)',
 };
 
-// Ключевые слайдеры только для traffic_rules
+// Ключевые слайдеры для traffic_rules
 const TRAFFIC_QUICK = [
   { path: ['weekend_scale'],                       label: 'Масштаб выходного дня',     min: 0, max: 1,  step: 0.05 },
   { path: ['day_modifiers', 'monday',   'delta'],  label: '⊕ Понедельник (Δ)',          min: 0, max: 3,  step: 0.1  },
@@ -2652,6 +2658,21 @@ const TRAFFIC_QUICK = [
   { path: ['weather', 'snow', 'normal_delta'],     label: '❄ Снег (Δ)',                 min: 0, max: 5,  step: 0.1  },
   { path: ['weather', 'rain', 'heavy_delta'],      label: '🌧 Ливень (Δ)',              min: 0, max: 5,  step: 0.1  },
   { path: ['weather', 'ice', 'delta'],             label: '🧊 Гололёд (Δ)',             min: 0, max: 5,  step: 0.1  },
+];
+
+// Ключевые слайдеры для mobile_index_rules (транспортный индекс загрязнения)
+const MOBILE_INDEX_QUICK = [
+  { path: ['total_weights', 'w_stationary'],       label: 'Вес стационарных (I_стац)',   min: 0, max: 1,  step: 0.05 },
+  { path: ['total_weights', 'w_mobile'],           label: 'Вес транспорта (I_транспорт)', min: 0, max: 1,  step: 0.05 },
+  { path: ['auto_load', 'alpha_cars'],             label: '🚘 Вес плотности автопарка',   min: 0, max: 1,  step: 0.05 },
+  { path: ['auto_load', 'alpha_jam'],              label: '🚦 Вес пробок',                min: 0, max: 1,  step: 0.05 },
+  { path: ['public_transport', 'beta_metro'],      label: '🚇 Компенсация метро',         min: 0, max: 1,  step: 0.05 },
+  { path: ['public_transport', 'beta_tram'],       label: '🚊 Компенсация трамвай',       min: 0, max: 1,  step: 0.05 },
+  { path: ['public_transport', 'beta_trolley'],    label: '🚎 Компенсация троллейбус',    min: 0, max: 1,  step: 0.05 },
+  { path: ['public_transport', 'k_PT'],            label: '📊 Макс. компенсация ОТ',      min: 0, max: 1,  step: 0.05 },
+  { path: ['meteo', 'gamma_wind'],                 label: '💨 Рассеивание ветром',        min: 0, max: 1,  step: 0.05 },
+  { path: ['meteo', 'gamma_calm'],                 label: '🌫 Накопление при штиле',      min: 0, max: 1,  step: 0.05 },
+  { path: ['meteo', 'delta_basin'],                label: '⛰ Надбавка за котловину',      min: 0, max: 1,  step: 0.05 },
 ];
 
 let _rulesCurrentName  = null;
@@ -2725,11 +2746,11 @@ async function loadRule(name) {
     document.getElementById('rules-status-badge').textContent = 'Загружено';
     document.getElementById('rules-notify').classList.add('hidden');
 
-    // Quick params — только для traffic_rules
+    // Quick params — traffic_rules и mobile_index_rules
     const qp = document.getElementById('rules-quick-params');
-    if (name === 'traffic_rules') {
+    if (name === 'traffic_rules' || name === 'mobile_index_rules') {
       qp.classList.remove('hidden');
-      renderQuickParams(data.parsed);
+      renderQuickParams(data.parsed, name === 'mobile_index_rules' ? MOBILE_INDEX_QUICK : TRAFFIC_QUICK);
     } else {
       qp.classList.add('hidden');
     }
@@ -2748,9 +2769,10 @@ function getNestedVal(obj, path) {
   return path.reduce((o, k) => (o != null ? o[k] : undefined), obj);
 }
 
-function renderQuickParams(parsed) {
+function renderQuickParams(parsed, fields) {
+  fields = fields || TRAFFIC_QUICK;
   const container = document.getElementById('rules-quick-fields');
-  container.innerHTML = TRAFFIC_QUICK.map((f, i) => {
+  container.innerHTML = fields.map((f, i) => {
     const val = getNestedVal(parsed, f.path) ?? '';
     return `
       <label class="flex flex-col gap-1">
@@ -2841,7 +2863,8 @@ async function rulesApply() {
 function rulesReset() {
   if (!_rulesCurrentName) return;
   document.getElementById('rules-yaml-textarea').value = _rulesOriginalYaml;
-  if (_rulesCurrentName === 'traffic_rules') renderQuickParams(_rulesParsed);
+  if (_rulesCurrentName === 'traffic_rules') renderQuickParams(_rulesParsed, TRAFFIC_QUICK);
+  if (_rulesCurrentName === 'mobile_index_rules') renderQuickParams(_rulesParsed, MOBILE_INDEX_QUICK);
   showRulesNotify('info', 'Сброшено до последнего сохранённого состояния');
 }
 
