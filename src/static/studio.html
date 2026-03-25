@@ -237,6 +237,9 @@ async function _studioAuth() {
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="history">
       История<span id="history-count-badge" class="ml-1.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"></span>
     </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="vocabulary">
+      Словарь<span id="vocab-count-badge" class="ml-1.5 bg-violet-100 text-violet-600 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"></span>
+    </button>
   </nav>
 </div>
 
@@ -1036,6 +1039,79 @@ async function _studioAuth() {
     </div>
   </div>
 
+  <!-- ══════════════════════ Словарь ══════════════════════════════════════ -->
+  <div id="tab-vocabulary" class="tab-pane">
+    <h2 class="text-lg font-bold text-slate-800 mb-4">Словарь синонимов</h2>
+
+    <!-- Блок А: Добавление термина -->
+    <div class="bg-white rounded-xl border border-slate-200 p-5 mb-5">
+      <h3 class="text-sm font-semibold text-slate-700 mb-3">Добавить термин</h3>
+      <div class="flex gap-3 items-end flex-wrap">
+        <div class="flex-1 min-w-[200px]">
+          <label class="block text-xs text-slate-500 mb-1">Термин (стем или фраза)</label>
+          <input id="vocab-term-input" type="text" placeholder="например: автобус" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-violet-500">
+        </div>
+        <div class="w-48">
+          <label class="block text-xs text-slate-500 mb-1">Тема</label>
+          <select id="vocab-topic-select" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-violet-500">
+            <option value="">— выберите тему —</option>
+          </select>
+        </div>
+        <button onclick="_addVocabTerm()" class="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 transition-colors">
+          Добавить
+        </button>
+      </div>
+    </div>
+
+    <!-- Блок Б: Текущий словарь -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-5">
+      <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-slate-700">Пользовательский словарь <span id="vocab-total" class="text-slate-400 font-normal"></span></h3>
+        <button onclick="_reloadVocabulary()" class="text-xs text-violet-600 hover:text-violet-800">Перезагрузить</button>
+      </div>
+      <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
+        <table class="w-full text-xs">
+          <thead class="bg-slate-50 sticky top-0 z-10">
+            <tr class="text-left text-slate-500 font-medium">
+              <th class="px-4 py-2.5">Термин</th>
+              <th class="px-4 py-2.5 w-40">Тема</th>
+              <th class="px-4 py-2.5 w-28">Добавил</th>
+              <th class="px-4 py-2.5 w-28">Дата</th>
+              <th class="px-4 py-2.5 w-16"></th>
+            </tr>
+          </thead>
+          <tbody id="vocab-tbody" class="divide-y divide-slate-100">
+            <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Загрузка...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Блок В: Нераспознанные запросы -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-slate-700">Нераспознанные запросы <span id="unknown-total" class="text-slate-400 font-normal"></span></h3>
+        <span class="text-xs text-slate-400">confidence &lt; 0.35 · агрегация по частоте</span>
+      </div>
+      <div class="overflow-x-auto" style="max-height: 400px; overflow-y: auto;">
+        <table class="w-full text-xs">
+          <thead class="bg-slate-50 sticky top-0 z-10">
+            <tr class="text-left text-slate-500 font-medium">
+              <th class="px-4 py-2.5">Запрос</th>
+              <th class="px-4 py-2.5 w-16 text-center">Частота</th>
+              <th class="px-4 py-2.5 w-28">Последний раз</th>
+              <th class="px-4 py-2.5 w-40">Назначить тему</th>
+              <th class="px-4 py-2.5 w-24"></th>
+            </tr>
+          </thead>
+          <tbody id="unknown-tbody" class="divide-y divide-slate-100">
+            <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Загрузка...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ─────────────────────────── СКРИПТ ──────────────────────────────────── -->
@@ -1066,6 +1142,7 @@ function switchTab(tab) {
   if (tab === 'schemas')   loadSchemas();
   if (tab === 'rules')     initRulesTab();
   if (tab === 'history')   loadHistory();
+  if (tab === 'vocabulary') loadVocabulary();
 
   // Update URL hash
   history.replaceState(null, '', '#' + tab);
@@ -3330,6 +3407,132 @@ async function _runTestQueries() {
     btn.textContent = 'Ошибка';
     setTimeout(() => { btn.textContent = 'Тест (20 запросов)'; btn.disabled = false; }, 2000);
   }
+}
+
+// ── Словарь ─────────────────────────────────────────────────────────────
+let _vocabTopics = {};
+
+async function loadVocabulary() {
+  try {
+    const [vocRes, unkRes] = await Promise.all([
+      fetch('/api/vocabulary'),
+      fetch('/api/unknown-queries'),
+    ]);
+    const vocab = await vocRes.json();
+    const unknown = await unkRes.json();
+
+    _vocabTopics = vocab.topics || {};
+
+    // Заполняем выпадающий список тем
+    const sel = document.getElementById('vocab-topic-select');
+    if (sel.options.length <= 1) {
+      Object.entries(_vocabTopics).sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, name]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = `${name} (${id})`;
+        sel.appendChild(opt);
+      });
+    }
+
+    // Бейдж в табе
+    const badge = document.getElementById('vocab-count-badge');
+    if (badge) badge.textContent = vocab.count || '';
+
+    // Таблица словаря
+    const tbody = document.getElementById('vocab-tbody');
+    const terms = vocab.terms || [];
+    document.getElementById('vocab-total').textContent = terms.length ? `(${terms.length})` : '';
+    if (!terms.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Словарь пуст — добавьте первый термин</td></tr>';
+    } else {
+      tbody.innerHTML = terms.map(t => `<tr class="hover:bg-slate-50 transition-colors">
+        <td class="px-4 py-2 text-slate-800 font-medium">${t.term}</td>
+        <td class="px-4 py-2"><span class="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-md">${_vocabTopics[t.topic] || t.topic}</span></td>
+        <td class="px-4 py-2 text-slate-400">${t.added_by || ''}</td>
+        <td class="px-4 py-2 text-slate-400">${t.added_at || ''}</td>
+        <td class="px-4 py-2 text-center">
+          <button onclick="_removeVocabTerm('${t.term.replace(/'/g,"\\'")}', '${t.topic}')"
+            class="text-red-400 hover:text-red-600 text-xs">✕</button>
+        </td>
+      </tr>`).join('');
+    }
+
+    // Таблица нераспознанных
+    const utbody = document.getElementById('unknown-tbody');
+    const queries = unknown.queries || [];
+    document.getElementById('unknown-total').textContent = queries.length ? `(${queries.length})` : '';
+    if (!queries.length) {
+      utbody.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Нет нераспознанных запросов</td></tr>';
+    } else {
+      utbody.innerHTML = queries.map((u, i) => {
+        const ts = u.last_seen ? new Date(u.last_seen).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+        const topicOptions = Object.entries(_vocabTopics).sort((a, b) => a[1].localeCompare(b[1]))
+          .map(([id, name]) => `<option value="${id}">${name}</option>`).join('');
+        return `<tr class="hover:bg-slate-50 transition-colors">
+          <td class="px-4 py-2 text-slate-800">${u.query}</td>
+          <td class="px-4 py-2 text-center"><span class="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md font-mono">${u.count}</span></td>
+          <td class="px-4 py-2 text-slate-400">${ts}</td>
+          <td class="px-4 py-2"><select id="unknown-topic-${i}" class="w-full px-2 py-1 border border-slate-300 rounded text-xs"><option value="">— тема —</option>${topicOptions}</select></td>
+          <td class="px-4 py-2">
+            <button onclick="_assignUnknown('${u.query.replace(/'/g,"\\'")}', ${i})"
+              class="px-2 py-1 bg-emerald-600 text-white text-xs rounded hover:bg-emerald-700 transition-colors">В словарь</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+  } catch (e) {
+    document.getElementById('vocab-tbody').innerHTML =
+      `<tr><td colspan="5" class="px-4 py-6 text-center text-red-400">Ошибка: ${e.message}</td></tr>`;
+  }
+}
+
+async function _addVocabTerm() {
+  const term = document.getElementById('vocab-term-input').value.trim();
+  const topic = document.getElementById('vocab-topic-select').value;
+  if (!term) return alert('Введите термин');
+  if (!topic) return alert('Выберите тему');
+
+  const resp = await fetch('/api/vocabulary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ term, topic }),
+  });
+  if (resp.ok) {
+    document.getElementById('vocab-term-input').value = '';
+    loadVocabulary();
+  } else {
+    const err = await resp.json();
+    alert('Ошибка: ' + (err.error || 'unknown'));
+  }
+}
+
+async function _removeVocabTerm(term, topic) {
+  if (!confirm(`Удалить «${term}» из словаря?`)) return;
+  await fetch('/api/vocabulary', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ term, topic }),
+  });
+  loadVocabulary();
+}
+
+async function _assignUnknown(query, idx) {
+  const sel = document.getElementById('unknown-topic-' + idx);
+  const topic = sel ? sel.value : '';
+  if (!topic) return alert('Выберите тему для назначения');
+
+  await fetch('/api/vocabulary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ term: query, topic }),
+  });
+  loadVocabulary();
+}
+
+async function _reloadVocabulary() {
+  await fetch('/api/vocabulary/reload', { method: 'POST' });
+  loadVocabulary();
 }
 
 // ── Инициализация: загружаем по хэшу или обзор ──────────────────────────

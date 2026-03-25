@@ -40,12 +40,22 @@ CREATE TABLE IF NOT EXISTS query_log (
 
 _SEQ = "CREATE SEQUENCE IF NOT EXISTS query_log_seq START 1"
 
+_UNKNOWN_SQL = """
+CREATE TABLE IF NOT EXISTS unknown_queries (
+    query       VARCHAR PRIMARY KEY,
+    count       INTEGER DEFAULT 1,
+    last_seen   TIMESTAMP DEFAULT current_timestamp,
+    city_id     VARCHAR
+)
+"""
+
 
 def _conn() -> duckdb.DuckDBPyConnection:
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     c = duckdb.connect(str(_DB_PATH))
     c.execute(_SEQ)
     c.execute(_CREATE_SQL)
+    c.execute(_UNKNOWN_SQL)
     return c
 
 
@@ -91,9 +101,58 @@ def log_query(
                 source,
             ],
         )
+        # Нераспознанные запросы (confidence < 0.35 или UNKNOWN) → unknown_queries
+        if (confidence is not None and confidence < 0.35) or operation == "UNKNOWN":
+            q_lower = query.strip().lower()
+            existing = conn.execute(
+                "SELECT count FROM unknown_queries WHERE query = ?", [q_lower]
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE unknown_queries SET count = count + 1, last_seen = current_timestamp WHERE query = ?",
+                    [q_lower],
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO unknown_queries (query, count, city_id) VALUES (?, 1, ?)",
+                    [q_lower, city_id],
+                )
         conn.close()
     except Exception as e:
         log.warning("query_log write failed: %s", e)
+
+
+def get_unknown_queries(limit: int = 20) -> list[dict[str, Any]]:
+    """Топ нераспознанных запросов по частоте."""
+    try:
+        conn = _conn()
+        rows = conn.execute(
+            """SELECT query, count, last_seen, city_id
+               FROM unknown_queries
+               ORDER BY count DESC, last_seen DESC
+               LIMIT ?""",
+            [limit],
+        ).fetchall()
+        conn.close()
+        return [
+            {"query": r[0], "count": r[1], "last_seen": str(r[2]), "city_id": r[3]}
+            for r in rows
+        ]
+    except Exception as e:
+        log.warning("unknown_queries read failed: %s", e)
+        return []
+
+
+def remove_unknown_query(query: str) -> bool:
+    """Удалить запрос из unknown_queries (после добавления в словарь)."""
+    try:
+        conn = _conn()
+        conn.execute("DELETE FROM unknown_queries WHERE query = ?", [query.strip().lower()])
+        conn.close()
+        return True
+    except Exception as e:
+        log.warning("unknown_queries remove failed: %s", e)
+        return False
 
 
 def get_history(

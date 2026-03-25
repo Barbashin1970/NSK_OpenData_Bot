@@ -212,6 +212,14 @@ def _load_dotenv() -> None:
 # ── Startup events ───────────────────────────────────────────────────────────
 
 @app.on_event("startup")
+def _load_vocabulary() -> None:
+    """Загружает пользовательский словарь синонимов при старте."""
+    from .vocabulary import load_vocabulary
+    terms = load_vocabulary()
+    logging.getLogger(__name__).info("Vocabulary: загружено %d терминов", len(terms))
+
+
+@app.on_event("startup")
 def _seed_volume_data() -> None:
     """Copy seed data from Docker image to Volume if missing.
 
@@ -663,6 +671,7 @@ from .routes.studio import router as studio_router
 from .routes.admin import router as admin_router
 from .routes.presenter import router as presenter_router
 from .routes.history import router as history_router
+from .routes.vocabulary_routes import router as vocabulary_router
 
 app.include_router(data_router)
 app.include_router(ecology_router)
@@ -675,6 +684,7 @@ app.include_router(studio_router)
 app.include_router(admin_router)
 app.include_router(presenter_router)
 app.include_router(history_router)
+app.include_router(vocabulary_router)
 
 
 # ── Статические файлы (tailwind.css, иконки и т.д.) ─────────────────────────

@@ -13,6 +13,7 @@ from .city_config import (
     get_feature as _get_feature, get_city_name as _get_city_name,
 )
 from .registry import load_registry
+from .vocabulary import get_extra_keywords, patch_registry, ALL_TOPICS
 
 # Районы и подрайоны загружаются из city_profile.yaml через city_config.py.
 # Прямое задание констант здесь запрещено — добавляйте данные в config/city_profile.yaml.
@@ -817,6 +818,9 @@ def route(query: str) -> list[RouteResult]:
     if airport_result:
         results.append(airport_result)
 
+    # Добавляем vocabulary-термины в YAML-темы
+    patch_registry(registry)
+
     for topic_id, ds in registry.items():
         keywords: list[str] = ds.get("keywords", [])
         matched = []
@@ -849,6 +853,38 @@ def route(query: str) -> list[RouteResult]:
                 topic=topic_id,
                 confidence=confidence,
                 name=ds.get("name", topic_id),
+                matched_keywords=matched,
+            ))
+
+    # Vocabulary-термины для спецтем (hardcoded, не в registry)
+    _matched_topics = {r.topic for r in results}
+    _HARDCODED_TOPICS = {
+        t for t in ALL_TOPICS if t not in registry
+    }
+    for htopic in _HARDCODED_TOPICS:
+        if htopic in _matched_topics:
+            continue  # уже найден через базовый роутинг
+        extra_kw = get_extra_keywords(htopic)
+        if not extra_kw:
+            continue
+        matched = []
+        score = 0.0
+        for kw in extra_kw:
+            kw_norm = _normalize(kw)
+            kw_parts = kw_norm.split()
+            all_match = all(
+                re.search(r"(?<![а-яёa-z])" + re.escape(p), q) for p in kw_parts
+            )
+            if all_match:
+                matched.append(kw)
+                score += len(kw_parts) ** 1.5
+        if score > 0:
+            confidence = min(1.0, score / max(len(extra_kw), 1) * 3)
+            confidence = max(confidence, 0.35)
+            results.append(RouteResult(
+                topic=htopic,
+                confidence=confidence,
+                name=ALL_TOPICS.get(htopic, htopic),
                 matched_keywords=matched,
             ))
 
