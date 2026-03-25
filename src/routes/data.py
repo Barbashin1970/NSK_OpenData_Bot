@@ -16,6 +16,7 @@ from ..planner import make_plan, INFO_PATTERNS, DISTRICTS_PATTERNS
 from ..executor import execute_plan
 from ..fetcher import load_meta, is_stale
 from ..cache import get_table_info, table_exists
+from ..query_log import log_query as _log_query
 
 log = logging.getLogger(__name__)
 
@@ -276,10 +277,15 @@ def get_ask(
     """
     route_result = best_topic(q)
 
+    # Determine city for logging
+    from ..city_config import get_city_id as _get_city_id
+    _city_id = _get_city_id()
+
     if not route_result:
         q_lower = q.lower()
         if DISTRICTS_PATTERNS.search(q_lower):
             from ..router import DISTRICTS
+            _log_query(query=q, operation="DISTRICTS", city_id=_city_id)
             return {
                 "query": q,
                 "operation": "DISTRICTS",
@@ -292,8 +298,10 @@ def get_ask(
                 {"id": tid, "name": ds.get("name"), "description": ds.get("description")}
                 for tid, ds in registry.items()
             ]
+            _log_query(query=q, operation="INFO", city_id=_city_id)
             return {"query": q, "operation": "INFO", "topics": topics_list}
         log.info("UNKNOWN_QUERY: %s", q)
+        _log_query(query=q, operation="UNKNOWN", city_id=_city_id)
         return {
             "query": q,
             "operation": "UNKNOWN",
@@ -304,6 +312,22 @@ def get_ask(
     plan.offset = offset
     if page_size != 20 or plan.limit is None:
         plan.limit = page_size
+
+    # ── Логирование запроса ────────────────────────────────────────────────────
+    _log_query(
+        query=q,
+        topic=topic,
+        topic_name=route_result.name,
+        confidence=route_result.confidence,
+        operation=plan.operation,
+        district=plan.district,
+        sub_district=plan.sub_district,
+        street=plan.street,
+        extra_filters=plan.extra_filters or None,
+        matched_keywords=route_result.matched_keywords,
+        utility_type=route_result.utility_type,
+        city_id=_city_id,
+    )
 
     # ── Строительство ─────────────────────────────────────────────────────────
     if topic == "construction":

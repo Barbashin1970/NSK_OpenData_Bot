@@ -234,6 +234,9 @@ async function _studioAuth() {
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="rules">
       Регламенты
     </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="history">
+      История<span id="history-count-badge" class="ml-1.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"></span>
+    </button>
   </nav>
 </div>
 
@@ -932,6 +935,96 @@ async function _studioAuth() {
     </div>
   </div>
 
+  <!-- ══ Вкладка: История запросов ════════════════════════════════════════ -->
+  <div id="tab-history" class="tab-pane">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-800">История запросов</h2>
+        <p class="text-xs text-slate-400 mt-0.5" id="history-summary">Загрузка...</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="history-search" type="text" placeholder="Поиск по запросам..."
+          class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          oninput="_historySearchDebounce()">
+        <select id="history-topic-filter" onchange="loadHistory()"
+          class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300">
+          <option value="">Все темы</option>
+        </select>
+        <button onclick="loadHistory()" class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition-colors">
+          Обновить
+        </button>
+        <button onclick="_clearHistory()" class="text-xs bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
+          Очистить
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats cards -->
+    <div id="history-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="text-2xl font-bold text-slate-800" id="stat-total">—</div>
+        <div class="text-[11px] text-slate-400 mt-1">Всего запросов</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="text-2xl font-bold text-amber-600" id="stat-unknown">—</div>
+        <div class="text-[11px] text-slate-400 mt-1">Нераспознанные</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="text-2xl font-bold text-orange-500" id="stat-low-conf">—</div>
+        <div class="text-[11px] text-slate-400 mt-1">Низкая уверенность (&lt;0.5)</div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="text-2xl font-bold text-emerald-600" id="stat-avg-conf">—</div>
+        <div class="text-[11px] text-slate-400 mt-1">Средняя уверенность</div>
+      </div>
+    </div>
+
+    <!-- Topic distribution -->
+    <div id="history-topics-bar" class="mb-5 hidden">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Распределение по темам</h3>
+      <div id="history-topics-chart" class="flex gap-1 h-6 rounded-lg overflow-hidden bg-slate-100"></div>
+      <div id="history-topics-legend" class="flex flex-wrap gap-3 mt-2 text-[11px] text-slate-500"></div>
+    </div>
+
+    <!-- Query table -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div class="overflow-x-auto" style="max-height: 500px; overflow-y: auto;">
+        <table class="w-full text-xs">
+          <thead class="bg-slate-50 sticky top-0 z-10">
+            <tr class="text-left text-slate-500 font-medium">
+              <th class="px-3 py-2.5 w-36">Время</th>
+              <th class="px-3 py-2.5">Запрос</th>
+              <th class="px-3 py-2.5 w-28">Тема</th>
+              <th class="px-3 py-2.5 w-20 text-center">Уверенность</th>
+              <th class="px-3 py-2.5 w-24">Операция</th>
+              <th class="px-3 py-2.5 w-28">Район</th>
+              <th class="px-3 py-2.5 w-32">Ключевые слова</th>
+              <th class="px-3 py-2.5 w-20">Город</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody" class="divide-y divide-slate-100">
+            <tr><td colspan="8" class="px-3 py-8 text-center text-slate-400">Загрузка...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="flex items-center justify-between mt-3">
+      <div class="text-xs text-slate-400" id="history-pagination-info"></div>
+      <div class="flex gap-1">
+        <button onclick="_historyPage(-1)" id="history-prev-btn" disabled
+          class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg disabled:opacity-40 transition-colors">
+          ← Назад
+        </button>
+        <button onclick="_historyPage(1)" id="history-next-btn" disabled
+          class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg disabled:opacity-40 transition-colors">
+          Вперёд →
+        </button>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ─────────────────────────── СКРИПТ ──────────────────────────────────── -->
@@ -961,6 +1054,7 @@ function switchTab(tab) {
   if (tab === 'data')      { /* sub-tabs handle their own init */ }
   if (tab === 'schemas')   loadSchemas();
   if (tab === 'rules')     initRulesTab();
+  if (tab === 'history')   loadHistory();
 
   // Update URL hash
   history.replaceState(null, '', '#' + tab);
@@ -3052,6 +3146,160 @@ function _showDsNotify(type, msg) {
   if (type === 'error') el.classList.add('bg-red-50', 'text-red-700');
   if (type === 'info')  el.classList.add('bg-blue-50', 'text-blue-700');
   el.innerHTML = msg;
+}
+
+// ══ История запросов ════════════════════════════════════════════════════════
+
+let _historyOffset = 0;
+const _HISTORY_PAGE = 50;
+let _historySearchTimer = null;
+
+const _TOPIC_COLORS = {
+  parking: '#3b82f6', stops: '#8b5cf6', schools: '#f59e0b', kindergartens: '#ec4899',
+  libraries: '#10b981', pharmacies: '#ef4444', sport_grounds: '#06b6d4', sport_orgs: '#6366f1',
+  culture: '#f97316', parks: '#22c55e', power_outages: '#dc2626', ecology: '#059669',
+  construction: '#d97706', traffic_index: '#7c3aed', metro: '#0284c7', airport: '#64748b',
+  cameras: '#475569', medical: '#e11d48', transit: '#0891b2', heat_sources: '#b91c1c',
+  emissions: '#a855f7',
+};
+
+function _historySearchDebounce() {
+  clearTimeout(_historySearchTimer);
+  _historySearchTimer = setTimeout(() => { _historyOffset = 0; loadHistory(); }, 400);
+}
+
+function _historyPage(dir) {
+  _historyOffset = Math.max(0, _historyOffset + dir * _HISTORY_PAGE);
+  loadHistory();
+}
+
+async function loadHistory() {
+  const search = document.getElementById('history-search')?.value || '';
+  const topic = document.getElementById('history-topic-filter')?.value || '';
+
+  // Load stats
+  try {
+    const statsResp = await fetch('/api/query-stats');
+    const stats = await statsResp.json();
+    document.getElementById('stat-total').textContent = stats.total_queries ?? '—';
+    document.getElementById('stat-unknown').textContent = stats.unknown_queries ?? '—';
+    document.getElementById('stat-low-conf').textContent = stats.low_confidence ?? '—';
+    document.getElementById('stat-avg-conf').textContent = stats.avg_confidence != null ? stats.avg_confidence.toFixed(2) : '—';
+
+    // Badge
+    const badge = document.getElementById('history-count-badge');
+    if (stats.total_queries > 0) {
+      badge.textContent = stats.total_queries;
+    } else {
+      badge.textContent = '';
+    }
+
+    // Topic filter options
+    const sel = document.getElementById('history-topic-filter');
+    const curVal = sel.value;
+    const opts = sel.querySelectorAll('option:not(:first-child)');
+    opts.forEach(o => o.remove());
+    (stats.by_topic || []).forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.topic;
+      o.textContent = `${t.topic} (${t.count})`;
+      if (t.topic === curVal) o.selected = true;
+      sel.appendChild(o);
+    });
+
+    // Topic distribution bar
+    const bar = document.getElementById('history-topics-bar');
+    const chart = document.getElementById('history-topics-chart');
+    const legend = document.getElementById('history-topics-legend');
+    if (stats.by_topic?.length > 0 && stats.total_queries > 0) {
+      bar.classList.remove('hidden');
+      chart.innerHTML = '';
+      legend.innerHTML = '';
+      stats.by_topic.forEach(t => {
+        const pct = (t.count / stats.total_queries * 100);
+        const color = _TOPIC_COLORS[t.topic] || '#94a3b8';
+        const seg = document.createElement('div');
+        seg.style.cssText = `width:${Math.max(pct, 1)}%;background:${color};transition:width .3s`;
+        seg.title = `${t.topic}: ${t.count} (${pct.toFixed(1)}%)`;
+        chart.appendChild(seg);
+
+        const leg = document.createElement('span');
+        leg.innerHTML = `<span class="inline-block w-2.5 h-2.5 rounded-sm mr-1" style="background:${color}"></span>${t.topic} <span class="text-slate-400">${t.count}</span>`;
+        legend.appendChild(leg);
+      });
+    } else {
+      bar.classList.add('hidden');
+    }
+
+    document.getElementById('history-summary').textContent =
+      `${stats.total_queries} запросов · ${stats.unknown_queries || 0} нераспознанных · средняя уверенность ${stats.avg_confidence != null ? stats.avg_confidence.toFixed(2) : '—'}`;
+  } catch (e) {}
+
+  // Load query list
+  try {
+    const params = new URLSearchParams({ limit: _HISTORY_PAGE, offset: _historyOffset });
+    if (search) params.set('search', search);
+    if (topic) params.set('topic', topic);
+
+    const resp = await fetch('/api/query-history?' + params);
+    const data = await resp.json();
+    const tbody = document.getElementById('history-tbody');
+
+    if (!data.rows?.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-8 text-center text-slate-400">Нет записей</td></tr>';
+    } else {
+      tbody.innerHTML = data.rows.map(r => {
+        const conf = r.confidence != null ? r.confidence : null;
+        let confBadge = '';
+        if (conf !== null) {
+          const c = conf;
+          const cls = c >= 0.7 ? 'bg-emerald-100 text-emerald-700' : c >= 0.4 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700';
+          confBadge = `<span class="${cls} px-1.5 py-0.5 rounded-md font-mono">${c.toFixed(2)}</span>`;
+        } else if (r.operation === 'UNKNOWN') {
+          confBadge = '<span class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded-md">—</span>';
+        }
+
+        const ts = r.ts ? new Date(r.ts).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '';
+        const topicColor = _TOPIC_COLORS[r.topic] || '#94a3b8';
+        const topicBadge = r.topic
+          ? `<span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:${topicColor}"></span>${r.topic_name || r.topic}</span>`
+          : '<span class="text-slate-300">—</span>';
+
+        const opBadge = r.operation
+          ? `<span class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md">${r.operation}</span>`
+          : '';
+
+        return `<tr class="hover:bg-slate-50 transition-colors">
+          <td class="px-3 py-2 text-slate-400 whitespace-nowrap">${ts}</td>
+          <td class="px-3 py-2 text-slate-800 font-medium max-w-xs truncate" title="${(r.query||'').replace(/"/g,'&quot;')}">${r.query || ''}</td>
+          <td class="px-3 py-2">${topicBadge}</td>
+          <td class="px-3 py-2 text-center">${confBadge}</td>
+          <td class="px-3 py-2">${opBadge}</td>
+          <td class="px-3 py-2 text-slate-500">${r.district || r.sub_district || ''}</td>
+          <td class="px-3 py-2 text-slate-400 max-w-[200px] truncate" title="${(r.matched_keywords||'').replace(/"/g,'&quot;')}">${r.matched_keywords || ''}</td>
+          <td class="px-3 py-2 text-slate-400">${r.city_id || ''}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Pagination
+    const total = data.total || 0;
+    document.getElementById('history-pagination-info').textContent =
+      `${_historyOffset + 1}–${Math.min(_historyOffset + _HISTORY_PAGE, total)} из ${total}`;
+    document.getElementById('history-prev-btn').disabled = _historyOffset === 0;
+    document.getElementById('history-next-btn').disabled = _historyOffset + _HISTORY_PAGE >= total;
+  } catch (e) {
+    document.getElementById('history-tbody').innerHTML =
+      `<tr><td colspan="8" class="px-3 py-8 text-center text-red-400">Ошибка загрузки: ${e.message}</td></tr>`;
+  }
+}
+
+async function _clearHistory() {
+  if (!confirm('Удалить всю историю запросов?')) return;
+  try {
+    await fetch('/api/query-history', { method: 'DELETE' });
+    loadHistory();
+  } catch (e) {}
 }
 
 // ── Инициализация: загружаем по хэшу или обзор ──────────────────────────

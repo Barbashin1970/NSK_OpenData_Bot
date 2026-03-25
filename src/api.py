@@ -629,6 +629,7 @@ from .routes.ciinsu import router as ciinsu_router
 from .routes.studio import router as studio_router
 from .routes.admin import router as admin_router
 from .routes.presenter import router as presenter_router
+from .routes.history import router as history_router
 
 app.include_router(data_router)
 app.include_router(ecology_router)
@@ -640,6 +641,7 @@ app.include_router(ciinsu_router)
 app.include_router(studio_router)
 app.include_router(admin_router)
 app.include_router(presenter_router)
+app.include_router(history_router)
 
 
 # ── Статические файлы (tailwind.css, иконки и т.д.) ─────────────────────────
