@@ -124,9 +124,10 @@ city_stopwords:
 # has_metro: false → тема metro недоступна (в Омске нет метро)
 
 features:
-  # Стандартные CSV-датасеты с opendata.novo-sibirsk.ru (parking, schools, stops…)
-  # Для других городов — false (нет совместимого opendata-портала)
-  opendata_csv_enabled: true
+  # Стандартные темы (школы, аптеки, остановки…) — через OSM Overpass API
+  # CSV с opendata.novo-sibirsk.ru заменён на OSM для полноты данных (466 vs 27 аптек и т.д.)
+  # Строительство (has_construction) остаётся на CSV — уникальные датасеты 124/125
+  opendata_csv_enabled: false
 
   has_construction: true   # Разрешения на строительство (opendata.novo-sibirsk.ru, датасеты 124/125)
 
