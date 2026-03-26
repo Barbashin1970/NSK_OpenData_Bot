@@ -204,6 +204,26 @@ out center tags;"""
                     if _point_in_polygon(lat, lon, b["polygon"]):
                         district = b["district"]
                         break
+                # Bbox-фоллбек: если вне полигонов, но в bbox одного района
+                if district == "Прочие":
+                    bbox_hits: set[str] = set()
+                    for b in boundaries:
+                        poly = b["polygon"]
+                        lons = [p[0] for p in poly]
+                        lats = [p[1] for p in poly]
+                        if min(lats) <= lat <= max(lats) and min(lons) <= lon <= max(lons):
+                            bbox_hits.add(b["district"])
+                    if len(bbox_hits) == 1:
+                        district = next(iter(bbox_hits))
+                    elif bbox_hits and ecology_stations:
+                        best_d = float("inf")
+                        for st in ecology_stations:
+                            if st["district"] in bbox_hits:
+                                d = (lat - st.get("lat", st.get("latitude", 0))) ** 2 + \
+                                    (lon - st.get("lon", st.get("longitude", 0))) ** 2
+                                if d < best_d:
+                                    best_d = d
+                                    district = st["district"]
             if district == "Прочие" and ecology_stations:
                 best_d = float("inf")
                 for st in ecology_stations:

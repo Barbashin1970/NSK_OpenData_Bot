@@ -109,6 +109,18 @@ def _point_in_polygon(lat: float, lon: float, polygon: list[list[float]]) -> boo
     return inside
 
 
+def _districts_by_polygon_bbox(lat: float, lon: float, boundaries: list[dict]) -> list[str]:
+    """Возвращает список районов, чьи полигоны содержат точку в своём bbox."""
+    hits: set[str] = set()
+    for b in boundaries:
+        poly = b["polygon"]
+        lons = [p[0] for p in poly]
+        lats = [p[1] for p in poly]
+        if min(lats) <= lat <= max(lats) and min(lons) <= lon <= max(lons):
+            hits.add(b["district"])
+    return sorted(hits)
+
+
 # ── Основная функция классификации ───────────────────────────────────────────
 
 def classify_district(lat: float | None, lon: float | None) -> str:
@@ -134,8 +146,28 @@ def classify_district(lat: float | None, lon: float | None) -> str:
         for b in boundaries:
             if _point_in_polygon(lat, lon, b["polygon"]):
                 return b["district"]
-        # Точка внутри bbox, но вне всех полигонов — фолбэк на центроид
-        log.debug("classify_district: (%.4f, %.4f) вне всех полигонов, фолбэк", lat, lon)
+        # Точка внутри bbox города, но вне всех полигонов.
+        # Попытка 1.5: если точка попадает в bbox только одного района — берём его.
+        # Это корректирует ошибки у краёв полигонов (река, граница и т.п.)
+        bbox_districts = _districts_by_polygon_bbox(lat, lon, boundaries)
+        if len(bbox_districts) == 1:
+            log.debug("classify_district: (%.4f, %.4f) в bbox единственного района %s",
+                       lat, lon, bbox_districts[0])
+            return bbox_districts[0]
+        # Если попадает в bbox нескольких районов — предпочитаем центроиды из этих районов
+        if bbox_districts:
+            log.debug("classify_district: (%.4f, %.4f) в bbox районов %s, фолбэк по центроидам этой группы",
+                       lat, lon, bbox_districts)
+            best_dist = float("inf")
+            best_district = bbox_districts[0]
+            for st in get_ecology_stations():
+                if st["district"] in bbox_districts:
+                    d = (lat - st["latitude"]) ** 2 + (lon - st["longitude"]) ** 2
+                    if d < best_dist:
+                        best_dist = d
+                        best_district = st["district"]
+            return best_district
+        log.debug("classify_district: (%.4f, %.4f) вне всех полигонов и bbox, фолбэк", lat, lon)
 
     # Попытка 2 (фолбэк): ближайший центроид
     best_dist = float("inf")

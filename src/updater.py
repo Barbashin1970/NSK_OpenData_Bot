@@ -270,6 +270,28 @@ def _classify_point(lat: float, lon: float, boundaries: list | None,
         for b in boundaries:
             if _point_in_polygon(lat, lon, b["polygon"]):
                 return b["district"]
+        # Bbox-фоллбек: если точка в bbox только одного района — берём его
+        bbox_hits: set[str] = set()
+        for b in boundaries:
+            poly = b["polygon"]
+            lons = [p[0] for p in poly]
+            lats = [p[1] for p in poly]
+            if min(lats) <= lat <= max(lats) and min(lons) <= lon <= max(lons):
+                bbox_hits.add(b["district"])
+        if len(bbox_hits) == 1:
+            return next(iter(bbox_hits))
+        if bbox_hits:
+            # Предпочитаем центроиды из районов, чей bbox содержит точку
+            best_dist = float("inf")
+            best_district = next(iter(bbox_hits))
+            for st in ecology_stations:
+                if st["district"] in bbox_hits:
+                    d = (lat - st.get("lat", st.get("latitude", 0))) ** 2 + \
+                        (lon - st.get("lon", st.get("longitude", 0))) ** 2
+                    if d < best_dist:
+                        best_dist = d
+                        best_district = st["district"]
+            return best_district
     # Centroid fallback
     best_dist = float("inf")
     best_district = "Прочие"
