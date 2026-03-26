@@ -169,7 +169,9 @@ def classify_district(lat: float | None, lon: float | None) -> str:
             return best_district
         log.debug("classify_district: (%.4f, %.4f) вне всех полигонов и bbox, фолбэк", lat, lon)
 
-    # Попытка 2 (фолбэк): ближайший центроид
+    # Попытка 2 (фолбэк): ближайший центроид (с порогом расстояния)
+    # ~5 км ≈ 0.045° широты — дальше считаем «вне города»
+    _MAX_CENTROID_DEG2 = 0.045 ** 2 + 0.045 ** 2  # квадрат гипотенузы ~5 км
     best_dist = float("inf")
     best_district = "Прочие"
     for st in get_ecology_stations():
@@ -177,6 +179,10 @@ def classify_district(lat: float | None, lon: float | None) -> str:
         if d < best_dist:
             best_dist = d
             best_district = st["district"]
+    if best_dist > _MAX_CENTROID_DEG2:
+        log.debug("classify_district: (%.4f, %.4f) ближайший центроид %s слишком далеко (%.4f), → Прочие",
+                   lat, lon, best_district, best_dist)
+        return "Прочие"
     return best_district
 
 
@@ -251,11 +257,12 @@ def fetch_and_cache_boundaries() -> dict:
     districts = get_districts()
 
     # Запрос: все admin boundaries внутри bbox
+    # admin_level 6 — наукограды/городские округа (Кольцово и т.п.)
     # admin_level 8 и 9 — районы/округа городов России
     query = f"""
 [out:json][timeout:90];
 (
-  relation["boundary"="administrative"]["admin_level"~"^(8|9)$"]{bbox};
+  relation["boundary"="administrative"]["admin_level"~"^(6|8|9)$"]{bbox};
 );
 out geom;
 """

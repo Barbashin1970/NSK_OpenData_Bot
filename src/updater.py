@@ -292,7 +292,8 @@ def _classify_point(lat: float, lon: float, boundaries: list | None,
                         best_dist = d
                         best_district = st["district"]
             return best_district
-    # Centroid fallback
+    # Centroid fallback (с порогом ~5 км)
+    _MAX_DEG2 = 0.045 ** 2 + 0.045 ** 2
     best_dist = float("inf")
     best_district = "Прочие"
     for st in ecology_stations:
@@ -301,6 +302,8 @@ def _classify_point(lat: float, lon: float, boundaries: list | None,
         if d < best_dist:
             best_dist = d
             best_district = st["district"]
+    if best_dist > _MAX_DEG2:
+        return "Прочие"
     return best_district
 
 

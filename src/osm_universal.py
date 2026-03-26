@@ -225,6 +225,8 @@ out center tags;"""
                                     best_d = d
                                     district = st["district"]
             if district == "Прочие" and ecology_stations:
+                # Центроидный фоллбек с порогом ~5 км
+                _MAX_DEG2 = 0.045 ** 2 + 0.045 ** 2
                 best_d = float("inf")
                 for st in ecology_stations:
                     d = (lat - st.get("lat", st.get("latitude", 0))) ** 2 + \
@@ -232,6 +234,8 @@ out center tags;"""
                     if d < best_d:
                         best_d = d
                         district = st["district"]
+                if best_d > _MAX_DEG2:
+                    district = "Прочие"
 
         # Build row
         street = tags_el.get("addr:street", "")
