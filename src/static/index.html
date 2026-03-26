@@ -4130,7 +4130,7 @@ function renderInfo(_data) {
         { icon: '🅿️', name: 'Парковки',                 q: `парковки в ${_d2.prep}` },
       ],
     },
-    {
+    (!_cityCfg || _cityCfg.has_construction) ? {
       id: 'construction',
       label: 'Строительство',
       color: 'orange',
@@ -4140,7 +4140,7 @@ function renderInfo(_data) {
         { icon: '🔑', name: 'Введено в эксплуатацию',   q: 'ввод в эксплуатацию по районам' },
         { icon: '📊', name: 'Стройки по районам',        q: 'стройки по районам' },
       ],
-    },
+    } : null,
     {
       id: 'infra',
       label: 'Инфраструктура города',
@@ -4181,7 +4181,7 @@ function renderInfo(_data) {
     ? `<span class="inline-flex items-center gap-1.5 bg-white/60 border border-slate-200 rounded-full px-2.5 py-1 text-xs text-slate-600"><span>🎙</span> Скажите <b>«Сигма»</b> — и я услышу</span>`
     : `<span class="inline-flex items-center gap-1.5 bg-white/60 border border-slate-200 rounded-full px-2.5 py-1 text-xs text-slate-500">🎙 Голосовой ввод: Chrome / Safari</span>`;
 
-  const sectionsHtml = sections.map(sec => {
+  const sectionsHtml = sections.filter(Boolean).map(sec => {
     const c = colorMap[sec.color] || colorMap.blue;
     const items = sec.items.filter(Boolean).map(it => `
       <button onclick="setQuery('${esc(it.q)}')"

@@ -21,20 +21,19 @@ log = logging.getLogger(__name__)
 _PERMITS_TABLE = "topic_construction_permits"
 _COMMISSIONED_TABLE = "topic_construction_commissioned"
 
-# Извлечение района из поля AdrOr (датасет 124: "Калининский район, пер. ...")
-_DISTRICT_FROM_ADDR = """CASE
-    WHEN "AdrOr" ILIKE '%Дзержинский%'     THEN 'Дзержинский район'
-    WHEN "AdrOr" ILIKE '%Железнодорожный%' THEN 'Железнодорожный район'
-    WHEN "AdrOr" ILIKE '%Заельцовский%'    THEN 'Заельцовский район'
-    WHEN "AdrOr" ILIKE '%Калининский%'     THEN 'Калининский район'
-    WHEN "AdrOr" ILIKE '%Кировский%'       THEN 'Кировский район'
-    WHEN "AdrOr" ILIKE '%Ленинский%'       THEN 'Ленинский район'
-    WHEN "AdrOr" ILIKE '%Октябрьский%'     THEN 'Октябрьский район'
-    WHEN "AdrOr" ILIKE '%Первомайский%'    THEN 'Первомайский район'
-    WHEN "AdrOr" ILIKE '%Советский%'       THEN 'Советский район'
-    WHEN "AdrOr" ILIKE '%Центральный%'     THEN 'Центральный район'
-    ELSE ''
-END"""
+# Извлечение района из поля AdrOr — строится динамически из профиля города
+def _district_case_sql() -> str:
+    """Генерирует SQL CASE для извлечения района из AdrOr по активному city profile."""
+    from .city_config import get_districts
+    districts = get_districts()
+    lines = []
+    for name in districts:
+        # Берём корень названия без " район"/" округ" для ILIKE
+        stem = name.replace(" район", "").replace(" округ", "")
+        lines.append(f"    WHEN \"AdrOr\" ILIKE '%{stem}%' THEN '{name}'")
+    if not lines:
+        return "''"
+    return "CASE\n" + "\n".join(lines) + "\n    ELSE ''\nEND"
 
 
 def permits_available() -> bool:
@@ -65,7 +64,7 @@ def query_active(
             base_cte = f"""WITH active AS (
                 SELECT
                     "NomRazr", "DatRazr", "Zastr", "NameOb", "AdrOr", "KadNom",
-                    {_DISTRICT_FROM_ADDR} AS district
+                    {_district_case_sql()} AS district
                 FROM {_PERMITS_TABLE}
                 WHERE TRIM(COALESCE("KadNom", '')) = ''
                    OR TRIM("KadNom") NOT IN (
@@ -78,7 +77,7 @@ def query_active(
             base_cte = f"""WITH active AS (
                 SELECT
                     "NomRazr", "DatRazr", "Zastr", "NameOb", "AdrOr", "KadNom",
-                    {_DISTRICT_FROM_ADDR} AS district
+                    {_district_case_sql()} AS district
                 FROM {_PERMITS_TABLE}
             )"""
 
@@ -179,7 +178,7 @@ def query_permits_list(
             wheres: list[str] = []
             params: list[Any] = []
             if district_filter:
-                wheres.append(f"({_DISTRICT_FROM_ADDR}) ILIKE ?")
+                wheres.append(f"({_district_case_sql()}) ILIKE ?")
                 params.append(f"%{district_filter}%")
             if developer_filter:
                 wheres.append('"Zastr" ILIKE ?')
@@ -195,7 +194,7 @@ def query_permits_list(
 
             cursor = conn.execute(
                 f"""SELECT "NomRazr", "DatRazr", "Zastr", "NameOb", "AdrOr",
-                           ({_DISTRICT_FROM_ADDR}) AS district, "KadNom"
+                           ({_district_case_sql()}) AS district, "KadNom"
                     FROM {_PERMITS_TABLE} {where_sql}
                     ORDER BY "DatRazr" DESC
                     LIMIT {limit} OFFSET {offset}""",
@@ -246,7 +245,7 @@ def count_construction(
         try:
             if district_filter:
                 return conn.execute(
-                    f"SELECT COUNT(*) FROM (SELECT ({_DISTRICT_FROM_ADDR}) AS d FROM {_PERMITS_TABLE}) WHERE d ILIKE ?",
+                    f"SELECT COUNT(*) FROM (SELECT ({_district_case_sql()}) AS d FROM {_PERMITS_TABLE}) WHERE d ILIKE ?",
                     [f"%{district_filter}%"],
                 ).fetchone()[0]
             return conn.execute(f"SELECT COUNT(*) FROM {_PERMITS_TABLE}").fetchone()[0]
@@ -277,7 +276,7 @@ def group_by_district(permit_type: str = "active") -> list[dict]:
         elif permit_type == "active" and commissioned_available():
             sql = f"""
                 WITH active AS (
-                    SELECT {_DISTRICT_FROM_ADDR} AS district
+                    SELECT {_district_case_sql()} AS district
                     FROM {_PERMITS_TABLE}
                     WHERE TRIM(COALESCE("KadNom", '')) = ''
                        OR TRIM("KadNom") NOT IN (
@@ -295,9 +294,9 @@ def group_by_district(permit_type: str = "active") -> list[dict]:
             if not permits_available():
                 return []
             sql = f"""
-                SELECT ({_DISTRICT_FROM_ADDR}) AS район, COUNT(*) AS количество
+                SELECT ({_district_case_sql()}) AS район, COUNT(*) AS количество
                 FROM {_PERMITS_TABLE}
-                WHERE ({_DISTRICT_FROM_ADDR}) != ''
+                WHERE ({_district_case_sql()}) != ''
                 GROUP BY район
                 ORDER BY количество DESC
             """

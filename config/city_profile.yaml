@@ -128,6 +128,8 @@ features:
   # Для других городов — false (нет совместимого opendata-портала)
   opendata_csv_enabled: true
 
+  has_construction: true   # Разрешения на строительство (opendata.novo-sibirsk.ru, датасеты 124/125)
+
   has_metro: true
   metro_name: "Новосибирский метрополитен"
 

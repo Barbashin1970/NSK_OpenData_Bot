@@ -177,6 +177,7 @@ def city_config_endpoint():
         "has_opendata_csv": bool(features.get("opendata_csv_enabled", False)),
         "power_outages_url":  features.get("power_outages_url", ""),
         "power_outages_base": features.get("power_outages_base", ""),
+        "has_construction": bool(features.get("has_construction")),
         "has_metro":   bool(features.get("has_metro")),
         "metro_name":  features.get("metro_name", ""),
         "has_airport": bool(features.get("has_airport")),

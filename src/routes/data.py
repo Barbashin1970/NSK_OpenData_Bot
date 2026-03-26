@@ -333,6 +333,16 @@ def get_ask(
     if topic == "construction":
         from ..executor import execute_construction
         from ..construction_opendata import get_construction_meta, permits_available
+        from ..city_config import get_feature as _get_feature
+
+        if not _get_feature("has_construction"):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": f"Данные о строительстве недоступны для текущего города",
+                    "topic": "construction",
+                },
+            )
 
         if not permits_available():
             log.info("Lazy load: construction_permits/commissioned не загружены, подгружаю")
