@@ -650,6 +650,204 @@ def run_tests():
     )
 
 
+# ── /data-status SSE endpoint (health check only, no pytest) ─────────────────
+
+@app.get("/data-status", include_in_schema=False)
+def data_status():
+    """SSE-стрим: проверка состояния данных без запуска тестов.
+    Возвращает health checks + проверку OSM тем."""
+    from .registry import load_registry
+    from .fetcher import load_meta, is_stale
+    from .cache import table_exists
+
+    def _sse(obj: dict) -> str:
+        return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+    def generate():
+        from .power_cache import get_power_meta
+
+        _has_csv = get_feature("opendata_csv_enabled", False)
+        _has_power = bool(get_feature("power_outages_url", ""))
+
+        registry = load_registry()
+        meta = load_meta()
+        health_checks = []
+        total_steps = 0
+        done_steps = 0
+
+        # Count steps for progress
+        if _has_csv:
+            total_steps += len(registry)
+        total_steps += 4  # power, ecology, medical, cameras
+
+        # Check OSM topics
+        from .osm_universal import OSM_TOPICS, get_osm_meta, is_osm_topic_stale
+        total_steps += len(OSM_TOPICS)
+
+        yield _sse({"type": "start", "total": total_steps})
+
+        # CSV topics
+        if _has_csv:
+            for tid, ds in registry.items():
+                if not table_exists(tid):
+                    health_checks.append({"topic": tid, "status": "missing",
+                                          "msg": "Данные не загружены"})
+                elif is_stale(tid, ds.get("ttl_hours", 24)):
+                    rows = meta.get(tid, {}).get("rows", "?")
+                    health_checks.append({"topic": tid, "status": "stale",
+                                          "msg": f"Устаревший кэш ({rows} строк)"})
+                else:
+                    rows = meta.get(tid, {}).get("rows", "?")
+                    health_checks.append({"topic": tid, "status": "ok",
+                                          "msg": f"{rows} строк"})
+                done_steps += 1
+                pct = int(done_steps / total_steps * 100) if total_steps > 0 else 0
+                yield _sse({"type": "progress", "done": done_steps, "total": total_steps, "pct": pct,
+                            "status": "ok", "short": tid})
+
+        # Power
+        if _has_power:
+            try:
+                pwr = get_power_meta()
+                if pwr.get("last_scraped"):
+                    health_checks.append({"topic": "power_outages", "status": "ok",
+                                          "msg": f"обновлено {pwr['last_scraped']}"})
+                else:
+                    health_checks.append({"topic": "power_outages", "status": "missing",
+                                          "msg": "Нет данных об отключениях"})
+            except Exception:
+                health_checks.append({"topic": "power_outages", "status": "missing",
+                                      "msg": "Ошибка при проверке"})
+        done_steps += 1
+        pct = int(done_steps / total_steps * 100) if total_steps > 0 else 0
+        yield _sse({"type": "progress", "done": done_steps, "total": total_steps, "pct": pct,
+                    "status": "ok", "short": "power_outages"})
+
+        # Ecology
+        try:
+            from .ecology_cache import init_ecology_tables, get_ecology_meta, is_ecology_stale
+            init_ecology_tables()
+            eco_meta = get_ecology_meta()
+            if eco_meta.get("last_updated"):
+                stale = is_ecology_stale()
+                districts = eco_meta.get("districts_covered", 0)
+                ts = str(eco_meta["last_updated"])[:16].replace("T", " ")
+                health_checks.append({"topic": "ecology", "status": "stale" if stale else "ok",
+                                      "msg": f"AQI/PM2.5 · {districts} р-нов · {ts}"})
+            else:
+                health_checks.append({"topic": "ecology", "status": "missing", "msg": "Нет данных экологии"})
+        except Exception:
+            health_checks.append({"topic": "ecology", "status": "missing", "msg": "Ошибка проверки экологии"})
+        done_steps += 1
+        pct = int(done_steps / total_steps * 100) if total_steps > 0 else 0
+        yield _sse({"type": "progress", "done": done_steps, "total": total_steps, "pct": pct,
+                    "status": "ok", "short": "ecology"})
+
+        # Medical
+        try:
+            from .medical_cache import get_medical_meta, is_medical_stale, count_medical
+            med_meta = get_medical_meta()
+            if med_meta.get("last_updated"):
+                stale = is_medical_stale()
+                n = med_meta.get("total_rows", count_medical())
+                health_checks.append({"topic": "medical", "status": "stale" if stale else "ok",
+                                      "msg": f"{n} медучреждений · OSM"})
+            else:
+                health_checks.append({"topic": "medical", "status": "missing", "msg": "Нет данных"})
+        except Exception:
+            health_checks.append({"topic": "medical", "status": "missing", "msg": "Ошибка"})
+        done_steps += 1
+        pct = int(done_steps / total_steps * 100) if total_steps > 0 else 0
+        yield _sse({"type": "progress", "done": done_steps, "total": total_steps, "pct": pct,
+                    "status": "ok", "short": "medical"})
+
+        # Cameras
+        try:
+            from .cameras_cache import get_cameras_meta, is_cameras_stale, count_cameras
+            cam_meta = get_cameras_meta()
+            if cam_meta.get("last_updated"):
+                stale = is_cameras_stale()
+                n = cam_meta.get("total_rows", count_cameras())
+                health_checks.append({"topic": "cameras", "status": "stale" if stale else "ok",
+                                      "msg": f"{n} камер · OSM"})
+            else:
+                health_checks.append({"topic": "cameras", "status": "missing", "msg": "Нет данных"})
+        except Exception:
+            health_checks.append({"topic": "cameras", "status": "missing", "msg": "Ошибка"})
+        done_steps += 1
+        pct = int(done_steps / total_steps * 100) if total_steps > 0 else 0
+        yield _sse({"type": "progress", "done": done_steps, "total": total_steps, "pct": pct,
+                    "status": "ok", "short": "cameras"})
+
+        # OSM topics
+        for tid in OSM_TOPICS:
+            osm_meta = get_osm_meta(tid)
+            rows = osm_meta.get("total_rows", 0)
+            if rows and rows > 0:
+                stale = is_osm_topic_stale(tid)
+                health_checks.append({"topic": f"osm_{tid}", "status": "stale" if stale else "ok",
+                                      "msg": f"{rows} объектов · OSM"})
+            else:
+                health_checks.append({"topic": f"osm_{tid}", "status": "missing",
+                                      "msg": "Не загружено"})
+            done_steps += 1
+            pct = int(done_steps / total_steps * 100) if total_steps > 0 else 0
+            yield _sse({"type": "progress", "done": done_steps, "total": total_steps, "pct": pct,
+                        "status": "ok", "short": f"osm_{tid}"})
+
+        yield _sse({"type": "health", "checks": health_checks})
+
+        # Count results
+        ok_count = sum(1 for c in health_checks if c["status"] == "ok")
+        stale_count = sum(1 for c in health_checks if c["status"] == "stale")
+        missing_count = sum(1 for c in health_checks if c["status"] == "missing")
+        yield _sse({"type": "done", "ok": ok_count, "stale": stale_count, "missing": missing_count,
+                    "total": len(health_checks)})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── /studio/api/osm-status — OSM status for all cities (matrix) ──────────────
+
+@app.get("/studio/api/osm-status", include_in_schema=False)
+def studio_osm_status():
+    """Возвращает статус OSM-тем для каждого города в матрице."""
+    from .osm_universal import OSM_TOPICS, get_osm_meta, is_osm_topic_stale
+
+    _data_dir = Path(__file__).parent.parent / "data" / "cities"
+    import yaml as _yaml
+    _cfg_dir = Path(__file__).parent.parent / "config"
+
+    result = {}
+    for p in sorted(_cfg_dir.glob("city_profile*.yaml")):
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = _yaml.safe_load(f)
+            city_id = d.get("city", {}).get("id", "")
+            if not city_id:
+                continue
+            db_path = _data_dir / city_id / "cache.db"
+            loaded = 0
+            stale = 0
+            total = len(OSM_TOPICS)
+            for tid in OSM_TOPICS:
+                meta = get_osm_meta(tid, db_path=db_path)
+                rows = meta.get("total_rows", 0)
+                if rows and rows > 0:
+                    loaded += 1
+                    if is_osm_topic_stale(tid, db_path=db_path):
+                        stale += 1
+            result[city_id] = {"loaded": loaded, "stale": stale, "total": total}
+        except Exception:
+            continue
+
+    return {"osm_status": result}
+
+
 # ── Pages ─────────────────────────────────────────────────────────────────────
 
 @app.get("/docs", include_in_schema=False)

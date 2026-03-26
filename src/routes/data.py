@@ -202,20 +202,56 @@ def get_topics() -> dict:
 
     Для обновления данных используйте `POST /update?topic=<id>` или `bot update --all` в CLI.
     """
-    registry = load_registry()
-    meta = load_meta()
+    from ..city_config import get_feature as _gf
+
     result = []
-    for tid, ds in registry.items():
-        m = meta.get(tid, {})
-        result.append({
-            "id": tid,
-            "name": ds.get("name"),
-            "description": ds.get("description"),
-            "rows": m.get("rows"),
-            "last_updated": m.get("last_updated"),
-            "stale": is_stale(tid, ds.get("ttl_hours", 24)),
-            "passport_url": ds.get("passport_url"),
-        })
+
+    if _gf("opendata_csv_enabled", False):
+        # CSV-темы (только для городов с порталом opendata)
+        registry = load_registry()
+        meta = load_meta()
+        for tid, ds in registry.items():
+            m = meta.get(tid, {})
+            result.append({
+                "id": tid,
+                "name": ds.get("name"),
+                "description": ds.get("description"),
+                "rows": m.get("rows"),
+                "last_updated": m.get("last_updated"),
+                "stale": is_stale(tid, ds.get("ttl_hours", 24)),
+                "passport_url": ds.get("passport_url"),
+                "source": "csv",
+            })
+    else:
+        # OSM-темы (для городов без CSV)
+        from ..osm_universal import OSM_TOPICS, get_osm_meta, is_osm_topic_stale
+
+        _OSM_NAMES = {
+            "schools": "Школы",
+            "kindergartens": "Детские сады",
+            "pharmacies": "Аптеки",
+            "stops": "Остановки транспорта",
+            "libraries": "Библиотеки",
+            "culture": "Культура",
+            "parks": "Парки",
+            "sport_grounds": "Спортивные площадки",
+            "parking": "Парковки",
+            "sport_orgs": "Спортивные организации",
+        }
+        for tid, cfg in OSM_TOPICS.items():
+            meta = get_osm_meta(tid)
+            rows = meta.get("total_rows", 0)
+            result.append({
+                "id": tid,
+                "name": _OSM_NAMES.get(tid, cfg.get("type_label", tid)),
+                "description": f"Данные OpenStreetMap · {cfg.get('type_label', '')}",
+                "rows": rows if rows else None,
+                "last_updated": str(meta.get("last_updated") or "") or None,
+                "stale": is_osm_topic_stale(tid),
+                "passport_url": "",
+                "source": "osm",
+            })
+
     return {"topics": result}
 
 

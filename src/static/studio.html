@@ -283,6 +283,7 @@ async function _studioAuth() {
             <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Экология (Open-Meteo + CityAir)">🌿 Эко</th>
             <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Камеры ПДД (OSM)">📷 Камеры</th>
             <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Медучреждения (OSM)">🏥 Мед</th>
+            <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="OSM темы (школы, аптеки, остановки и др.)">🗺️ OSM</th>
             <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Метрополитен">🚇 Метро</th>
             <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Аэропорт">✈️ Аэро</th>
             <th class="px-2 py-2.5 font-medium text-slate-500 text-center" title="Выбросы (2-ТП)">🏭 Выбр</th>
@@ -291,7 +292,7 @@ async function _studioAuth() {
           </tr>
         </thead>
         <tbody id="overview-matrix-body">
-          <tr><td colspan="11" class="text-center text-slate-400 py-6">Загрузка...</td></tr>
+          <tr><td colspan="12" class="text-center text-slate-400 py-6">Загрузка...</td></tr>
         </tbody>
       </table>
     </div>
@@ -353,6 +354,10 @@ async function _studioAuth() {
         </div>
       </div>
       <div class="flex gap-2">
+        <button id="st-status-btn" onclick="STTests.checkStatus()"
+                class="text-xs px-4 py-2 rounded-lg border border-emerald-300 hover:bg-emerald-50 text-emerald-700 transition-colors flex items-center gap-1.5">
+          &#9673; Статус данных
+        </button>
         <button id="st-update-btn" onclick="STTests.updateAll()"
                 class="text-xs px-4 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors flex items-center gap-1.5">
           &#8635; Загрузить все данные
@@ -1273,11 +1278,13 @@ async function loadOverview(force) {
   let _topicFreshness = {};  // { topic_id: {stale: bool, rows: N, last_updated: str} }
   let _ecoStale = null;
   let _powerMeta = null;  // {stale: bool, last_scraped: str, ...}
+  let _osmStatus = {};    // { city_id: {loaded, stale, total} }
   try {
-    const [topicsRes, ecoRes, powRes] = await Promise.all([
+    const [topicsRes, ecoRes, powRes, osmRes] = await Promise.all([
       fetch('/topics'),
       fetch('/ecology/status').catch(() => null),
       fetch('/power/meta').catch(() => null),
+      fetch('/studio/api/osm-status').catch(() => null),
     ]);
     const td = await topicsRes.json();
     for (const t of (td.topics || [])) { _topicFreshness[t.id] = t; }
@@ -1294,6 +1301,10 @@ async function loadOverview(force) {
     }
     if (powRes && powRes.ok) {
       _powerMeta = await powRes.json();
+    }
+    if (osmRes && osmRes.ok) {
+      const od = await osmRes.json();
+      _osmStatus = od.osm_status || {};
     }
   } catch(_) {}
 
@@ -1358,6 +1369,15 @@ async function loadOverview(force) {
       return `<td class="px-2 py-2 text-center">${_dot('ok', 'Свежие данные')}</td>`;
     }
 
+    // Ячейка для OSM-тем (универсальные данные)
+    function cellOsm() {
+      const os = _osmStatus[p.city_id];
+      if (!os) return `<td class="px-2 py-2 text-center">${_dot('off', 'Нет данных')}</td>`;
+      if (os.loaded === 0) return `<td class="px-2 py-2 text-center">${_dot('off', '0/' + os.total + ' загружено')}</td>`;
+      if (os.stale > 0) return `<td class="px-2 py-2 text-center">${_dot('stale', os.loaded + '/' + os.total + ' (устарело: ' + os.stale + ')')}</td>`;
+      return `<td class="px-2 py-2 text-center">${_dot('ok', os.loaded + '/' + os.total + ' тем')}</td>`;
+    }
+
     // Специальная ячейка для экологии — у неё свой /ecology/status
     function cellEco() {
       if (!isActive) return `<td class="px-2 py-2 text-center">${_dot('ok', 'Настроен')}</td>`;
@@ -1383,6 +1403,7 @@ async function loadOverview(force) {
       ${cellEco()}
       ${cell(hasCam)}
       ${cell(hasMed)}
+      ${cellOsm()}
       ${cell(hasMet)}
       ${cell(hasAir)}
       ${cell(hasEmis, ds.emissions?.file_exists)}
@@ -1703,7 +1724,97 @@ const STTests = (() => {
     btn.innerHTML = '&#8635; Загрузить все данные';
   }
 
-  return { run, updateAll };
+  function checkStatus() {
+    if (source) { source.close(); source = null; }
+    el('st-log-body').innerHTML = '';
+    el('st-result').textContent = '';
+    el('st-result').className = 'text-xs font-semibold';
+    _setProgress(0, 0, 0, 0);
+    el('st-status-btn').disabled = true;
+    el('st-run-btn').disabled = true;
+    el('st-update-btn').disabled = true;
+    el('st-health-grid').innerHTML = '';
+    el('st-progress-fill').style.background = 'linear-gradient(90deg,#10b981,#34d399)';
+    total = 0; passed = 0; failed = 0;
+
+    const _topicLabels = {
+      parking:'Парковки', stops:'Остановки', schools:'Школы',
+      kindergartens:'Детсады', libraries:'Библиотеки', pharmacies:'Аптеки',
+      parks:'Парки', sport_grounds:'Спортплощадки', sport_orgs:'Спортклубы',
+      culture:'Культура', power_outages:'Отключения ЖКХ', ecology:'Экология',
+      construction_permits:'construction_permits', construction_commissioned:'construction_commissioned',
+      cameras:'Камеры', medical:'Медицина',
+      osm_schools:'Школы (OSM)', osm_kindergartens:'Детсады (OSM)', osm_pharmacies:'Аптеки (OSM)',
+      osm_stops:'Остановки (OSM)', osm_libraries:'Библиотеки (OSM)', osm_culture:'Культура (OSM)',
+      osm_parks:'Парки (OSM)', osm_sport_grounds:'Спортплощадки (OSM)',
+      osm_parking:'Парковки (OSM)', osm_sport_orgs:'Спортклубы (OSM)',
+    };
+
+    _addLine('Проверка состояния данных…', 'info');
+    _addLine('', '');
+
+    source = new EventSource('/data-status');
+    source.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      if (d.type === 'start') {
+        total = d.total;
+      } else if (d.type === 'progress') {
+        const pct = d.pct;
+        _setProgress(pct, 0, 0, d.total);
+        el('st-pct-text').textContent = pct + '% (' + d.done + '/' + d.total + ')';
+        _addLine('  ✓ ' + (_topicLabels[d.short] || d.short), 'passed');
+      } else if (d.type === 'health') {
+        const g = el('st-health-grid');
+        g.innerHTML = '';
+        d.checks.forEach(c => {
+          const chip = document.createElement('span');
+          const clr = c.status === 'ok' ? 'bg-green-50 text-green-700 border-green-200'
+                    : c.status === 'stale' ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : 'bg-purple-50 text-purple-700 border-purple-200';
+          chip.className = `text-xs px-2.5 py-1 rounded-lg border ${clr}`;
+          chip.title = c.msg;
+          chip.textContent = (_topicLabels[c.topic] || c.topic) + (c.status !== 'ok' ? ' ⚠' : '');
+          g.appendChild(chip);
+        });
+      } else if (d.type === 'done') {
+        source.close(); source = null;
+        el('st-status-btn').disabled = false;
+        el('st-run-btn').disabled = false;
+        el('st-update-btn').disabled = false;
+        _setProgress(100, 0, 0, 0);
+        el('st-pct-text').textContent = '100%';
+
+        const ok = d.ok || 0, stale = d.stale || 0, missing = d.missing || 0;
+        const r = el('st-result');
+        if (missing === 0 && stale === 0) {
+          el('st-progress-fill').style.background = 'linear-gradient(90deg,#16a34a,#4ade80)';
+          r.textContent = '✓ Все данные в порядке (' + ok + ')';
+          r.style.color = '#4ade80';
+          _addLine('', '');
+          _addLine('Все ' + ok + ' источников свежие.', 'passed');
+        } else {
+          el('st-progress-fill').style.background = missing > 0
+            ? 'linear-gradient(90deg,#dc2626,#ef4444)'
+            : 'linear-gradient(90deg,#f59e0b,#fbbf24)';
+          r.textContent = (missing > 0 ? '⚠ ' + missing + ' не загружено' : '') +
+                          (stale > 0 ? ' · ' + stale + ' устарело' : '') +
+                          ' · ' + ok + ' ОК';
+          r.style.color = missing > 0 ? '#f87171' : '#f59e0b';
+          _addLine('', '');
+          _addLine('Свежие: ' + ok + ', устарело: ' + stale + ', не загружено: ' + missing, missing > 0 ? 'failed' : 'warn');
+        }
+      }
+    };
+    source.onerror = () => {
+      source.close(); source = null;
+      el('st-status-btn').disabled = false;
+      el('st-run-btn').disabled = false;
+      el('st-update-btn').disabled = false;
+      _addLine('Ошибка подключения к /data-status', 'failed');
+    };
+  }
+
+  return { run, updateAll, checkStatus };
 })();
 
 // ── Вкладка «Города» ──────────────────────────────────────────────────────

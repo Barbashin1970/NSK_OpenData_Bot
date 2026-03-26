@@ -4275,16 +4275,14 @@ async function loadTopics() {
 function renderTopics(topics) {
   // Скрываем CSV-темы если у города нет подключённого opendata-портала (Омск и др.)
   // Также скрываем темы без данных в кэше
-  const cards = topics.filter(t => _cityHasOpendataCsv && t.rows != null && t.rows > 0).map(t => {
+  const cards = topics.filter(t => t.rows != null && t.rows > 0).map(t => {
     const rows = `${Number(t.rows).toLocaleString('ru-RU')} строк`;
-    const hasData = true;
-    const badge = hasData
-      ? (t.stale
-          ? `<span class="bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full text-xs">устарел</span>`
-          : `<span class="bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded-full text-xs">актуален</span>`)
-      : `<span class="bg-slate-100 text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-full text-xs">нет данных</span>`;
+    const isOsm = t.source === 'osm';
+    const badge = t.stale
+      ? `<span class="bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full text-xs">устарел</span>`
+      : `<span class="bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded-full text-xs">актуален</span>`;
 
-    const exampleQuery = hasData ? `покажи ${t.name}` : `bot update --topic ${t.id}`;
+    const srcBadge = isOsm ? `<span class="text-xs text-slate-400">OSM</span>` : '';
     return `
       <div class="topic-card bg-white border border-slate-200 rounded-2xl p-4 cursor-pointer hover:border-blue-300 hover:shadow-md"
            onclick="setQuery('покажи ${t.name}')">
@@ -4293,10 +4291,22 @@ function renderTopics(topics) {
           ${badge}
         </div>
         <div class="font-semibold text-sm text-slate-800 leading-tight">${esc(t.name)}</div>
-        <div class="text-xs text-slate-400 mt-1">${rows}</div>
+        <div class="text-xs text-slate-400 mt-1">${rows} ${srcBadge}</div>
       </div>
     `;
   }).join('');
+  // Для городов без данных — карточки-заглушки с предложением загрузить
+  const pendingCards = topics.filter(t => t.rows == null || t.rows === 0).map(t => `
+    <div class="topic-card bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-4 cursor-pointer hover:border-blue-300 opacity-60"
+         onclick="setQuery('покажи ${t.name}')">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">${TOPIC_ICONS[t.id] || '📊'}</span>
+        <span class="bg-slate-100 text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-full text-xs">загрузить</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">${esc(t.name)}</div>
+      <div class="text-xs text-slate-400 mt-1">нажмите для загрузки</div>
+    </div>
+  `).join('');
 
   const ecoCard = `
     <div class="topic-card bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200 rounded-2xl p-4 cursor-pointer hover:border-emerald-400 hover:shadow-md"
@@ -4463,7 +4473,7 @@ function renderTopics(topics) {
   ` : '';
 
   // Порядок: ЦИИ → Новости → Экология → ЖКХ → Метро → Аэропорт → Камеры → Медицина → Тепло → Выбросы → Рейтинг → Игра → остальные датасеты
-  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + metroCard + airportCard + camerasCard + medicalCard + heatSourcesCard + emissionsCard + ecoIndexCard + gameCard + cards;
+  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + metroCard + airportCard + camerasCard + medicalCard + heatSourcesCard + emissionsCard + ecoIndexCard + gameCard + cards + pendingCards;
 }
 
 // ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────
