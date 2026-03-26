@@ -192,23 +192,27 @@ def _temporary_city(profile_name: str):
     """
     from .city_config import get_city_profile, get_district_strip_re
 
-    with _city_switch_lock:
-        old_profile = os.environ.get("CITY_PROFILE", "city_profile")
-        os.environ["CITY_PROFILE"] = profile_name
+    def _clear_caches():
         get_city_profile.cache_clear()
         try:
             get_district_strip_re.cache_clear()
         except Exception:
             pass
         try:
+            from .district_classifier import reload_boundaries
+            reload_boundaries()
+        except Exception:
+            pass
+
+    with _city_switch_lock:
+        old_profile = os.environ.get("CITY_PROFILE", "city_profile")
+        os.environ["CITY_PROFILE"] = profile_name
+        _clear_caches()
+        try:
             yield
         finally:
             os.environ["CITY_PROFILE"] = old_profile
-            get_city_profile.cache_clear()
-            try:
-                get_district_strip_re.cache_clear()
-            except Exception:
-                pass
+            _clear_caches()
 
 
 def _list_city_profiles() -> list[dict]:

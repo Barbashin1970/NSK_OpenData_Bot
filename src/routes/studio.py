@@ -111,6 +111,13 @@ def studio_set_active_city(body: dict):
     except Exception:
         pass
 
+    # Сбросить кэш границ районов (district_boundaries.geojson)
+    try:
+        from ..district_classifier import reload_boundaries
+        reload_boundaries()
+    except Exception:
+        pass
+
     # Сбросить кэши статических датасетов (emissions, heat_sources, metro, airport)
     try:
         from ..emissions import load_emissions
