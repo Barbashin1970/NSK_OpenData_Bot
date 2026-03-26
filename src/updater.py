@@ -475,6 +475,38 @@ out body;"""
         conn.close()
 
 
+def _refresh_osm_topics_isolated(profile: dict, city_id: str) -> dict[str, int]:
+    """Обновляет все OSM-темы для города (изолированно от глобального контекста)."""
+    from .osm_universal import OSM_TOPICS, fetch_osm_topic, upsert_osm_topic, is_osm_topic_stale
+
+    db_path = _city_db_path(city_id)
+    bbox_str = _city_bbox_overpass(profile)
+    bbox = profile["city"]["bbox"]
+    boundaries = _load_boundaries_from_file(city_id)
+    eco_stations = profile.get("ecology_stations", [])
+
+    results = {}
+    for topic in OSM_TOPICS:
+        try:
+            if not is_osm_topic_stale(topic, db_path=db_path):
+                results[topic] = -1  # свежие
+                continue
+            rows = fetch_osm_topic(topic, bbox_str, bbox, boundaries, eco_stations)
+            if rows:
+                n = upsert_osm_topic(topic, rows, db_path=db_path)
+                results[topic] = n
+                log.info("multi-city [%s]: OSM %s — %d записей", city_id, topic, n)
+            else:
+                results[topic] = 0
+        except Exception as e:
+            log.warning("multi-city [%s] OSM %s: %s", city_id, topic, e)
+            results[topic] = 0
+        # Пауза между Overpass-запросами (rate limit)
+        import time
+        time.sleep(5)
+    return results
+
+
 def _refresh_one_city(city: dict) -> dict:
     """Обновляет все бесплатные источники для одного города (изолированно)."""
     city_id = city["city_id"]
@@ -493,6 +525,13 @@ def _refresh_one_city(city: dict) -> dict:
     except Exception as e:
         log.warning("multi-city [%s] cameras: %s", city_name, e)
         results["cameras"] = 0
+
+    try:
+        osm_results = _refresh_osm_topics_isolated(profile, city_id)
+        results["osm"] = osm_results
+    except Exception as e:
+        log.warning("multi-city [%s] osm: %s", city_name, e)
+        results["osm"] = {}
 
     return results
 

@@ -89,6 +89,95 @@ def _metro_route_hint(from_d: str, to_d: str) -> dict:
     return result
 
 
+def _handle_osm_topic(q: str, topic: str, route_result, plan, with_coords: bool) -> dict:
+    """OSM-фоллбек для городов без CSV: lazy-load + query из osm_universal."""
+    from ..osm_universal import (
+        OSM_TOPICS, fetch_osm_topic, upsert_osm_topic,
+        query_osm_topic, group_osm_topic, count_osm_topic,
+        is_osm_topic_stale, get_osm_meta,
+    )
+    from ..city_config import get_city_profile, get_db_path
+
+    cfg = OSM_TOPICS[topic]
+
+    # Lazy-load: если данных нет или устарели — загрузить через Overpass
+    if is_osm_topic_stale(topic):
+        profile = get_city_profile()
+        bb = profile["city"]["bbox"]
+        def _fmt(v: float) -> str:
+            s = f"{v:.10f}".rstrip("0")
+            if "." not in s:
+                return s + ".00"
+            ip, dp = s.split(".")
+            if len(dp) < 2:
+                dp = dp.ljust(2, "0")
+            return f"{ip}.{dp}"
+        bbox_str = f"({_fmt(bb['lat_min'])},{_fmt(bb['lon_min'])},{_fmt(bb['lat_max'])},{_fmt(bb['lon_max'])})"
+
+        from ..district_classifier import _load_boundaries
+        boundaries = None
+        try:
+            boundaries = _load_boundaries()
+        except Exception:
+            pass
+
+        eco_stations = profile.get("ecology_stations", [])
+        rows = fetch_osm_topic(topic, bbox_str, bb, boundaries, eco_stations)
+        if rows:
+            upsert_osm_topic(topic, rows)
+
+    op = plan.operation
+    meta = get_osm_meta(topic)
+    district = plan.district
+    _source = {
+        "last_updated": str(meta.get("last_updated") or ""),
+        "total_rows": meta.get("total_rows", 0),
+        "source": "OpenStreetMap · Overpass API · ODbL",
+    }
+
+    if op == "COUNT":
+        total = count_osm_topic(topic, district_filter=district)
+        return {
+            "query": q, "topic": topic,
+            "topic_name": route_result.name,
+            "confidence": round(route_result.confidence, 3),
+            "operation": "COUNT",
+            "count": total,
+            "rows": [], "columns": [],
+            "osm_meta": _source,
+        }
+    elif op == "GROUP":
+        rows = group_osm_topic(topic)
+        return {
+            "query": q, "topic": topic,
+            "topic_name": route_result.name,
+            "confidence": round(route_result.confidence, 3),
+            "operation": "GROUP",
+            "rows": rows,
+            "columns": ["район", "количество"],
+            "count": sum(r.get("количество", 0) for r in rows),
+            "osm_meta": _source,
+        }
+    else:  # FILTER / TOP_N
+        lim = plan.limit or 20
+        off = plan.offset or 0
+        rows, total = query_osm_topic(topic, limit=lim, offset=off, district_filter=district)
+        return {
+            "query": q, "topic": topic,
+            "topic_name": route_result.name,
+            "confidence": round(route_result.confidence, 3),
+            "operation": "FILTER",
+            "district": district or "",
+            "sub_district": plan.sub_district,
+            "count": total,
+            "rows": rows,
+            "columns": cfg["display_cols"] + ["_lat", "_lon"],
+            "coords_enriched": True,
+            "coords_source": "OpenStreetMap (предзагружены)",
+            "osm_meta": _source,
+        }
+
+
 @router.get(
     "/topics",
     tags=["Данные"],
@@ -808,7 +897,11 @@ def get_ask(
         }
 
     # ── Стандартные темы opendata ─────────────────────────────────────────────
+    # Для городов без CSV пробуем OSM-фоллбек
     if not get_feature("opendata_csv_enabled", False):
+        from ..osm_universal import OSM_TOPICS, osm_topic_available, is_osm_topic_stale
+        if topic in OSM_TOPICS:
+            return _handle_osm_topic(q, topic, route_result, plan, with_coords)
         return {
             "query": q,
             "topic": topic,
