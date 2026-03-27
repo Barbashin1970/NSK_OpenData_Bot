@@ -42,30 +42,46 @@ def get_transit(
     > ⚠️ Данные о маршрутах из открытых данных мэрии могут быть неполными.
     > Для точного маршрута используйте 2ГИС или Яндекс.Транспорт.
     """
-    from ..cache import _get_conn, table_exists
-    from ..transport_api import DISTRICT_COORDS
-
-    if not table_exists("stops"):
-        return {
-            "error": "Данные об остановках не загружены",
-            "hint": "POST /update?topic=stops",
-            "connections": [],
-        }
-
-    def split_routes(marshryt: str) -> list[str]:
-        if not marshryt:
-            return []
-        return _re.findall(r"\b\d+[а-яёa-z]?\b", marshryt)
+    from ..cache import _get_conn
+    from ..city_config import get_district_coords as _get_dc
 
     conn = _get_conn()
     try:
+        def _tbl_exists(tbl: str) -> bool:
+            r = conn.execute(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?", [tbl]
+            ).fetchone()
+            return bool(r and r[0] > 0)
+
+        use_csv = _tbl_exists("topic_stops")
+        use_osm = _tbl_exists("topic_osm_stops")
+
+        if not use_csv and not use_osm:
+            return {
+                "error": "Данные об остановках не загружены",
+                "hint": "POST /update?topic=stops",
+                "connections": [],
+            }
+
+        if use_csv:
+            _tbl = "topic_stops"
+            _name_col, _dist_col, _route_col = "OstName", "AdrDistr", "Marshryt"
+        else:
+            _tbl = "topic_osm_stops"
+            _name_col, _dist_col, _route_col = "name", "district", "routes"
+
+        def split_routes(marshryt: str) -> list[str]:
+            if not marshryt:
+                return []
+            return _re.findall(r"\b\d+[а-яёa-z]?\b", marshryt)
+
         from_kw = from_district.split()[0]
         to_kw = to_district.split()[0]
 
         def get_route_stops(kw: str) -> dict[str, list[str]]:
             rows = conn.execute(
-                "SELECT OstName, Marshryt FROM topic_stops "
-                "WHERE AdrDistr ILIKE ? AND Marshryt IS NOT NULL AND Marshryt != ''",
+                f"SELECT {_name_col}, {_route_col} FROM {_tbl} "
+                f"WHERE {_dist_col} ILIKE ? AND {_route_col} IS NOT NULL AND {_route_col} != ''",
                 [f"%{kw}%"],
             ).fetchall()
             result: dict[str, list[str]] = {}
@@ -90,8 +106,9 @@ def get_transit(
             for r in common[:20]
         ]
 
-        from_coords = DISTRICT_COORDS.get(from_district)
-        to_coords = DISTRICT_COORDS.get(to_district)
+        _dc = _get_dc()
+        from_coords = _dc.get(from_district)
+        to_coords = _dc.get(to_district)
         hint = None
         if from_coords and to_coords:
             hint = (
@@ -99,7 +116,7 @@ def get_transit(
                 f"from/{from_coords[0]},{from_coords[1]}/to/{to_coords[0]},{to_coords[1]}"
             )
 
-        _od = get_opendata_base_url() or "opendata"
+        _src = "OSM · Overpass API" if not use_csv else (get_opendata_base_url() or "opendata")
         return {
             "from": from_district,
             "to": to_district,
@@ -108,10 +125,10 @@ def get_transit(
             "hint": hint,
             "notice": (
                 f"⚠️ Данные о маршрутах взяты из открытых данных {get_city_name('genitive')} "
-                f"({_od}) и могут быть неполными или устаревшими. "
+                f"({_src}) и могут быть неполными или устаревшими. "
                 "Для построения точного маршрута воспользуйтесь приложением 2ГИС или Яндекс.Транспорт."
             ),
-            "source": f"{_od} · остановки наземного транспорта (TTL 24ч)",
+            "source": f"{_src} · остановки наземного транспорта",
         }
     except Exception as e:
         log.error(f"Ошибка /transit: {e}")
@@ -133,38 +150,53 @@ def get_transit_districts() -> dict:
 
     **Ключ API не требуется.** Данные берутся из темы `stops` (TTL 24ч).
     """
-    from ..cache import _get_conn, table_exists
-
-    if not table_exists("stops"):
-        return {
-            "error": "Данные об остановках не загружены",
-            "hint": "POST /update?topic=stops",
-            "rows": [],
-            "total_stops": 0,
-            "count": 0,
-        }
+    from ..cache import _get_conn
 
     conn = _get_conn()
     try:
-        cursor = conn.execute("""
+        def _tbl_exists(tbl: str) -> bool:
+            r = conn.execute(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?", [tbl]
+            ).fetchone()
+            return bool(r and r[0] > 0)
+
+        use_csv = _tbl_exists("topic_stops")
+        use_osm = _tbl_exists("topic_osm_stops")
+
+        if not use_csv and not use_osm:
+            return {
+                "error": "Данные об остановках не загружены",
+                "hint": "POST /update?topic=stops",
+                "rows": [],
+                "total_stops": 0,
+                "count": 0,
+            }
+
+        if use_csv:
+            _tbl, _dist_col = "topic_stops", "AdrDistr"
+        else:
+            _tbl, _dist_col = "topic_osm_stops", "district"
+
+        cursor = conn.execute(f"""
             SELECT
-                AdrDistr AS district,
+                {_dist_col} AS district,
                 COUNT(*) AS stops_count
-            FROM topic_stops
-            WHERE AdrDistr IS NOT NULL AND AdrDistr != ''
-            GROUP BY AdrDistr
+            FROM {_tbl}
+            WHERE {_dist_col} IS NOT NULL AND {_dist_col} != ''
+            GROUP BY {_dist_col}
             ORDER BY stops_count DESC
         """)
         cols = [d[0] for d in cursor.description]
         rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
         total = sum(r["stops_count"] for r in rows)
+        _src = "OSM · Overpass API" if not use_csv else (get_opendata_base_url() or "opendata")
         return {
             "operation": "TRANSIT_DISTRICTS",
             "count": len(rows),
             "total_stops": total,
             "rows": rows,
             "columns": cols,
-            "source": "opendata.novo-sibirsk.ru · остановки наземного транспорта",
+            "source": f"{_src} · остановки наземного транспорта",
         }
     except Exception as e:
         log.error(f"Ошибка /transit/districts: {e}")

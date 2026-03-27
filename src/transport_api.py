@@ -31,8 +31,14 @@ log = logging.getLogger(__name__)
 _ROUTING_URL  = "https://routing.api.2gis.com/public_transport/3.0.0/"
 _CATALOG_URL  = "https://catalog.api.2gis.com/3.0/items"
 
-# Координаты центров районов (lng, lat) — из city_profile.yaml
-DISTRICT_COORDS: dict[str, tuple[float, float]] = get_district_coords()
+# Координаты центров районов (lng, lat) — из city_profile.yaml текущего города.
+# Вызываем get_district_coords() каждый раз, чтобы при смене города данные обновлялись.
+def _get_district_coords() -> dict[str, tuple[float, float]]:
+    return get_district_coords()
+
+# Обратная совместимость: DISTRICT_COORDS как property-like, но для простоты
+# импортёры вызывают get_district_coords() напрямую или _get_district_coords().
+DISTRICT_COORDS = _get_district_coords()  # legacy, prefer _get_district_coords()
 
 
 def _get_api_key() -> str | None:

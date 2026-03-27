@@ -4469,8 +4469,33 @@ function renderTopics(topics) {
     </div>
   ` : '';
 
-  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Метро → Аэропорт → Камеры → Медицина → Тепло → Выбросы → Рейтинг → Игра → остальные датасеты
-  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + metroCard + airportCard + camerasCard + medicalCard + heatSourcesCard + emissionsCard + ecoIndexCard + gameCard + cards + pendingCards;
+  // ── Карточки «Строительство» (если has_construction) ────────────────────────
+  const _hasConstruction = !_cityCfg || !!_cityCfg.has_construction;
+  const constructionPermitsCard = _hasConstruction ? `
+    <div class="topic-card bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-4 cursor-pointer hover:border-orange-400 hover:shadow-md"
+         onclick="setQuery('разрешения на строительство')">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">⛏️</span>
+        <span class="bg-orange-100 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded-full text-xs">24 ч</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">Разрешения на строительство</div>
+      <div class="text-xs text-slate-500 mt-1">opendata · датасет 124</div>
+    </div>
+  ` : '';
+  const constructionCommCard = _hasConstruction ? `
+    <div class="topic-card bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-4 cursor-pointer hover:border-orange-400 hover:shadow-md"
+         onclick="setQuery('ввод в эксплуатацию по районам')">
+      <div class="flex justify-between items-start mb-2">
+        <span class="text-2xl">🔑</span>
+        <span class="bg-orange-100 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded-full text-xs">24 ч</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">Ввод в эксплуатацию</div>
+      <div class="text-xs text-slate-500 mt-1">opendata · датасет 125</div>
+    </div>
+  ` : '';
+
+  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Метро → Аэропорт → Камеры → Медицина → Строительство → Тепло → Выбросы → Рейтинг → Игра → остальные датасеты
+  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + metroCard + airportCard + camerasCard + medicalCard + constructionPermitsCard + constructionCommCard + heatSourcesCard + emissionsCard + ecoIndexCard + gameCard + cards + pendingCards;
 }
 
 // ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────
