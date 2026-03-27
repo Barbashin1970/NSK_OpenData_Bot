@@ -128,7 +128,7 @@
              class="h-14 sm:h-20 w-auto object-contain flex-shrink-0 cursor-pointer active:scale-95 transition-transform"
              alt="Сигма"
              title="Что умеет Сигма?"
-             onclick="setQuery('что ты умеешь');ask()"
+             onclick="setQuery('что ты умеешь')"
              style="filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))">
         <div class="min-w-0">
           <h1 class="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">Сигма</h1>
@@ -1113,13 +1113,9 @@ function renderMayorDashboard(power, eco, risks, trafficData) {
 
 function setQuery(q) {
   const input = document.getElementById('queryInput');
-  const hadText = input.value.trim().length > 0;
   input.value = q;
   input.focus();
-  // Если поле было пустым — сразу отправляем; если уже было что-то напечатано — только подставляем текст
-  if (!hadText) {
-    ask();
-  }
+  ask();
 }
 
 function askNow(q) {
@@ -1298,7 +1294,6 @@ function _trySpecialQuery(raw) {
 
   // ── Экологический рейтинг городов ───────────────────────────────────────
   if (/рейтинг\s+город|эко[\s-]*индекс|эко[\s-]*рейтинг|сравнени\S*\s+город\S*\s+(?:по\s+)?(?:эколог|выброс|воздух)|чистот\S*\s+воздуха\s+город|где\s+чище\s+воздух/i.test(ql)) {
-    document.getElementById('queryInput').value = '';
     showEcoIndex();
     return true;
   }
@@ -1314,7 +1309,6 @@ function _trySpecialQuery(raw) {
 
   // ── Экологический отчёт за месяц ──────────────────────────────────────────
   if (/(?:статистик\S*\s+(?:погод|эколог|воздух|aqi))|(?:(?:покажи|отчёт|отчет|сводк\S*)\s+(?:по\s+)?(?:экологи|погод|воздух|aqi))|(?:экологи\S*\s+за\s+(?:последн|мес|нед|\d+\s*дн))|(?:погод\S*\s+за\s+(?:последн|мес|нед|\d+\s*дн))|(?:(?:aqi|качеств\S+\s+воздуха)\s+за\s+(?:последн|мес))/i.test(ql)) {
-    document.getElementById('queryInput').value = '';
     document.getElementById('loadingState').className = 'hidden';
     const _ecoDistrict = _extractDistrict(ql);
     _showEcoReport(_ecoDistrict || undefined);
@@ -1323,7 +1317,6 @@ function _trySpecialQuery(raw) {
 
   // ── Риски для жизни → таблица выбросов по МО НСО ─────────────────────────
   if (/риск[иа]?\s+(для\s+)?жизни|экологическ\S+\s+риск/i.test(ql)) {
-    document.getElementById('queryInput').value = '';
     document.getElementById('loadingState').className = 'hidden';
     _showRisksView();
     return true;
@@ -1336,6 +1329,7 @@ async function _showRisksView() {
   const el = document.getElementById('resultArea');
   el.className = 'fade-in';
   el.innerHTML = '<div class="text-center py-10 text-slate-400 text-sm">⏳ Загрузка данных о выбросах…</div>';
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   try {
     const r = await fetch('/ask?q=' + encodeURIComponent('выбросы в атмосферу'));
     const data = await r.json();
@@ -1478,6 +1472,7 @@ async function _showEcoReport(districtFilter) {
   el.className = 'fade-in';
   const distLabel = districtFilter ? districtFilter.replace(/\s*район$/i, '') : null;
   el.innerHTML = '<div class="text-center py-10 text-slate-400 text-sm">⏳ Загрузка экологического отчёта…</div>';
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try {
     const dq = districtFilter ? `&district=${encodeURIComponent(districtFilter)}` : '';
@@ -2177,6 +2172,7 @@ function showEcoIndex() {
   const el = document.getElementById('resultArea');
   el.className = 'fade-in space-y-4';
   el.innerHTML = renderEcoIndex();
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ─── Расчёт I_mobile (транспортный индекс загрязнения) ────────────────────────
@@ -5238,7 +5234,25 @@ function _buildMarkerLabel(row) {
 <span style="opacity:.8">CO: ${fmt(row.co_t)} т &nbsp; NOx: ${fmt(row.nox_t)} т &nbsp; ЛОС: ${fmt(row.los_t)} т</span>${sources}`;
   }
 
-  // ── Парковки и прочее (fallback) ──────────────────────────────────────────
+  // ── Универсальный OSM-объект (name + district, lowercase) ─────────────────
+  // OSM-данные всегда содержат lowercase «name» и «district»,
+  // в отличие от CSV с PascalCase-полями (OuName, BiblName, ShortName и т.д.)
+  if ('name' in row && 'district' in row && !row.OuName && !row.BiblName && !row.ShortName) {
+    const osmName = esc(row.name || '');
+    const typeLabel = row.type_label ? `<span style="display:block;color:#6366f1;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${esc(row.type_label)}</span>` : '';
+    const osmAddr = row.address ? `<span style="display:block;margin-top:3px;color:#94a3b8;font-size:11px">📍 ${esc(row.address)}</span>` : '';
+    const osmPhone = row.phone ? `<span style="display:block;color:#60a5fa;font-size:11px">📞 ${esc(row.phone)}</span>` : '';
+    const osmWeb = row.website ? `<span style="display:block;color:#60a5fa;font-size:11px">🌐 ${esc(row.website.length > 35 ? row.website.slice(0, 33) + '…' : row.website)}</span>` : '';
+    const osmSport = row.sport ? `<span style="display:block;color:#15803d;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${esc(row.sport)}</span>` : '';
+    const osmRoutes = row.routes ? `<div style="margin-top:4px;line-height:1.8">${_formatRoutes(row.routes)}</div>` : '';
+    const osmParkType = row.parking_type ? `<span style="display:block;color:#64748b;font-size:11px">${esc(row.parking_type)}</span>` : '';
+    const osmCapacity = row.capacity ? `<span style="display:block;color:#64748b;font-size:11px">Мест: ${esc(String(row.capacity))}</span>` : '';
+    const osmHours = row.opening_hours ? `<span style="display:block;color:#64748b;font-size:11px">🕐 ${esc(row.opening_hours)}</span>` : '';
+    const parts = [typeLabel, osmSport, `<b style="display:block">${osmName || row.type_label || 'Объект'}</b>`, osmAddr, osmPhone, osmWeb, osmRoutes, osmParkType, osmCapacity, osmHours];
+    return parts.filter(Boolean).join('');
+  }
+
+  // ── Парковки и прочее (CSV fallback) ────────────────────────────────────────
   const rawName = row.ParkType || '';
   const name = esc(rawName.length > 45 ? rawName.slice(0, 43) + '…' : rawName);
   const street = esc(row.AdrStreet || row.AdrStr || row.Ulica || row.Street || '');
