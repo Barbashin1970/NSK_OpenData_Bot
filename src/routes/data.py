@@ -496,6 +496,7 @@ def get_ask(
         return {
             "query": q,
             "topic": "construction",
+            "topic_name": "Строительство",
             "operation": plan.operation,
             "district": plan.district,
             "meta": {

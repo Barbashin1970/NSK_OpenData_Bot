@@ -1294,7 +1294,11 @@ function _trySpecialQuery(raw) {
 
   // ── Экологический рейтинг городов ───────────────────────────────────────
   if (/рейтинг\s+город|эко[\s-]*индекс|эко[\s-]*рейтинг|сравнени\S*\s+город\S*\s+(?:по\s+)?(?:эколог|выброс|воздух)|чистот\S*\s+воздуха\s+город|где\s+чище\s+воздух/i.test(ql)) {
-    showEcoIndex();
+    let ecoTab = null;
+    if (/транспорт|мобильн|авто/i.test(ql)) ecoTab = 'mobile';
+    else if (/км[²2\s]|километр|площад/i.test(ql)) ecoTab = 'km2';
+    else if (/житель|душ[уеи]|капит|на\s+чел/i.test(ql)) ecoTab = 'capita';
+    showEcoIndex(ecoTab);
     return true;
   }
 
@@ -2167,11 +2171,12 @@ function renderEmissions(data) {
 
 // ─── ECO-INDEX — Сводный рейтинг городов по чистоте воздуха ───────────────────
 
-function showEcoIndex() {
+function showEcoIndex(tab) {
   document.getElementById('loadingState').className = 'hidden';
   const el = document.getElementById('resultArea');
   el.className = 'fade-in space-y-4';
   el.innerHTML = renderEcoIndex();
+  if (tab) _switchEcoTab(tab);
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -4058,6 +4063,7 @@ const TOPIC_ICONS = {
   kindergartens:'🧒', libraries:'📚',
   sport_grounds:'⚽', pharmacies:'💊', sport_orgs:'🏋️',
   construction_permits:'⛏️', construction_commissioned:'🔑',
+  parks:'🌳',
 };
 
 function renderInfo(_data) {
@@ -4114,7 +4120,7 @@ function renderInfo(_data) {
         { icon: '📊', name: 'Отчёт за 30 дней',             q: 'статистика экологии за месяц' },
         { icon: '📉', name: 'Динамика загрязнения',       q: 'динамика качества воздуха' },
         _hasMeta('emissions') ? { icon: '🏭', name: 'Выбросы по предприятиям', q: 'выбросы в атмосферу' } : null,
-        { icon: '🏙️', name: 'Рейтинг городов по чистоте', q: 'рейтинг городов' },
+        { icon: '🏙️', name: 'Рейтинг городов по чистоте', q: 'рейтинг городов по экологии' },
       ],
     },
     {
@@ -4399,7 +4405,7 @@ function renderTopics(topics) {
 
   const ecoIndexCard = `
     <div class="topic-card bg-gradient-to-br from-emerald-50 via-yellow-50 to-red-50 border border-emerald-200 rounded-2xl p-4 cursor-pointer hover:border-emerald-400 hover:shadow-md"
-         onclick="showEcoIndex()">
+         onclick="document.getElementById('queryInput').value='рейтинг городов по экологии';showEcoIndex()">
       <div class="flex justify-between items-start mb-2">
         <span class="text-2xl">🏙️</span>
         <span class="bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full text-xs">21 локация</span>
