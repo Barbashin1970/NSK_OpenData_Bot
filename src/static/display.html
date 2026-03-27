@@ -73,6 +73,14 @@
       transition: opacity .4s ease;
     }
     .idle-screen.hiding { opacity: 0; pointer-events: none; }
+
+    /* Mobile: hide QR, show help text instead */
+    .qr-mobile-hint { display: none; }
+    @media (max-width: 768px) {
+      #qr-idle, #qr-canvas { display: none !important; }
+      .qr-mobile-hint { display: block; }
+      .qr-desktop-only { display: none; }
+    }
   </style>
 </head>
 <body class="font-sans">
@@ -108,8 +116,13 @@
     <div class="text-center fade-in">
       <div class="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 max-w-sm mx-auto mb-6">
         <div id="qr-idle" class="mx-auto mb-4 inline-block"></div>
-        <h2 class="text-lg font-bold text-slate-800 mb-1">Отсканируйте QR-код</h2>
-        <p class="text-slate-400 text-sm mb-3">Откройте камеру смартфона и наведите на код</p>
+        <h2 class="text-lg font-bold text-slate-800 mb-1 qr-desktop-only">Отсканируйте QR-код</h2>
+        <p class="text-slate-400 text-sm mb-3 qr-desktop-only">Откройте камеру смартфона и наведите на код</p>
+        <div class="qr-mobile-hint text-center mb-3">
+          <div class="text-3xl mb-3">🖥️</div>
+          <h2 class="text-lg font-bold text-slate-800 mb-2">Режим презентации</h2>
+          <p class="text-slate-500 text-sm">Этот режим предназначен для демонстрации данных на большом экране. Откройте эту страницу на компьютере или проекторе для полноценной работы с QR-кодом подключения.</p>
+        </div>
         <div class="bg-slate-50 rounded-xl px-4 py-2 text-[11px] text-slate-400 font-mono break-all" id="mobile-url-idle"></div>
       </div>
 
@@ -130,8 +143,13 @@
   <div class="qr-overlay hiding fixed inset-0 z-50 flex items-center justify-center" id="qrOverlay" onclick="if(event.target===this)toggleQR()">
     <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm text-center fade-in">
       <div id="qr-canvas" class="mx-auto mb-5 inline-block"></div>
-      <h2 class="text-xl font-bold text-slate-800 mb-2">Подключите телефон</h2>
-      <p class="text-slate-500 text-sm mb-4">Отсканируйте QR-код камерой смартфона</p>
+      <h2 class="text-xl font-bold text-slate-800 mb-2 qr-desktop-only">Подключите телефон</h2>
+      <p class="text-slate-500 text-sm mb-4 qr-desktop-only">Отсканируйте QR-код камерой смартфона</p>
+      <div class="qr-mobile-hint mb-4">
+        <div class="text-3xl mb-2">🖥️</div>
+        <h2 class="text-xl font-bold text-slate-800 mb-2">Режим для большого экрана</h2>
+        <p class="text-slate-500 text-sm">QR-код доступен при просмотре на большом экране или проекторе.</p>
+      </div>
       <div class="bg-slate-50 rounded-xl px-4 py-2.5 text-xs text-slate-400 font-mono break-all" id="mobile-url"></div>
       <button onclick="toggleQR()" class="mt-5 text-sm text-slate-400 hover:text-slate-600 transition-colors">Закрыть</button>
     </div>

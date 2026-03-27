@@ -99,11 +99,14 @@
     .role-picker-back .role-icon { font-size: 16px; color: #64748b; }
     .role-picker-back .role-name { font-size: 12px; color: #64748b; font-weight: 600; }
     .dist-filter-bar {
-      display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
       padding: 6px 8px; background: #f8fafc; border-radius: 10px;
-      font-size: 11px; overflow-x: auto; scrollbar-width: none;
+      font-size: 11px;
     }
-    .dist-filter-bar::-webkit-scrollbar { display: none; }
+    @media (max-width: 640px) {
+      .dist-filter-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+      .dist-filter-bar::-webkit-scrollbar { display: none; }
+    }
     .dist-filter-tag {
       padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 600;
       cursor: pointer; border: 1px solid transparent; transition: all .12s;
