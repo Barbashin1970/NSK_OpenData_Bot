@@ -369,8 +369,8 @@ async function _studioAuth() {
       </div>
     </div>
 
-    <!-- Прогресс-бар -->
-    <div class="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+    <!-- Прогресс-бар (только для pytest) -->
+    <div id="st-progress-wrap" class="bg-white border border-slate-200 rounded-xl p-4 mb-4 hidden">
       <div class="bg-slate-100 rounded-full h-3 overflow-hidden mb-2">
         <div id="st-progress-fill" class="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-300" style="width:0%"></div>
       </div>
@@ -1528,6 +1528,7 @@ const STTests = (() => {
     el('st-log-body').innerHTML = '';
     el('st-result').textContent = '';
     el('st-result').className = 'text-xs font-semibold';
+    el('st-progress-wrap').classList.remove('hidden');
     _setProgress(0, 0, 0, 0);
     el('st-run-btn').disabled = true;
     el('st-health-grid').innerHTML = '';
@@ -1539,8 +1540,12 @@ const STTests = (() => {
       kindergartens:'Детсады', libraries:'Библиотеки', pharmacies:'Аптеки',
       parks:'Парки', sport_grounds:'Спортплощадки', sport_orgs:'Спортклубы',
       culture:'Культура', power_outages:'Отключения ЖКХ', ecology:'Экология',
-      construction_permits:'construction_permits', construction_commissioned:'construction_commissioned',
-      cameras:'cameras', medical:'medical',
+      construction_permits:'Разрешения на строительство', construction_commissioned:'Ввод в эксплуатацию',
+      cameras:'Камеры', medical:'Медицина',
+      osm_schools:'Школы (OSM)', osm_kindergartens:'Детсады (OSM)', osm_pharmacies:'Аптеки (OSM)',
+      osm_stops:'Остановки (OSM)', osm_libraries:'Библиотеки (OSM)', osm_culture:'Культура (OSM)',
+      osm_parks:'Парки (OSM)', osm_sport_grounds:'Спортплощадки (OSM)',
+      osm_parking:'Парковки (OSM)', osm_sport_orgs:'Спортклубы (OSM)',
     };
 
     source = new EventSource('/run-tests');
@@ -1626,11 +1631,12 @@ const STTests = (() => {
     el('st-log-body').innerHTML = '';
     el('st-result').textContent = '';
     el('st-result').className = 'text-xs font-semibold';
+    el('st-progress-wrap').classList.add('hidden');
     btn.disabled = true;
     runB.disabled = true;
     btn.innerHTML = '&#8635; Загружаю данные…';
 
-    let cityName = 'город', hasOpendataCsv = true, hasPower = true;
+    let cityName = 'город', hasOpendataCsv = true, hasPower = true, hasConstruction = false;
     try {
       const cfgResp = await fetch('/api/city-config');
       if (cfgResp.ok) {
@@ -1638,6 +1644,7 @@ const STTests = (() => {
         cityName = cfg.city_name || cityName;
         hasOpendataCsv = !!cfg.has_opendata_csv;
         hasPower = !!(cfg.power_outages_url);
+        hasConstruction = !!cfg.has_construction;
       }
     } catch (_) {}
 
@@ -1707,6 +1714,35 @@ const STTests = (() => {
       else              { totalErr++; _addLine('  \u2717 medical — ошибка загрузки', 'failed'); }
     } catch(e) { totalErr++; _addLine('  \u2717 Медицина: ' + e.message, 'failed'); }
 
+    // ── Строительство (opendata CSV, если has_construction) ────────────────
+    if (hasConstruction) {
+      _addLine('', '');
+      _addLine('▶ Строительство (opendata CSV)…', 'info');
+      for (const cTopic of ['construction_permits', 'construction_commissioned']) {
+        try {
+          const resp = await fetch('/update?topic=' + cTopic, { method: 'POST' });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+          const info = (data.updated || {})[cTopic] || {};
+          if (info.success) { totalOk++; _addLine('  \u2713 ' + cTopic + ' — ' + (info.rows||0) + ' строк', 'passed'); }
+          else              { totalErr++; _addLine('  \u2717 ' + cTopic + ' — ошибка', 'failed'); }
+        } catch(e) { totalErr++; _addLine('  \u2717 ' + cTopic + ': ' + e.message, 'failed'); }
+      }
+    }
+
+    // ── OSM-темы (все города — Overpass API) ──────────────────────────────
+    _addLine('', '');
+    _addLine('▶ OSM-данные (Overpass API, ~2 мин)…', 'info');
+    try {
+      const resp = await fetch('/osm/update', { method: 'POST' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      for (const [tid, info] of Object.entries(data.updated || {})) {
+        if (info.success) { totalOk++; _addLine('  \u2713 ' + tid + ' (OSM) — ' + (info.rows||0) + ' объектов', 'passed'); }
+        else              { totalErr++; _addLine('  \u2717 ' + tid + ' (OSM) — ' + (info.error || 'ошибка'), 'failed'); }
+      }
+    } catch(e) { totalErr++; _addLine('  \u2717 OSM: ' + e.message, 'failed'); }
+
     _addLine('', '');
     const r = el('st-result');
     if (totalErr === 0) {
@@ -1729,12 +1765,11 @@ const STTests = (() => {
     el('st-log-body').innerHTML = '';
     el('st-result').textContent = '';
     el('st-result').className = 'text-xs font-semibold';
-    _setProgress(0, 0, 0, 0);
+    el('st-progress-wrap').classList.add('hidden');
     el('st-status-btn').disabled = true;
     el('st-run-btn').disabled = true;
     el('st-update-btn').disabled = true;
     el('st-health-grid').innerHTML = '';
-    el('st-progress-fill').style.background = 'linear-gradient(90deg,#10b981,#34d399)';
     total = 0; passed = 0; failed = 0;
 
     const _topicLabels = {
@@ -1759,9 +1794,6 @@ const STTests = (() => {
       if (d.type === 'start') {
         total = d.total;
       } else if (d.type === 'progress') {
-        const pct = d.pct;
-        _setProgress(pct, 0, 0, d.total);
-        el('st-pct-text').textContent = pct + '% (' + d.done + '/' + d.total + ')';
         _addLine('  ✓ ' + (_topicLabels[d.short] || d.short), 'passed');
       } else if (d.type === 'health') {
         const g = el('st-health-grid');
@@ -1781,21 +1813,15 @@ const STTests = (() => {
         el('st-status-btn').disabled = false;
         el('st-run-btn').disabled = false;
         el('st-update-btn').disabled = false;
-        _setProgress(100, 0, 0, 0);
-        el('st-pct-text').textContent = '100%';
 
         const ok = d.ok || 0, stale = d.stale || 0, missing = d.missing || 0;
         const r = el('st-result');
         if (missing === 0 && stale === 0) {
-          el('st-progress-fill').style.background = 'linear-gradient(90deg,#16a34a,#4ade80)';
-          r.textContent = '✓ Все данные в порядке (' + ok + ')';
+          r.textContent = '✓ Все данные в порядке · ' + ok + ' ОК';
           r.style.color = '#4ade80';
           _addLine('', '');
           _addLine('Все ' + ok + ' источников свежие.', 'passed');
         } else {
-          el('st-progress-fill').style.background = missing > 0
-            ? 'linear-gradient(90deg,#dc2626,#ef4444)'
-            : 'linear-gradient(90deg,#f59e0b,#fbbf24)';
           r.textContent = (missing > 0 ? '⚠ ' + missing + ' не загружено' : '') +
                           (stale > 0 ? ' · ' + stale + ' устарело' : '') +
                           ' · ' + ok + ' ОК';

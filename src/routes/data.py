@@ -1124,3 +1124,68 @@ def post_power_update() -> dict:
     if error_msg:
         result["error"] = error_msg
     return result
+
+
+@router.post(
+    "/osm/update",
+    tags=["Управление"],
+    summary="Обновить OSM-данные (все темы текущего города)",
+    response_description="Статус обновления каждой OSM-темы",
+)
+def post_osm_update(
+    topic: str | None = Query(
+        None,
+        description="ID OSM-темы. Если не указан — обновляются все OSM-темы.",
+    ),
+) -> dict:
+    """
+    Загружает или обновляет данные OpenStreetMap (Overpass API) для текущего города.
+
+    Темы: schools, kindergartens, pharmacies, stops, libraries, culture, parks,
+    sport_grounds, parking, sport_orgs.
+
+    Между запросами к Overpass делается пауза 5 сек (rate limit).
+    """
+    import time as _time
+    from ..osm_universal import (
+        OSM_TOPICS, fetch_osm_topic, upsert_osm_topic, is_osm_topic_stale,
+    )
+    from ..city_config import get_city_profile
+    from ..district_classifier import _load_boundaries
+
+    profile = get_city_profile()
+    bb = profile["city"]["bbox"]
+
+    def _fmt(v: float) -> str:
+        s = f"{v:.10f}".rstrip("0")
+        if "." not in s:
+            return s + ".00"
+        ip, dp = s.split(".")
+        if len(dp) < 2:
+            dp = dp.ljust(2, "0")
+        return f"{ip}.{dp}"
+
+    bbox_str = f"({_fmt(bb['lat_min'])},{_fmt(bb['lon_min'])},{_fmt(bb['lat_max'])},{_fmt(bb['lon_max'])})"
+    boundaries = None
+    try:
+        boundaries = _load_boundaries()
+    except Exception:
+        pass
+    eco_stations = profile.get("ecology_stations", [])
+
+    topics_to_update = [topic] if topic and topic in OSM_TOPICS else list(OSM_TOPICS.keys())
+    results: dict = {}
+    for tid in topics_to_update:
+        try:
+            rows = fetch_osm_topic(tid, bbox_str, bb, boundaries, eco_stations)
+            if rows:
+                n = upsert_osm_topic(tid, rows)
+                results[tid] = {"rows": n, "success": True}
+            else:
+                results[tid] = {"rows": 0, "success": False, "error": "empty response"}
+        except Exception as e:
+            results[tid] = {"rows": 0, "success": False, "error": str(e)}
+        if len(topics_to_update) > 1:
+            _time.sleep(5)
+
+    return {"updated": results}
