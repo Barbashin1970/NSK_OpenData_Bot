@@ -81,8 +81,11 @@ datasets:
     data_url: "http://opendata.novo-sibirsk.ru/OpenDataDocuments/Data77/data-20251224T0211-structure-20251224T0211.CSV"
     format: csv
     keywords:
+      - культур              # покажи культуру, культура города
       - культур организ
       - театр
+      - музе                 # музей, музеи
+      - кинотеатр
       - дом культур
       - дворец культур
       - культурн учрежден
@@ -260,6 +263,29 @@ datasets:
         - Dom
         - TelUch
         - VidSporta
+
+  parks:
+    name: "Парки и скверы"
+    description: "Парки культуры и отдыха, скверы, зелёные зоны города"
+    passport_url: ""
+    data_url: ""
+    format: osm
+    keywords:
+      - парки                   # парки (НЕ парковки — "парки" ≠ подстрока "парковки")
+      - парке                   # в парке (предл. падеж)
+      - паркам                  # по паркам (дат. падеж)
+      - парк культур            # парк культуры и отдыха
+      - парк отдых              # парк отдыха
+      - городск парк            # городской парк
+      - зелён зон               # зелёная зона
+      - сквер                   # сквер, скверы
+      - прогулочн зон           # прогулочная зона
+    fields:
+      district_col: district
+      name_col: name
+      display_cols:
+        - name
+        - district
 
   construction_permits:
     name: "Разрешения на строительство"

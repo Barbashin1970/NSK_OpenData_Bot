@@ -4155,7 +4155,8 @@ function renderInfo(_data) {
         { icon: '🏫', name: 'Школы',                    q: 'школы по районам' },
         { icon: '🧒', name: 'Детские сады',             q: `детские сады в ${_d2.prep}` },
         { icon: '📚', name: 'Библиотеки',               q: 'библиотеки города' },
-        { icon: '🎭', name: 'Культура',                 q: 'культурные организации' },
+        { icon: '🌿', name: 'Парки и скверы',            q: 'парки города' },
+        { icon: '🎭', name: 'Культура',                 q: 'покажи культуру' },
         { icon: '🏋️', name: 'Спортивные организации',  q: 'спортивные организации' },
         { icon: '⚽', name: 'Спортплощадки',            q: `спортплощадки в ${_d3.prep}` },
       ],
@@ -5989,7 +5990,7 @@ async function loadCityConfig() {
       }, {
         metro:   !!cfg.has_metro,
         airport: !!cfg.has_airport,
-        opendata: !!cfg.has_opendata_csv,
+        opendata: true,  // все стандартные темы доступны (CSV или OSM-фоллбек)
       });
       buildChips(); // перерисовываем с городскими подсказками
     }
