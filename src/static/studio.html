@@ -203,6 +203,16 @@ async function _studioAuth() {
         </p>
       </div>
 
+      <div>
+        <div class="font-semibold text-slate-800 mb-1">💬 Промпт-конструктор — генерация промптов для LLM</div>
+        <p class="text-slate-600 leading-relaxed">
+          Инструмент для сборки структурированных промптов для аналитиков умного города.
+          Выберите роль, задачу, источники данных и параметры качества — конструктор сгенерирует
+          готовый промпт в формате :::, XML или Markdown. Скопируйте и вставьте в ChatGPT, GigaChat,
+          YandexGPT или LM-Studio. Поддерживает Text-to-SQL через схемы данных и пресеты.
+        </p>
+      </div>
+
     </div>
     <div class="px-6 py-3 border-t border-slate-100 flex justify-end">
       <button onclick="document.getElementById('studio-help-modal').classList.add('hidden')"
@@ -234,6 +244,9 @@ async function _studioAuth() {
     </button>
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="rules">
       Регламенты
+    </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="prompt">
+      Промпт-конструктор
     </button>
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="history">
       История<span id="history-count-badge" class="ml-1.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"></span>
@@ -951,6 +964,270 @@ async function _studioAuth() {
           <button onclick="_saveDatasetJson()"
                   class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium">Сохранить</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Вкладка: Промпт-конструктор ═════════════════════════════════════ -->
+  <div id="tab-prompt" class="tab-pane">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-800">Промпт-конструктор аналитика</h2>
+        <p class="text-xs text-slate-400 mt-0.5">Соберите структурированный промпт и вставьте в любую LLM (LM-Studio, ChatGPT, GigaChat, YandexGPT)</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="_promptReset()"
+                class="text-xs px-3 py-1.5 rounded border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors">
+          ↺ Сбросить
+        </button>
+        <button onclick="document.getElementById('prompt-help-block').classList.toggle('hidden')"
+                class="text-xs text-slate-500 hover:text-blue-600 border border-slate-200 hover:border-blue-300 rounded-md px-2 py-1.5 transition-colors">
+          ℹ Инструкция
+        </button>
+      </div>
+    </div>
+
+    <!-- Инструкция (скрыта по умолчанию) -->
+    <div id="prompt-help-block" class="hidden mb-5 bg-blue-50 border border-blue-200 rounded-xl p-5 text-sm text-slate-700">
+      <div class="font-semibold text-blue-800 mb-3">Как использовать промпт-конструктор</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Принцип BYOM</div>
+          <p class="text-slate-600 leading-relaxed text-xs">
+            Конструктор не отправляет данные — вы копируете готовый промпт и вставляете в LLM на своё усмотрение.
+            Работает с ChatGPT, GigaChat, YandexGPT, LM-Studio и любой другой моделью.
+          </p>
+        </div>
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Рабочий процесс</div>
+          <ol class="text-xs text-slate-600 space-y-1 list-decimal list-inside">
+            <li>Выберите роль и задачу (шаг 1)</li>
+            <li>Укажите источники и формат вывода (шаг 2)</li>
+            <li>Настройте параметры качества (шаг 3)</li>
+            <li>Скопируйте промпт целиком или по частям (SYSTEM / USER)</li>
+          </ol>
+        </div>
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Text-to-SQL</div>
+          <p class="text-slate-600 leading-relaxed text-xs">
+            Вставьте DDL / YAML-схему таблиц в поле «Схема данных» — промпт включит её в контекст.
+            Идеально для генерации DuckDB-запросов по данным СИГМА.
+          </p>
+        </div>
+        <div>
+          <div class="font-medium text-slate-800 mb-1">Пресеты</div>
+          <p class="text-slate-600 leading-relaxed text-xs">
+            Сохраняйте часто используемые конфигурации в localStorage — они доступны только на этом устройстве.
+            До 12 пресетов. Удалить все — кнопка «Сбросить пресеты».
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <!-- ── Левая колонка: параметры ──────────────────────────────────────── -->
+      <div class="space-y-4">
+
+        <!-- Шаг 1: Роль и задача -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Роль и задача</div>
+            <span class="text-[10px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Шаг 1</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-[11px] text-slate-500 mb-1 block">Действуй как</label>
+              <select id="pc-role" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                <option value="Муниципальный аналитик данных">Муниципальный аналитик данных</option>
+                <option value="Эколог-аналитик">Эколог-аналитик</option>
+                <option value="Транспортный аналитик">Транспортный аналитик</option>
+                <option value="Аналитик ЖКХ">Аналитик ЖКХ</option>
+                <option value="Городской пресс-секретарь">Городской пресс-секретарь</option>
+                <option value="Data Engineer (DuckDB / text-to-SQL)">Data Engineer (DuckDB / text-to-SQL)</option>
+                <option value="Аналитик по строительству и выбросам">Аналитик по строительству и выбросам</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-500 mb-1 block">Шаблон задачи</label>
+              <select id="pc-taskTemplate" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                <option value="">Выберите или задайте сами</option>
+                <option value="Суммаризируй и структурируй текст отчёта">Суммаризируй и структурируй текст отчёта</option>
+                <option value="Сравни показатели по районам и найди аутлаеры">Сравни показатели по районам и найди аутлаеры</option>
+                <option value="Найди закономерности и тренды по временным рядам">Найди закономерности и тренды по временным рядам</option>
+                <option value="Сгенерируй DuckDB-совместимый SQL-запрос по схеме">Сгенерируй DuckDB-совместимый SQL-запрос по схеме</option>
+                <option value="Подготовь публичную сводку для горожан в стиле дайджеста">Подготовь публичную сводку для горожан в стиле дайджеста</option>
+                <option value="Проверь данные на ошибки, дубликаты и аномалии">Проверь данные на ошибки, дубликаты и аномалии</option>
+              </select>
+            </div>
+          </div>
+          <label class="text-[11px] text-slate-500 mt-3 mb-1 block">Формулировка задачи (можно уточнить шаблон)</label>
+          <textarea id="pc-task" rows="2" placeholder="Например: «Сравни индекс трафика по районам за последние 7 дней и опиши ключевые аномалии»."
+            class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"></textarea>
+          <div class="grid grid-cols-2 gap-3 mt-3">
+            <div>
+              <label class="text-[11px] text-slate-500 mb-1 block">Тема / объект анализа</label>
+              <input id="pc-topic" type="text" placeholder="Индекс трафика, AQI, отключения ЖКХ..."
+                class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-500 mb-1 block">Контекст / аудитория</label>
+              <input id="pc-audience" type="text" placeholder="Мэр, зам по транспорту, горожане..."
+                class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+            </div>
+          </div>
+        </div>
+
+        <!-- Шаг 2: Источники и формат -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Источники и формат</div>
+            <span class="text-[10px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Шаг 2</span>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-[11px] text-slate-500 mb-1 block">Источник данных</label>
+              <select id="pc-source" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                <option value="opendata.novo-sibirsk.ru">opendata.novo-sibirsk.ru (CSV-реестры)</option>
+                <option value="051.novo-sibirsk.ru">051.novo-sibirsk.ru (ЖКХ-отключения)</option>
+                <option value="Open-Meteo / CityAir API">Open-Meteo / CityAir API (экология)</option>
+                <option value="DuckDB (локальное хранилище СИГМА)">DuckDB (локальное хранилище СИГМА)</option>
+                <option value="2GIS / OpenStreetMap">2GIS / OpenStreetMap (геоданные)</option>
+                <option value="Другие открытые данные">Другие открытые данные</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-500 mb-1 block">Формат вывода</label>
+              <select id="pc-format" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                <option value="Текст параграфами">Текст параграфами</option>
+                <option value="Таблица Markdown">Таблица Markdown</option>
+                <option value="DuckDB-совместимый SQL">DuckDB-совместимый SQL</option>
+                <option value="JSON c полями, готовыми для ETL">JSON для ETL</option>
+                <option value="GeoJSON для отображения на карте">GeoJSON для карты</option>
+                <option value="YAML для config/rules/datasets">YAML для конфигов</option>
+              </select>
+            </div>
+          </div>
+          <label class="text-[11px] text-slate-500 mt-3 mb-1 block">Ограничения</label>
+          <textarea id="pc-constraints" rows="2" placeholder="Например: Только проверенные открытые данные; не придумывай факты; указывай единицы."
+            class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"></textarea>
+          <div class="flex flex-wrap gap-1.5 mt-2">
+            <button type="button" class="pc-chip text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              data-constraint="Только проверенные открытые источники, без домыслов.">Проверенные источники</button>
+            <button type="button" class="pc-chip text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              data-constraint="Не придумывай данные, если их нет в исходных таблицах.">Не придумывать данные</button>
+            <button type="button" class="pc-chip text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              data-constraint="Отдельно помечай допущения и возможные ошибки данных.">Помечать допущения</button>
+            <button type="button" class="pc-chip text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              data-constraint="Указывай ссылки на наборы данных или API, откуда взяты числа.">Ссылки на датасеты</button>
+          </div>
+        </div>
+
+        <!-- Схема данных -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Схема данных (опционально)</div>
+            <span class="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Text-to-SQL</span>
+          </div>
+          <textarea id="pc-schema" rows="3" placeholder="DDL, YAML-схема или описание таблиц (parking, stops, ecology...)"
+            class="w-full text-xs font-mono border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"></textarea>
+          <p class="text-[10px] text-slate-400 mt-1">Попадёт в контекст промпта — улучшит качество SQL-генерации и анализа структуры.</p>
+        </div>
+
+        <!-- Шаг 3: Параметры качества -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Параметры качества</div>
+            <span class="text-[10px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Шаг 3</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-3"><span class="text-[11px] text-slate-500 w-28 flex-shrink-0">Детализация</span><input type="range" id="pc-detail" min="1" max="10" value="5" class="flex-1 accent-blue-500"><span class="pc-slider-val text-[11px] text-slate-400 w-5 text-right" data-for="pc-detail">5</span></div>
+            <div class="flex items-center gap-3"><span class="text-[11px] text-slate-500 w-28 flex-shrink-0">Структура</span><input type="range" id="pc-structure" min="1" max="10" value="6" class="flex-1 accent-blue-500"><span class="pc-slider-val text-[11px] text-slate-400 w-5 text-right" data-for="pc-structure">6</span></div>
+            <div class="flex items-center gap-3"><span class="text-[11px] text-slate-500 w-28 flex-shrink-0">Формальность</span><input type="range" id="pc-formality" min="1" max="10" value="6" class="flex-1 accent-blue-500"><span class="pc-slider-val text-[11px] text-slate-400 w-5 text-right" data-for="pc-formality">6</span></div>
+            <div class="flex items-center gap-3"><span class="text-[11px] text-slate-500 w-28 flex-shrink-0">Креативность</span><input type="range" id="pc-creativity" min="1" max="10" value="4" class="flex-1 accent-blue-500"><span class="pc-slider-val text-[11px] text-slate-400 w-5 text-right" data-for="pc-creativity">4</span></div>
+            <div class="flex items-center gap-3"><span class="text-[11px] text-slate-500 w-28 flex-shrink-0">Глубина анализа</span><input type="range" id="pc-depth" min="1" max="10" value="7" class="flex-1 accent-blue-500"><span class="pc-slider-val text-[11px] text-slate-400 w-5 text-right" data-for="pc-depth">7</span></div>
+          </div>
+          <div class="mt-3">
+            <label class="text-[11px] text-slate-500 mb-1.5 block">Объём ответа (символы)</label>
+            <div class="flex flex-wrap gap-2">
+              <label class="text-[10px] text-slate-500 border border-slate-200 rounded-full px-2.5 py-1 cursor-pointer hover:border-blue-300 transition-colors flex items-center gap-1"><input type="radio" name="pc-length" value="2000" class="accent-blue-500"> 2000 · кратко</label>
+              <label class="text-[10px] text-slate-500 border border-slate-200 rounded-full px-2.5 py-1 cursor-pointer hover:border-blue-300 transition-colors flex items-center gap-1"><input type="radio" name="pc-length" value="4000" checked class="accent-blue-500"> 4000 · стандартно</label>
+              <label class="text-[10px] text-slate-500 border border-slate-200 rounded-full px-2.5 py-1 cursor-pointer hover:border-blue-300 transition-colors flex items-center gap-1"><input type="radio" name="pc-length" value="6000" class="accent-blue-500"> 6000 · подробно</label>
+              <label class="text-[10px] text-slate-500 border border-slate-200 rounded-full px-2.5 py-1 cursor-pointer hover:border-blue-300 transition-colors flex items-center gap-1"><input type="radio" name="pc-length" value="8000" class="accent-blue-500"> 8000 · максимум</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Пресеты -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Пресеты аналитика</div>
+            <span class="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">localStorage</span>
+          </div>
+          <div class="flex items-end gap-3">
+            <div class="flex-1">
+              <label class="text-[11px] text-slate-500 mb-1 block">Имя пресета</label>
+              <input id="pc-presetName" type="text" placeholder="Например: AQI-дайджест для мэра"
+                class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+            </div>
+            <button onclick="_promptSavePreset()"
+              class="text-xs bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-3 py-2 rounded-lg transition-colors whitespace-nowrap">
+              Сохранить
+            </button>
+            <button onclick="_promptClearPresets()"
+              class="text-xs bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-2 rounded-lg transition-colors whitespace-nowrap">
+              Сбросить все
+            </button>
+          </div>
+          <div id="pc-presetList" class="flex flex-wrap gap-1.5 mt-3"></div>
+        </div>
+
+      </div>
+
+      <!-- ── Правая колонка: предпросмотр и копирование ────────────────────── -->
+      <div class="space-y-4">
+
+        <!-- Стиль и копирование -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Выходной формат</div>
+            <span class="text-[10px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Шаг 4</span>
+          </div>
+          <div class="flex items-center gap-3 mb-3">
+            <label class="text-[11px] text-slate-500">Стиль промпта</label>
+            <select id="pc-style" class="text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+              <option value="triple-colon">::: (универсальный системный промпт)</option>
+              <option value="xml">XML-структура (SYSTEM / USER)</option>
+              <option value="markdown">Markdown-структура</option>
+            </select>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="_promptCopy('full')" id="pc-copyFull"
+              class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors font-medium">
+              Копировать весь промпт
+            </button>
+            <button onclick="_promptCopy('system')" id="pc-copySystem"
+              class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors">
+              SYSTEM
+            </button>
+            <button onclick="_promptCopy('user')" id="pc-copyUser"
+              class="text-xs bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors">
+              USER
+            </button>
+          </div>
+          <p class="text-[10px] text-slate-400 mt-2">В LM-Studio удобно SYSTEM и USER отдельно; в чат-интерфейсах — полный промпт.</p>
+        </div>
+
+        <!-- Предпросмотр -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Сгенерированный промпт</div>
+            <span id="pc-metaCaption" class="text-[10px] text-slate-400"></span>
+          </div>
+          <textarea id="pc-output" readonly
+            class="w-full font-mono text-xs border border-slate-200 rounded-lg p-3 bg-slate-50 text-slate-700 focus:outline-none resize-y"
+            style="height: 520px; white-space: pre; overflow-wrap: normal; overflow-x: auto;"></textarea>
+        </div>
+
       </div>
     </div>
   </div>
@@ -3807,6 +4084,318 @@ async function _reloadVocabulary() {
   await fetch('/api/vocabulary/reload', { method: 'POST' });
   loadVocabulary();
 }
+
+// ══ Промпт-конструктор ══════════════════════════════════════════════════
+(function() {
+  const PC_STATE_KEY = 'sigma-prompt-constructor-v1';
+  const PC_PRESET_KEY = 'sigma-prompt-presets-v1';
+
+  const _pcIds = ['pc-role','pc-taskTemplate','pc-task','pc-topic','pc-audience',
+                  'pc-source','pc-format','pc-constraints','pc-schema',
+                  'pc-detail','pc-structure','pc-formality','pc-creativity','pc-depth','pc-style'];
+
+  function _pcGetLength() {
+    for (const r of document.querySelectorAll('input[name="pc-length"]')) {
+      if (r.checked) return r.value;
+    }
+    return '4000';
+  }
+  function _pcSetLength(v) {
+    for (const r of document.querySelectorAll('input[name="pc-length"]')) {
+      r.checked = (r.value === String(v));
+    }
+  }
+
+  function _pcReadState() {
+    const s = {};
+    _pcIds.forEach(id => { const el = document.getElementById(id); if (el) s[id] = el.value; });
+    s.length = _pcGetLength();
+    return s;
+  }
+
+  function _pcApplyState(s) {
+    if (!s) return;
+    _pcIds.forEach(id => { if (s[id] !== undefined) { const el = document.getElementById(id); if (el) el.value = s[id]; }});
+    if (s.length) _pcSetLength(s.length);
+    _pcUpdateSliders();
+  }
+
+  function _pcSaveState() {
+    try { localStorage.setItem(PC_STATE_KEY, JSON.stringify(_pcReadState())); } catch(e) {}
+  }
+
+  function _pcLoadState() {
+    try { const r = localStorage.getItem(PC_STATE_KEY); return r ? JSON.parse(r) : null; } catch(e) { return null; }
+  }
+
+  function _pcUpdateSliders() {
+    document.querySelectorAll('.pc-slider-val').forEach(sp => {
+      const el = document.getElementById(sp.dataset.for);
+      if (el) sp.textContent = el.value;
+    });
+  }
+
+  // ── Prompt builders ──────────────────────────────────────────────────
+  function _pcBuildMeta(s) {
+    return `Детализация ${s['pc-detail']}/10 · Структура ${s['pc-structure']}/10 · Формальность ${s['pc-formality']}/10 · Креативность ${s['pc-creativity']}/10 · Глубина ${s['pc-depth']}/10 · ~${s.length} симв.`;
+  }
+
+  function _pcTaskText(s) {
+    const t = (s['pc-task'] || '').trim();
+    return t || s['pc-taskTemplate'] || '';
+  }
+
+  function _pcBuildTripleColon(s) {
+    const p = [];
+    p.push(`::: Действуй как: ${s['pc-role']}`);
+    const task = _pcTaskText(s);
+    if (task) p.push(`::: Задача: ${task}`);
+    if (s['pc-topic']) p.push(`::: Тема: ${s['pc-topic']}`);
+    if (s['pc-audience']) p.push(`::: Контекст/Аудитория: ${s['pc-audience']}`);
+    if (s['pc-source']) p.push(`::: Источник данных: ${s['pc-source']}`);
+    if (s['pc-format']) p.push(`::: Формат вывода: ${s['pc-format']}`);
+    const schema = (s['pc-schema'] || '').trim();
+    if (schema) { p.push('::: Контекст базы данных / схемы:'); p.push(schema); }
+    p.push(`::: Параметры качества: [Детализация: ${s['pc-detail']}/10], [Структура: ${s['pc-structure']}/10], [Формальность: ${s['pc-formality']}/10], [Креативность: ${s['pc-creativity']}/10], [Глубина: ${s['pc-depth']}/10], [Объём: ~${s.length} символов]`);
+    const constraints = (s['pc-constraints'] || '').trim();
+    if (constraints) p.push(`::: Ограничения: ${constraints}`);
+    p.push('');
+    p.push('Начни выполнение задачи:');
+    return p.join('\n');
+  }
+
+  function _pcBuildXML(s) {
+    const sys = ['<SYSTEM>'];
+    sys.push(`  <role>${s['pc-role']}</role>`);
+    if (s['pc-source']) sys.push(`  <dataSource>${s['pc-source']}</dataSource>`);
+    if (s['pc-format']) sys.push(`  <outputFormat>${s['pc-format']}</outputFormat>`);
+    const constraints = (s['pc-constraints'] || '').trim();
+    if (constraints) sys.push(`  <constraints>${constraints}</constraints>`);
+    sys.push(`  <quality detail="${s['pc-detail']}" structure="${s['pc-structure']}" formality="${s['pc-formality']}" creativity="${s['pc-creativity']}" depth="${s['pc-depth']}" length="${s.length}" />`);
+    const schema = (s['pc-schema'] || '').trim();
+    if (schema) { sys.push('  <schema><![CDATA['); sys.push(schema); sys.push('  ]]></schema>'); }
+    sys.push('</SYSTEM>');
+    const usr = ['<USER>'];
+    const task = _pcTaskText(s);
+    if (task) usr.push(`  <task>${task}</task>`);
+    if (s['pc-topic']) usr.push(`  <topic>${s['pc-topic']}</topic>`);
+    if (s['pc-audience']) usr.push(`  <audience>${s['pc-audience']}</audience>`);
+    usr.push('</USER>');
+    return [...sys, '', ...usr].join('\n');
+  }
+
+  function _pcBuildMarkdown(s) {
+    const l = [];
+    l.push('## Роль'); l.push(s['pc-role'] || ''); l.push('');
+    l.push('## Задача'); const task = _pcTaskText(s); if (task) l.push(task); l.push('');
+    l.push('## Тема и аудитория');
+    if (s['pc-topic']) l.push(`Тема: ${s['pc-topic']}`);
+    if (s['pc-audience']) l.push(`Аудитория: ${s['pc-audience']}`);
+    l.push('');
+    l.push('## Источники и формат');
+    if (s['pc-source']) l.push(`Источник данных: ${s['pc-source']}`);
+    if (s['pc-format']) l.push(`Формат вывода: ${s['pc-format']}`);
+    l.push('');
+    l.push('## Ограничения');
+    const c = (s['pc-constraints'] || '').trim();
+    l.push(c || '—');
+    l.push('');
+    l.push('## Схема данных');
+    const schema = (s['pc-schema'] || '').trim();
+    if (schema) { l.push('```'); l.push(schema); l.push('```'); } else l.push('—');
+    l.push('');
+    l.push('## Параметры качества');
+    l.push(`- Детализация: ${s['pc-detail']}/10`);
+    l.push(`- Структура: ${s['pc-structure']}/10`);
+    l.push(`- Формальность: ${s['pc-formality']}/10`);
+    l.push(`- Креативность: ${s['pc-creativity']}/10`);
+    l.push(`- Глубина анализа: ${s['pc-depth']}/10`);
+    l.push(`- Объём ответа: ~${s.length} символов`);
+    l.push('');
+    l.push('---');
+    l.push('Начни выполнение задачи, опираясь на параметры выше.');
+    return l.join('\n');
+  }
+
+  function _pcBuildPrompts(s) {
+    const style = s['pc-style'] || 'triple-colon';
+    let full, system = '', user = '';
+    if (style === 'xml') {
+      full = _pcBuildXML(s);
+      const idx = full.indexOf('\n\n<USER>');
+      if (idx !== -1) { system = full.slice(0, idx).trim(); user = full.slice(idx + 2).trim(); }
+      else { system = full; }
+    } else if (style === 'markdown') {
+      full = _pcBuildMarkdown(s);
+      system = full;
+    } else {
+      full = _pcBuildTripleColon(s);
+      const lines = full.split('\n');
+      const sL = [], uL = [];
+      let inU = false;
+      for (const line of lines) {
+        if (line.startsWith('Начни выполнение задачи')) inU = true;
+        (inU ? uL : sL).push(line);
+      }
+      system = sL.join('\n').trim();
+      user = uL.join('\n').trim();
+    }
+    return { full, system, user };
+  }
+
+  function _pcUpdatePrompt() {
+    const s = _pcReadState();
+    const { full } = _pcBuildPrompts(s);
+    const out = document.getElementById('pc-output');
+    if (out) out.value = full;
+    const cap = document.getElementById('pc-metaCaption');
+    if (cap) cap.textContent = _pcBuildMeta(s);
+    _pcSaveState();
+  }
+
+  // ── Clipboard ────────────────────────────────────────────────────────
+  async function _pcCopyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      return true;
+    } catch(e) { return false; }
+  }
+
+  window._promptCopy = async function(part) {
+    const s = _pcReadState();
+    const { full, system, user } = _pcBuildPrompts(s);
+    const map = { full, system, user };
+    const text = map[part] || full;
+    const btnId = part === 'full' ? 'pc-copyFull' : part === 'system' ? 'pc-copySystem' : 'pc-copyUser';
+    const btn = document.getElementById(btnId);
+    const ok = await _pcCopyText(text);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = ok ? 'Скопировано ✓' : 'Ошибка';
+      setTimeout(() => btn.textContent = orig, 1200);
+    }
+  };
+
+  // ── Presets ──────────────────────────────────────────────────────────
+  function _pcLoadPresets() {
+    try { const r = localStorage.getItem(PC_PRESET_KEY); return r ? JSON.parse(r) : []; } catch(e) { return []; }
+  }
+  function _pcSavePresets(list) {
+    try { localStorage.setItem(PC_PRESET_KEY, JSON.stringify(list)); } catch(e) {}
+  }
+  function _pcRenderPresets() {
+    const list = _pcLoadPresets();
+    const c = document.getElementById('pc-presetList');
+    if (!c) return;
+    c.innerHTML = '';
+    list.forEach((p, i) => {
+      const el = document.createElement('button');
+      el.className = 'text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-600 hover:border-blue-400 hover:text-blue-600 transition-colors';
+      el.textContent = p.name || ('Пресет #' + (i + 1));
+      el.title = 'Загрузить пресет';
+      el.addEventListener('click', () => { _pcApplyState(p.state); _pcUpdatePrompt(); });
+      c.appendChild(el);
+    });
+  }
+
+  window._promptSavePreset = function() {
+    const name = (document.getElementById('pc-presetName').value || '').trim() || 'Без имени';
+    const state = _pcReadState();
+    const list = _pcLoadPresets();
+    list.unshift({ name, state });
+    if (list.length > 12) list.length = 12;
+    _pcSavePresets(list);
+    _pcRenderPresets();
+    document.getElementById('pc-presetName').value = '';
+  };
+
+  window._promptClearPresets = function() {
+    if (!confirm('Удалить все сохранённые пресеты?')) return;
+    _pcSavePresets([]);
+    _pcRenderPresets();
+  };
+
+  window._promptReset = function() {
+    if (!confirm('Сбросить все поля промпт-конструктора к значениям по умолчанию?')) return;
+    localStorage.removeItem(PC_STATE_KEY);
+    // Reset all fields to defaults
+    _pcIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (el.tagName === 'SELECT') el.selectedIndex = 0;
+      else if (el.tagName === 'TEXTAREA' || el.type === 'text') el.value = '';
+      else if (el.type === 'range') {
+        const defs = {'pc-detail':'5','pc-structure':'6','pc-formality':'6','pc-creativity':'4','pc-depth':'7'};
+        el.value = defs[id] || '5';
+      }
+    });
+    _pcSetLength('4000');
+    _pcUpdateSliders();
+    _pcUpdatePrompt();
+  };
+
+  // ── Event wiring ─────────────────────────────────────────────────────
+  function _pcInit() {
+    // Restore state
+    const saved = _pcLoadState();
+    if (saved) _pcApplyState(saved);
+    _pcUpdateSliders();
+
+    // Form listeners
+    _pcIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const evt = el.tagName === 'SELECT' || el.type === 'range' ? 'change' : 'input';
+      el.addEventListener(evt, () => {
+        if (el.type === 'range') _pcUpdateSliders();
+        _pcUpdatePrompt();
+      });
+      // Also listen to input for range (live update)
+      if (el.type === 'range') el.addEventListener('input', () => { _pcUpdateSliders(); _pcUpdatePrompt(); });
+    });
+
+    // Length radios
+    document.querySelectorAll('input[name="pc-length"]').forEach(r => {
+      r.addEventListener('change', _pcUpdatePrompt);
+    });
+
+    // Chips
+    document.querySelectorAll('.pc-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const add = chip.dataset.constraint;
+        const area = document.getElementById('pc-constraints');
+        const cur = (area.value || '').trim();
+        area.value = cur ? (cur + '\n' + add) : add;
+        _pcUpdatePrompt();
+      });
+    });
+
+    // Task template auto-fill
+    const tmpl = document.getElementById('pc-taskTemplate');
+    if (tmpl) tmpl.addEventListener('change', () => {
+      const task = document.getElementById('pc-task');
+      if (task && !task.value.trim() && tmpl.value) task.value = tmpl.value;
+      _pcUpdatePrompt();
+    });
+
+    _pcRenderPresets();
+    _pcUpdatePrompt();
+  }
+
+  // Init when tab becomes visible or on load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _pcInit);
+  } else {
+    _pcInit();
+  }
+})();
 
 // ── Инициализация: загружаем по хэшу или обзор ──────────────────────────
 _loadCityLabel();
