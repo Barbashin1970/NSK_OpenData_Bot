@@ -1086,6 +1086,59 @@ def get_power_meta_endpoint() -> dict:
     return meta
 
 
+@router.get(
+    "/power/history",
+    tags=["Данные"],
+    summary="История отключений ЖКХ по дням (до 30 дней)",
+    response_description="Агрегированные данные: active/planned houses по дням, районам",
+)
+def get_power_history(
+    days: int = Query(30, ge=1, le=30, description="Количество дней истории"),
+    district: str | None = Query(None, description="Фильтр по району"),
+    utility: str | None = Query(None, description="Фильтр по типу ресурса"),
+    group_by: str = Query("day", description="Группировка: day | district"),
+) -> dict:
+    """История отключений ЖКХ с агрегацией по дням или районам.
+
+    Данные накапливаются при каждом обновлении power_outages (TTL 30 мин)
+    и хранятся в power_daily_archive до 365 дней.
+    """
+    from ..power_cache import (
+        is_power_stale, upsert_outages,
+        query_power_history_by_day, query_power_history_by_district,
+        get_power_meta,
+    )
+    # Auto-update if stale
+    if is_power_stale():
+        try:
+            from ..power_scraper import fetch_all_outages
+            upsert_outages(fetch_all_outages())
+        except Exception as e:
+            logging.getLogger(__name__).error("power history auto-update: %s", e)
+
+    if group_by == "district":
+        rows = query_power_history_by_district(utility_filter=utility, days=days)
+        columns = ["district", "active_houses", "planned_houses", "days_with_outages"]
+    else:
+        rows = query_power_history_by_day(
+            district_filter=district, utility_filter=utility, days=days,
+        )
+        columns = ["day", "active_houses", "planned_houses", "active_records", "planned_records"]
+
+    meta = get_power_meta(utility_filter=utility, district_filter=district)
+    return {
+        "operation": "POWER_HISTORY_30D",
+        "days": days,
+        "district": district,
+        "utility": utility,
+        "group_by": group_by,
+        "count": len(rows),
+        "rows": rows,
+        "columns": columns,
+        "power_meta": meta,
+    }
+
+
 @router.post(
     "/power/update",
     tags=["Управление"],

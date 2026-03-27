@@ -35,6 +35,20 @@ CREATE TABLE IF NOT EXISTS power_outages (
 )
 """
 
+_DAILY_ARCHIVE_DDL = """
+CREATE TABLE IF NOT EXISTS power_daily_archive (
+    day             VARCHAR,
+    district        VARCHAR,
+    utility         VARCHAR,
+    active_houses   INTEGER DEFAULT 0,
+    planned_houses  INTEGER DEFAULT 0,
+    active_records  INTEGER DEFAULT 0,
+    planned_records INTEGER DEFAULT 0,
+    snapshots       INTEGER DEFAULT 0,
+    PRIMARY KEY (day, district, utility)
+)
+"""
+
 _DETAIL_DDL = """
 CREATE TABLE IF NOT EXISTS power_outages_detail (
     id            VARCHAR,
@@ -51,12 +65,13 @@ CREATE TABLE IF NOT EXISTS power_outages_detail (
 
 
 def init_power_table() -> None:
-    """Создаёт таблицы power_outages и power_outages_detail если их нет."""
+    """Создаёт таблицы power_outages, power_outages_detail и power_daily_archive."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = _get_conn()
     try:
         conn.execute(_TABLE_DDL)
         conn.execute(_DETAIL_DDL)
+        conn.execute(_DAILY_ARCHIVE_DDL)
         # Миграция: добавляем date_from/date_to если их ещё нет (старая схема)
         for col in ("date_from", "date_to"):
             try:
@@ -65,6 +80,46 @@ def init_power_table() -> None:
                 pass  # колонка уже существует
     finally:
         conn.close()
+
+
+def _save_power_daily_archive(conn) -> None:
+    """Пересчитывает и сохраняет агрегаты за сегодня в power_daily_archive.
+
+    Вызывается после каждого upsert — аналогично ecology_cache._save_daily_archive.
+    Архив хранится 365 дней (не зависит от POWER_HISTORY_DAYS).
+    """
+    try:
+        conn.execute("""
+            DELETE FROM power_daily_archive
+            WHERE day < STRFTIME(CURRENT_DATE - INTERVAL '365 days', '%Y-%m-%d')
+        """)
+        conn.execute("""
+            INSERT INTO power_daily_archive
+                (day, district, utility,
+                 active_houses, planned_houses,
+                 active_records, planned_records, snapshots)
+            SELECT
+                STRFTIME(CAST(scraped_at AS TIMESTAMP), '%Y-%m-%d') AS day,
+                district,
+                utility,
+                COALESCE(SUM(CASE WHEN group_type = 'active'  THEN houses ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN group_type = 'planned' THEN houses ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN group_type = 'active'  THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN group_type = 'planned' THEN 1 ELSE 0 END), 0),
+                COUNT(DISTINCT scraped_at)
+            FROM power_outages
+            WHERE STRFTIME(CAST(scraped_at AS TIMESTAMP), '%Y-%m-%d')
+                  = STRFTIME(CURRENT_DATE, '%Y-%m-%d')
+            GROUP BY day, district, utility
+            ON CONFLICT (day, district, utility) DO UPDATE SET
+                active_houses   = excluded.active_houses,
+                planned_houses  = excluded.planned_houses,
+                active_records  = excluded.active_records,
+                planned_records = excluded.planned_records,
+                snapshots       = excluded.snapshots
+        """)
+    except Exception as e:
+        log.error("_save_power_daily_archive error: %s", e)
 
 
 def upsert_outages(records: list[dict[str, Any]]) -> int:
@@ -100,6 +155,7 @@ def upsert_outages(records: list[dict[str, Any]]) -> int:
             for r in records
         ]
         conn.executemany("INSERT INTO power_outages VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
+        _save_power_daily_archive(conn)
         log.info(f"Добавлено {len(rows)} записей в power_outages")
         return len(rows)
     finally:
@@ -348,3 +404,143 @@ def query_power_addresses(
         return []
     finally:
         conn.close()
+
+
+def query_power_history(
+    district_filter: str | None = None,
+    utility_filter: str | None = None,
+    days: int = 30,
+) -> list[dict]:
+    """30-дневная история отключений: raw + archive (аналог ecology query_history).
+
+    Возвращает строки с ключами:
+      day, district, utility, active_houses, planned_houses,
+      active_records, planned_records, snapshots
+    """
+    init_power_table()
+    conn = _get_conn()
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+
+        # --- Recent: aggregate from power_outages (raw snapshots) ---
+        r_wheres = [
+            f"STRFTIME(CAST(scraped_at AS TIMESTAMP), '%Y-%m-%d') >= '{cutoff}'"
+        ]
+        if district_filter:
+            r_wheres.append(f"district ILIKE '%{district_filter}%'")
+        if utility_filter:
+            r_wheres.append(f"utility ILIKE '%{utility_filter}%'")
+        r_where = "WHERE " + " AND ".join(r_wheres)
+
+        sql_recent = f"""
+            SELECT
+                STRFTIME(CAST(scraped_at AS TIMESTAMP), '%Y-%m-%d') AS day,
+                district,
+                utility,
+                COALESCE(SUM(CASE WHEN group_type='active'  THEN houses ELSE 0 END), 0) AS active_houses,
+                COALESCE(SUM(CASE WHEN group_type='planned' THEN houses ELSE 0 END), 0) AS planned_houses,
+                COALESCE(SUM(CASE WHEN group_type='active'  THEN 1 ELSE 0 END), 0) AS active_records,
+                COALESCE(SUM(CASE WHEN group_type='planned' THEN 1 ELSE 0 END), 0) AS planned_records,
+                COUNT(DISTINCT scraped_at) AS snapshots
+            FROM power_outages
+            {r_where}
+            GROUP BY day, district, utility
+        """
+        cur = conn.execute(sql_recent)
+        cols = [d[0] for d in cur.description]
+        recent = [dict(zip(cols, row)) for row in cur.fetchall()]
+        recent_keys = {(r["day"], r["district"], r["utility"]) for r in recent}
+
+        # --- Archive: fill gaps from power_daily_archive ---
+        a_wheres = [f"day >= '{cutoff}'"]
+        if district_filter:
+            a_wheres.append(f"district ILIKE '%{district_filter}%'")
+        if utility_filter:
+            a_wheres.append(f"utility ILIKE '%{utility_filter}%'")
+        a_where = "WHERE " + " AND ".join(a_wheres)
+
+        sql_archive = f"""
+            SELECT day, district, utility,
+                   active_houses, planned_houses,
+                   active_records, planned_records, snapshots
+            FROM power_daily_archive
+            {a_where}
+        """
+        cur2 = conn.execute(sql_archive)
+        cols2 = [d[0] for d in cur2.description]
+        archive = [dict(zip(cols2, row)) for row in cur2.fetchall()]
+
+        # Merge: prefer recent over archive
+        for a in archive:
+            key = (a["day"], a["district"], a["utility"])
+            if key not in recent_keys:
+                recent.append(a)
+
+        recent.sort(key=lambda r: r["day"], reverse=True)
+        return recent
+    except Exception as e:
+        log.error("query_power_history error: %s", e)
+        return []
+    finally:
+        conn.close()
+
+
+def query_power_history_by_day(
+    district_filter: str | None = None,
+    utility_filter: str | None = None,
+    days: int = 30,
+) -> list[dict]:
+    """Агрегированная история по дням (суммируем по районам/типам).
+
+    Возвращает: day, active_houses, planned_houses, active_records, planned_records
+    """
+    rows = query_power_history(district_filter, utility_filter, days)
+    by_day: dict[str, dict] = {}
+    for r in rows:
+        d = r["day"]
+        if d not in by_day:
+            by_day[d] = {
+                "day": d,
+                "active_houses": 0, "planned_houses": 0,
+                "active_records": 0, "planned_records": 0,
+            }
+        by_day[d]["active_houses"] += int(r.get("active_houses") or 0)
+        by_day[d]["planned_houses"] += int(r.get("planned_houses") or 0)
+        by_day[d]["active_records"] += int(r.get("active_records") or 0)
+        by_day[d]["planned_records"] += int(r.get("planned_records") or 0)
+    result = sorted(by_day.values(), key=lambda x: x["day"], reverse=True)
+    return result
+
+
+def query_power_history_by_district(
+    utility_filter: str | None = None,
+    days: int = 30,
+) -> list[dict]:
+    """Агрегированная история по районам (суммируем по дням).
+
+    Возвращает: district, active_houses, planned_houses, days_with_outages
+    """
+    rows = query_power_history(utility_filter=utility_filter, days=days)
+    by_dist: dict[str, dict] = {}
+    for r in rows:
+        dist = r["district"]
+        if dist not in by_dist:
+            by_dist[dist] = {
+                "district": dist,
+                "active_houses": 0, "planned_houses": 0,
+                "_days": set(),
+            }
+        by_dist[dist]["active_houses"] += int(r.get("active_houses") or 0)
+        by_dist[dist]["planned_houses"] += int(r.get("planned_houses") or 0)
+        if int(r.get("active_houses") or 0) > 0:
+            by_dist[dist]["_days"].add(r["day"])
+    result = []
+    for d in by_dist.values():
+        result.append({
+            "district": d["district"],
+            "active_houses": d["active_houses"],
+            "planned_houses": d["planned_houses"],
+            "days_with_outages": len(d["_days"]),
+        })
+    result.sort(key=lambda x: x["active_houses"], reverse=True)
+    return result

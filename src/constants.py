@@ -27,7 +27,7 @@ DEFAULT_TTL_HOURS = 24
 
 # ── Кэш — отключения ЖКХ ─────────────────────────────────────────────────────
 POWER_TTL_MINUTES  = 30
-POWER_HISTORY_DAYS = 7
+POWER_HISTORY_DAYS = 30
 POWER_FUTURE_DAYS  = 7
 # URL источника берётся из city_profile.yaml → features.power_outages_url / power_outages_base
 # Используйте city_config.get_feature("power_outages_url") в power_scraper.py
