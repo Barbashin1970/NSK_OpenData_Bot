@@ -1021,6 +1021,36 @@ async function _studioAuth() {
             До 12 пресетов. Удалить все — кнопка «Сбросить пресеты».
           </p>
         </div>
+        <div class="md:col-span-2">
+          <div class="font-medium text-slate-800 mb-2">Параметры LM Studio для документальной работы</div>
+          <div class="overflow-x-auto">
+            <table class="text-xs w-full border-collapse">
+              <thead>
+                <tr class="text-left text-slate-500 border-b border-slate-200">
+                  <th class="pb-1 pr-4 font-medium">Параметр</th>
+                  <th class="pb-1 pr-4 font-medium">Значение</th>
+                  <th class="pb-1 font-medium">Зачем</th>
+                </tr>
+              </thead>
+              <tbody class="text-slate-600">
+                <tr class="border-b border-slate-100"><td class="py-1 pr-4 font-mono text-[10px]">Temperature</td><td class="py-1 pr-4 text-blue-700 font-semibold">0.0 – 0.15</td><td class="py-1">Детерминированные, воспроизводимые ответы</td></tr>
+                <tr class="border-b border-slate-100"><td class="py-1 pr-4 font-mono text-[10px]">Top P</td><td class="py-1 pr-4 text-blue-700 font-semibold">0.9</td><td class="py-1">Ограничивает случайность выборки токенов</td></tr>
+                <tr class="border-b border-slate-100"><td class="py-1 pr-4 font-mono text-[10px]">Repeat Penalty</td><td class="py-1 pr-4 text-blue-700 font-semibold">1.15</td><td class="py-1">Снижает повторения в длинных отчётах</td></tr>
+                <tr class="border-b border-slate-100"><td class="py-1 pr-4 font-mono text-[10px]">Max Tokens</td><td class="py-1 pr-4 text-blue-700 font-semibold">2048 – 4096</td><td class="py-1">Достаточно для структурированных документов</td></tr>
+                <tr><td class="py-1 pr-4 font-mono text-[10px]">Context Length</td><td class="py-1 pr-4 text-blue-700 font-semibold">максимум</td><td class="py-1">Вмещает весь загруженный регламент</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-2 text-[10px] text-slate-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <span class="font-semibold text-amber-700">Ключевой приём против галлюцинаций:</span> в системном промпте всегда явно запрещайте домысливание — используйте чип «Признавать отсутствие данных» или «Не домысливать нормативы».
+          </div>
+          <div class="mt-2 text-[10px] text-slate-500">
+            <span class="font-semibold">Рекомендуемые модели на сервере ЦИИ:</span>
+            <span class="ml-1">Qwen2.5-7B-Instruct</span> — для ЖКХ, строительства, аналитики ·
+            <span class="ml-1">Qwen2.5-3B-Instruct</span> — для диспетчера (скорость) ·
+            <span class="ml-1">DeepSeek-R1-8B</span> — для сложного анализа данных
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1038,25 +1068,46 @@ async function _studioAuth() {
             <div>
               <label class="text-[11px] text-slate-500 mb-1 block">Действуй как</label>
               <select id="pc-role" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
-                <option value="Муниципальный аналитик данных">Муниципальный аналитик данных</option>
-                <option value="Эколог-аналитик">Эколог-аналитик</option>
-                <option value="Транспортный аналитик">Транспортный аналитик</option>
-                <option value="Аналитик ЖКХ">Аналитик ЖКХ</option>
-                <option value="Городской пресс-секретарь">Городской пресс-секретарь</option>
-                <option value="Data Engineer (DuckDB / text-to-SQL)">Data Engineer (DuckDB / text-to-SQL)</option>
-                <option value="Аналитик по строительству и выбросам">Аналитик по строительству и выбросам</option>
+                <optgroup label="Данные и аналитика">
+                  <option value="Муниципальный аналитик данных">Муниципальный аналитик данных</option>
+                  <option value="Аналитик данных для руководства">Аналитик данных для руководства</option>
+                  <option value="Эколог-аналитик">Эколог-аналитик</option>
+                  <option value="Транспортный аналитик">Транспортный аналитик</option>
+                  <option value="Аналитик по строительству и выбросам">Аналитик по строительству и выбросам</option>
+                  <option value="Data Engineer (DuckDB / text-to-SQL)">Data Engineer (DuckDB / text-to-SQL)</option>
+                </optgroup>
+                <optgroup label="Нормативы и документы">
+                  <option value="Аналитик регламентов ЖКХ">Аналитик регламентов ЖКХ</option>
+                  <option value="Составитель официальных документов и актов">Составитель документов и актов</option>
+                  <option value="Технический консультант по строительству">Техконсультант по строительству</option>
+                  <option value="Оперативный дежурный / Диспетчер городских служб">Оперативный дежурный / Диспетчер</option>
+                </optgroup>
+                <optgroup label="Коммуникации">
+                  <option value="Городской пресс-секретарь">Городской пресс-секретарь</option>
+                  <option value="Аналитик ЖКХ">Аналитик ЖКХ</option>
+                </optgroup>
               </select>
             </div>
             <div>
               <label class="text-[11px] text-slate-500 mb-1 block">Шаблон задачи</label>
               <select id="pc-taskTemplate" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
                 <option value="">Выберите или задайте сами</option>
-                <option value="Суммаризируй и структурируй текст отчёта">Суммаризируй и структурируй текст отчёта</option>
-                <option value="Сравни показатели по районам и найди аутлаеры">Сравни показатели по районам и найди аутлаеры</option>
-                <option value="Найди закономерности и тренды по временным рядам">Найди закономерности и тренды по временным рядам</option>
-                <option value="Сгенерируй DuckDB-совместимый SQL-запрос по схеме">Сгенерируй DuckDB-совместимый SQL-запрос по схеме</option>
-                <option value="Подготовь публичную сводку для горожан в стиле дайджеста">Подготовь публичную сводку для горожан в стиле дайджеста</option>
-                <option value="Проверь данные на ошибки, дубликаты и аномалии">Проверь данные на ошибки, дубликаты и аномалии</option>
+                <optgroup label="Анализ данных">
+                  <option value="Суммаризируй и структурируй текст отчёта">Суммаризируй и структурируй отчёт</option>
+                  <option value="Сравни показатели по районам и найди аутлаеры">Сравни показатели по районам</option>
+                  <option value="Найди закономерности и тренды по временным рядам">Найди тренды по временным рядам</option>
+                  <option value="Выяви зоны риска и отклонения от нормы — с указанием нормы и основания">Выяви зоны риска и отклонения</option>
+                  <option value="Сгенерируй DuckDB-совместимый SQL-запрос по схеме">Сгенерируй DuckDB SQL-запрос</option>
+                  <option value="Проверь данные на ошибки, дубликаты и аномалии">Проверь данные на ошибки</option>
+                  <option value="Подготовь публичную сводку для горожан в стиле дайджеста">Дайджест для горожан</option>
+                </optgroup>
+                <optgroup label="Нормативы и документы">
+                  <option value="Найди и процитируй пункт регламента по описанной ситуации, укажи источник [документ, раздел]">Найди пункт регламента по ситуации</option>
+                  <option value="Составь официальный акт по предоставленным фактам. Поля без данных — [ЗАПОЛНИТЬ]">Составь официальный акт</option>
+                  <option value="Подготовь докладную записку по результатам проверки. Стиль официально-деловой">Докладная записка по проверке</option>
+                  <option value="Сформируй пошаговую инструкцию действий при инциденте (максимум 5 шагов)">Инструкция при инциденте</option>
+                  <option value="Проверь соответствие ситуации нормативным требованиям, укажи нарушения с ссылками">Проверь соответствие нормативам</option>
+                </optgroup>
               </select>
             </div>
           </div>
@@ -1087,23 +1138,39 @@ async function _studioAuth() {
             <div>
               <label class="text-[11px] text-slate-500 mb-1 block">Источник данных</label>
               <select id="pc-source" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
-                <option value="opendata.novo-sibirsk.ru">opendata.novo-sibirsk.ru (CSV-реестры)</option>
-                <option value="051.novo-sibirsk.ru">051.novo-sibirsk.ru (ЖКХ-отключения)</option>
-                <option value="Open-Meteo / CityAir API">Open-Meteo / CityAir API (экология)</option>
-                <option value="DuckDB (локальное хранилище СИГМА)">DuckDB (локальное хранилище СИГМА)</option>
-                <option value="2GIS / OpenStreetMap">2GIS / OpenStreetMap (геоданные)</option>
+                <optgroup label="Открытые данные Новосибирска">
+                  <option value="opendata.novo-sibirsk.ru">opendata.novo-sibirsk.ru (CSV-реестры)</option>
+                  <option value="051.novo-sibirsk.ru">051.novo-sibirsk.ru (ЖКХ-отключения)</option>
+                  <option value="Open-Meteo / CityAir API">Open-Meteo / CityAir API (экология)</option>
+                  <option value="DuckDB (локальное хранилище СИГМА)">DuckDB (локальное хранилище СИГМА)</option>
+                  <option value="2GIS / OpenStreetMap">2GIS / OpenStreetMap (геоданные)</option>
+                </optgroup>
+                <optgroup label="Документы и регламенты">
+                  <option value="Нормативный документ / регламент (загруженный в контекст)">Регламент / НПА (загруженный)</option>
+                  <option value="Муниципальный контракт или договор">Муниципальный контракт / договор</option>
+                  <option value="CSV / таблица с данными (загруженная)">CSV / таблица (загруженная)</option>
+                </optgroup>
                 <option value="Другие открытые данные">Другие открытые данные</option>
               </select>
             </div>
             <div>
               <label class="text-[11px] text-slate-500 mb-1 block">Формат вывода</label>
               <select id="pc-format" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
-                <option value="Текст параграфами">Текст параграфами</option>
-                <option value="Таблица Markdown">Таблица Markdown</option>
-                <option value="DuckDB-совместимый SQL">DuckDB-совместимый SQL</option>
-                <option value="JSON c полями, готовыми для ETL">JSON для ETL</option>
-                <option value="GeoJSON для отображения на карте">GeoJSON для карты</option>
-                <option value="YAML для config/rules/datasets">YAML для конфигов</option>
+                <optgroup label="Аналитические форматы">
+                  <option value="Текст параграфами">Текст параграфами</option>
+                  <option value="Аналитическая справка (факты / отклонения / зоны риска / действия)">Аналитическая справка</option>
+                  <option value="Таблица Markdown">Таблица Markdown</option>
+                </optgroup>
+                <optgroup label="Официальные документы">
+                  <option value="Официальный акт или докладная записка">Официальный акт / докладная записка</option>
+                  <option value="Пошаговый чеклист действий (максимум 5 шагов)">Пошаговый чеклист</option>
+                </optgroup>
+                <optgroup label="Технические форматы">
+                  <option value="DuckDB-совместимый SQL">DuckDB-совместимый SQL</option>
+                  <option value="JSON c полями, готовыми для ETL">JSON для ETL</option>
+                  <option value="GeoJSON для отображения на карте">GeoJSON для карты</option>
+                  <option value="YAML для config/rules/datasets">YAML для конфигов</option>
+                </optgroup>
               </select>
             </div>
           </div>
@@ -1119,6 +1186,14 @@ async function _studioAuth() {
               data-constraint="Отдельно помечай допущения и возможные ошибки данных.">Помечать допущения</button>
             <button type="button" class="pc-chip text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
               data-constraint="Указывай ссылки на наборы данных или API, откуда взяты числа.">Ссылки на датасеты</button>
+            <button type="button" class="pc-chip text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              data-constraint="Если информации нет в документе — прямо сообщи: «В предоставленных документах эта информация отсутствует».">Признавать отсутствие данных</button>
+            <button type="button" class="pc-chip text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              data-constraint="Не домысливай нормативы, сроки и ответственных лиц — только из загруженных документов.">Не домысливать нормативы</button>
+            <button type="button" class="pc-chip text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              data-constraint="Каждый факт сопровождай ссылкой: [Документ, раздел/пункт].">Ссылки на пункты документа</button>
+            <button type="button" class="pc-chip text-[10px] px-2.5 py-1 rounded-full border border-slate-200 text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              data-constraint="При противоречии между документами — укажи оба варианта с источниками.">Указывать противоречия</button>
           </div>
         </div>
 
@@ -1131,6 +1206,37 @@ async function _studioAuth() {
           <textarea id="pc-schema" rows="3" placeholder="DDL, YAML-схема или описание таблиц (parking, stops, ecology...)"
             class="w-full text-xs font-mono border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"></textarea>
           <p class="text-[10px] text-slate-400 mt-1">Попадёт в контекст промпта — улучшит качество SQL-генерации и анализа структуры.</p>
+        </div>
+
+        <!-- Готовые конфигурации LM Studio -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Готовые конфигурации</div>
+            <span class="text-[10px] font-medium text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">LM Studio</span>
+          </div>
+          <p class="text-[10px] text-slate-400 mb-2.5">Загружает роль, шаблон задачи, формат и оптимальные параметры качества одним кликом.</p>
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" onclick="_pcLoadLMPreset('zhkh')"
+              class="text-[10px] px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:border-violet-400 hover:text-violet-700 hover:bg-violet-50 transition-colors">
+              📋 Аналитик ЖКХ
+            </button>
+            <button type="button" onclick="_pcLoadLMPreset('docs')"
+              class="text-[10px] px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:border-violet-400 hover:text-violet-700 hover:bg-violet-50 transition-colors">
+              📄 Составитель документов
+            </button>
+            <button type="button" onclick="_pcLoadLMPreset('build')"
+              class="text-[10px] px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:border-violet-400 hover:text-violet-700 hover:bg-violet-50 transition-colors">
+              🏗 Техконсультант
+            </button>
+            <button type="button" onclick="_pcLoadLMPreset('duty')"
+              class="text-[10px] px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:border-violet-400 hover:text-violet-700 hover:bg-violet-50 transition-colors">
+              🔴 Диспетчер
+            </button>
+            <button type="button" onclick="_pcLoadLMPreset('manager')"
+              class="text-[10px] px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:border-violet-400 hover:text-violet-700 hover:bg-violet-50 transition-colors">
+              📊 Аналитик для руководства
+            </button>
+          </div>
         </div>
 
         <!-- Шаг 3: Параметры качества -->
@@ -4320,6 +4426,67 @@ async function _reloadVocabulary() {
     if (!confirm('Удалить все сохранённые пресеты?')) return;
     _pcSavePresets([]);
     _pcRenderPresets();
+  };
+
+  // ── LM Studio quick-load presets ─────────────────────────────────────
+  const _LM_PRESETS = {
+    zhkh: {
+      'pc-role': 'Аналитик регламентов ЖКХ',
+      'pc-taskTemplate': 'Найди и процитируй пункт регламента по описанной ситуации, укажи источник [документ, раздел]',
+      'pc-task': '',
+      'pc-source': 'Нормативный документ / регламент (загруженный в контекст)',
+      'pc-format': 'Текст параграфами',
+      'pc-constraints': 'Отвечай ТОЛЬКО на основе текста загруженных документов. Если информации нет в документе — прямо сообщи: «В предоставленных документах эта информация отсутствует». Не домысливай нормативы, сроки и ответственных лиц — только из загруженных документов. Каждый факт сопровождай ссылкой: [Документ, раздел/пункт]. При противоречии между документами — укажи оба варианта с источниками.',
+      'pc-detail': '7', 'pc-structure': '8', 'pc-formality': '8', 'pc-creativity': '2', 'pc-depth': '7',
+      length: '4000'
+    },
+    docs: {
+      'pc-role': 'Составитель официальных документов и актов',
+      'pc-taskTemplate': 'Составь официальный акт по предоставленным фактам. Поля без данных — [ЗАПОЛНИТЬ]',
+      'pc-task': '',
+      'pc-source': 'Нормативный документ / регламент (загруженный в контекст)',
+      'pc-format': 'Официальный акт или докладная записка',
+      'pc-constraints': 'Используй только факты, явно указанные пользователем или из загруженных документов. Поля без данных заполняй как [ЗАПОЛНИТЬ: описание]. Не придумывай имена, даты, суммы, адреса. Официально-деловой стиль. Структура: шапка → основание → констатирующая часть → распорядительная часть → подписи.',
+      'pc-detail': '6', 'pc-structure': '9', 'pc-formality': '10', 'pc-creativity': '1', 'pc-depth': '5',
+      length: '6000'
+    },
+    build: {
+      'pc-role': 'Технический консультант по строительству',
+      'pc-taskTemplate': 'Проверь соответствие ситуации нормативным требованиям, укажи нарушения с ссылками',
+      'pc-task': '',
+      'pc-source': 'Нормативный документ / регламент (загруженный в контекст)',
+      'pc-format': 'Текст параграфами',
+      'pc-constraints': 'Все технические нормативы приводи только со ссылкой на СНиП, ГОСТ, СП, ФЗ или загруженный документ. При отсутствии нормы — сообщи: «Данный норматив требует уточнения по [название НПА]». Разделяй: (а) обязательные требования, (б) рекомендуемые параметры, (в) региональные нормы. При анализе контракта — только констатируй факты, не давай юридических оценок.',
+      'pc-detail': '8', 'pc-structure': '8', 'pc-formality': '8', 'pc-creativity': '2', 'pc-depth': '8',
+      length: '4000'
+    },
+    duty: {
+      'pc-role': 'Оперативный дежурный / Диспетчер городских служб',
+      'pc-taskTemplate': 'Сформируй пошаговую инструкцию действий при инциденте (максимум 5 шагов)',
+      'pc-task': '',
+      'pc-source': 'Нормативный документ / регламент (загруженный в контекст)',
+      'pc-format': 'Пошаговый чеклист действий (максимум 5 шагов)',
+      'pc-constraints': 'Максимум 5 шагов — только самое необходимое. Не объясняй теорию — только что делать прямо сейчас. Если не знаешь ответа — скажи «Уточни у [должность]» или «Обратись к регламенту [название]». Никогда не придумывай телефоны, имена, адреса. Время реакции и сроки — только из загруженных документов.',
+      'pc-detail': '5', 'pc-structure': '9', 'pc-formality': '7', 'pc-creativity': '1', 'pc-depth': '4',
+      length: '2000'
+    },
+    manager: {
+      'pc-role': 'Аналитик данных для руководства',
+      'pc-taskTemplate': 'Выяви зоны риска и отклонения от нормы — с указанием нормы и основания',
+      'pc-task': '',
+      'pc-source': 'CSV / таблица с данными (загруженная)',
+      'pc-format': 'Аналитическая справка (факты / отклонения / зоны риска / действия)',
+      'pc-constraints': 'Все цифры в выводах — только из предоставленных данных. Не экстраполируй тренды без явного указания. Каждый вывод сопровождай: «Основание: [строка/столбец/период]». Разделяй: ФАКТЫ (что есть) и ИНТЕРПРЕТАЦИЯ (что это значит). Если данных недостаточно — укажи, каких данных не хватает.',
+      'pc-detail': '8', 'pc-structure': '9', 'pc-formality': '7', 'pc-creativity': '3', 'pc-depth': '9',
+      length: '6000'
+    }
+  };
+
+  window._pcLoadLMPreset = function(id) {
+    const preset = _LM_PRESETS[id];
+    if (!preset) return;
+    _pcApplyState(preset);
+    _pcUpdatePrompt();
   };
 
   window._promptReset = function() {
