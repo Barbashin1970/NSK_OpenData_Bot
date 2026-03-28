@@ -21,6 +21,9 @@
     }
   </script>
   <style>
+    /* 2GIS badge: скрыт по умолчанию, на десктопе показываем когда ключ загружен */
+    #mapglBadge[data-available] { display: none; }
+    @media (min-width: 640px) { #mapglBadge[data-available] { display: flex; } }
     .chip { transition: all .15s ease; }
     .chip:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.15); }
     .chip:active { transform: translateY(0); }
@@ -155,12 +158,12 @@
           <button onclick="_toggleCityMenu()"
             class="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-blue-500/20 border border-blue-400/30 text-blue-200 text-xs rounded-xl font-medium hover:bg-blue-500/30 transition-colors"
             title="Активный город · нажмите для переключения">
-            🏙<span id="cityIndicatorName" class="hidden sm:inline"> …</span><span class="opacity-60 text-xs">▾</span>
+            🏙<span id="cityIndicatorName" class="truncate max-w-[6rem] sm:max-w-none"> …</span><span class="opacity-60 text-xs">▾</span>
           </button>
           <div id="cityDropdown" class="hidden absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 min-w-[10rem] overflow-hidden"></div>
         </div>
         <!-- 2GIS badge — icon+text on desktop, icon-only on mobile -->
-        <div id="mapglBadge" class="hidden flex-shrink-0 flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs rounded-xl font-medium" title="2GIS API ключ загружен · карты и геокодирование доступны">
+        <div id="mapglBadge" class="hidden flex-shrink-0 items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs rounded-xl font-medium" title="2GIS API ключ загружен · карты и геокодирование доступны">
           📍<span class="hidden sm:inline"> 2GIS</span>
         </div>
       </div>
@@ -2759,6 +2762,14 @@ function _computeMobileIndex(cities) {
     .map((d, i) => ({ ...d, rankTotal: i + 1 }));
 }
 
+// Маппинг названий городов → слаги для API /emissions/{slug}
+const _CITY_EMISSION_SLUGS = {
+  'Новосибирск': 'novosibirsk', 'Томск': 'tomsk', 'Красноярск': 'krasnoyarsk',
+  'Кемерово': 'kemerovo', 'Омск': 'omsk', 'Иркутск': 'irkutsk',
+  'Хабаровск': 'khabarovsk', 'Владивосток': 'vladivostok', 'Тюмень': 'tyumen',
+  'Екатеринбург': 'yekaterinburg', 'Санкт-Петербург': 'spb', 'Сбер-Сити': 'sbercity',
+};
+
 function _showCityEmission(cityName) {
   const c = ECO_INDEX_CITIES.find(x => x.city === cityName);
   if (!c) return;
@@ -2772,6 +2783,7 @@ function _showCityEmission(cityName) {
     red: {dot:'bg-red-500',label:'Экологическое бедствие',bg:'bg-red-50',text:'text-red-700'} };
   const z = zoneCfg[c.zone] || zoneCfg.orange;
   const otList = [c.has_metro?'🚇 Метро':'', c.has_tram?'🚊 Трамвай':'', c.has_trolleybus?'🚎 Троллейбус':''].filter(Boolean);
+  const emSlug = _CITY_EMISSION_SLUGS[c.city] || null;
 
   // Показываем карточку прямо под рейтингом
   const detailEl = document.getElementById('ecoCityDetail');
@@ -2841,9 +2853,77 @@ function _showCityEmission(cityName) {
             </div>
           </div>
           ${otList.length ? `<div class="flex gap-2 text-xs text-slate-500">${otList.map(o => `<span class="bg-slate-100 px-2 py-1 rounded-lg">${o}</span>`).join('')}</div>` : ''}
+          ${emSlug ? `<button onclick="_loadCrossEmissions('${emSlug}', '${esc(c.city)}')"
+            class="w-full mt-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-xl transition-colors">
+            🏭 Выбросы в атмосферу · ${esc(c.city)} →
+          </button>` : ''}
         </div>
       </div>`;
     detailEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+async function _loadCrossEmissions(slug, cityLabel) {
+  const el = document.getElementById('resultArea');
+  _pushView('crossEmissions');
+  el.className = 'fade-in';
+  el.innerHTML = `<div class="text-center py-8 text-slate-400"><div class="animate-spin w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full mx-auto mb-2"></div>Загрузка выбросов · ${esc(cityLabel)}…</div>`;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  try {
+    const r = await fetch('/emissions/' + encodeURIComponent(slug));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const rows = data.rows || [];
+    const maxT = Math.max(1, ...rows.map(r => r.vsego_t || 0));
+    const fmtI = v => Math.round(v).toLocaleString('ru-RU');
+
+    const rowsHtml = rows.map((r, i) => {
+      const pct = Math.round((r.vsego_t || 0) / maxT * 100);
+      const barColor = pct > 60 ? 'bg-red-400' : pct > 30 ? 'bg-orange-400' : pct > 10 ? 'bg-amber-400' : 'bg-blue-300';
+      const ds = r.data_status === 'report' ? '✓' : r.data_status === 'estimate' ? '~' : '';
+      return `<tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+        <td class="py-2.5 px-4 text-sm text-slate-700">${i+1}. ${esc(r.name)} ${ds ? `<span class="text-[10px] text-slate-400">${ds}</span>` : ''}</td>
+        <td class="py-2.5 px-4">
+          <div class="flex items-center gap-2"><div class="flex-1 bg-slate-100 rounded-full h-2"><div class="${barColor} h-2 rounded-full" style="width:${pct}%"></div></div>
+          <span class="text-sm font-bold text-slate-700 w-20 text-right">${fmtI(r.vsego_t)} т</span></div>
+        </td>
+        <td class="py-2.5 px-4 text-xs text-slate-500 text-right">${fmtI(r.so2_t)}</td>
+        <td class="py-2.5 px-4 text-xs text-slate-500 text-right">${fmtI(r.nox_t)}</td>
+        <td class="py-2.5 px-4 text-xs text-slate-500 text-right">${fmtI(r.co_t)}</td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
+          <div>
+            <div class="font-semibold text-slate-800">🏭 Выбросы в атмосферу · ${esc(cityLabel)}</div>
+            <div class="text-xs text-slate-500">${data.form || '2-ТП Воздух'} ${data.year || ''} · ${data.total_municipalities} МО · ${data.source || 'Росприроднадзор'}</div>
+          </div>
+          <button onclick="showEcoIndex()" class="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-3 py-1 hover:bg-blue-100 transition-colors">
+            🏙️ Рейтинг городов →
+          </button>
+        </div>
+        <div class="px-5 py-2 text-[10px] text-slate-400 border-b border-slate-50">
+          ✓ — официальный отчёт · ~ — оценочные данные
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="text-left text-[10px] font-semibold uppercase text-slate-400 border-b border-slate-100">
+                <th class="px-4 py-2">МО / Населённый пункт</th>
+                <th class="px-4 py-2">Всего, т/год</th>
+                <th class="px-4 py-2 text-right">SO₂, т</th>
+                <th class="px-4 py-2 text-right">NOx, т</th>
+                <th class="px-4 py-2 text-right">CO, т</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка: ${e.message}</div>`;
   }
 }
 
@@ -5976,7 +6056,7 @@ async function initMapgl() {
     if (d.available) {
       _mapglKey = d.key;
       const badge = document.getElementById('mapglBadge');
-      if (badge) badge.classList.remove('hidden');
+      if (badge) badge.dataset.available = '1';  // CSS: [data-available] → sm:flex
       buildChips(); // перерисовать чипы с подсветкой 📍 гео-запросов
     }
   } catch(e) {}

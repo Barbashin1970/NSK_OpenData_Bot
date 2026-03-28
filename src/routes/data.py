@@ -1296,3 +1296,59 @@ def post_osm_update(
             _time.sleep(5)
 
     return {"updated": results}
+
+
+# ── Cross-city emissions (любой город из статических данных) ──────────────
+@router.get(
+    "/emissions/{city_slug}",
+    tags=["Экология и погода"],
+    summary="Выбросы 2-ТП Воздух для любого города",
+)
+def get_city_emissions(city_slug: str):
+    """Загружает данные выбросов из data/cities/{city_slug}/emissions_2tp.json."""
+    import json
+    from pathlib import Path
+    from ..constants import PROJECT_ROOT
+
+    safe_slug = _re.sub(r"[^a-z0-9_-]", "", city_slug.lower())
+    candidates = [
+        Path(PROJECT_ROOT) / "data" / "cities" / safe_slug / "emissions_2tp.json",
+    ]
+    if safe_slug == "novosibirsk":
+        candidates.insert(0, Path(PROJECT_ROOT) / "data" / "nsk_emissions_2tp.json")
+
+    path = None
+    for c in candidates:
+        if c.exists():
+            path = c
+            break
+
+    if not path:
+        return JSONResponse({"error": f"Данные выбросов для '{city_slug}' не найдены"}, status_code=404)
+
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    rows = []
+    for m in data.get("municipalities", []):
+        rows.append({
+            "name": m.get("name") or m.get("short", ""),
+            "vsego_t": m.get("vsego_t", 0),
+            "so2_t": m.get("so2_t", 0),
+            "nox_t": m.get("nox_t", 0),
+            "co_t": m.get("co_t", 0),
+            "data_status": m.get("data_status", ""),
+            "_lat": m.get("lat"),
+            "_lon": m.get("lon"),
+        })
+    rows.sort(key=lambda r: r["vsego_t"], reverse=True)
+
+    return {
+        "city_slug": safe_slug,
+        "scope": data.get("scope", safe_slug),
+        "year": data.get("year", 2024),
+        "form": data.get("form", "2-ТП Воздух"),
+        "source": data.get("source", ""),
+        "total_municipalities": len(rows),
+        "rows": rows,
+    }
