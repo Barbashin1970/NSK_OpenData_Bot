@@ -1567,6 +1567,129 @@ const _CII_TOPIC_SECTION = {
   } catch(_) {}
 })();
 
+// ── Drill-down: контекстный стек запросов ─────────────────────────────────
+// Запоминаем последний успешный запрос и его параметры.
+// Короткие команды типа «в Центральном», «на карте», «топ 5» уточняют предыдущий.
+const _drillCtx = { raw: '', topic: '', district: '', op: '' };
+
+function _updateDrillCtx(data, query) {
+  if (!data || data.error) return;
+  _drillCtx.raw = query || '';
+  _drillCtx.topic = data.topic || _drillCtx.topic;
+  _drillCtx.op = data.operation || '';
+  // Извлекаем район из запроса
+  const dm = (query || '').match(/в\s+([\wа-яёА-ЯЁ]+(?:ск\w*|ов\w*)?)\s*(?:район|р-н)/i);
+  if (dm) _drillCtx.district = dm[0];
+}
+
+// Стем района: «центральном» → «централь», «ленинскому» → «ленинск»
+function _distStem(s) {
+  return s.toLowerCase()
+    .replace(/(?:ому|ого|ом|ый|ой|ий|ая|ое)$/i, '')     // падежные окончания
+    .replace(/ск[а-яёА-ЯЁ]*$/i, '')                       // -ский/-ском/-скому
+    .replace(/ов[а-яёА-ЯЁ]*$/i, function(m, o, str) {     // -овский, но не «кольцово»
+      // Не обрезаем -ов если это конец слова и совпадает с районом
+      return m.length <= 2 && str.length > 5 ? '' : m;     // сохраняем короткие
+    });
+}
+
+function _findDistrictByInput(input) {
+  const inp = input.toLowerCase().trim();
+  if (inp.length < 3) return null;
+  // 1. Точное совпадение по label/val (Кольцово)
+  const exact = NSK_DISTRICTS.find(d => d.val && (
+    d.label?.toLowerCase() === inp || d.val.toLowerCase() === inp
+  ));
+  if (exact) return exact;
+  // 2. Стем-матчинг
+  const stem = _distStem(inp);
+  if (!stem || stem.length < 3) return null;
+  return NSK_DISTRICTS.find(d => {
+    if (!d.val) return false;
+    const dStem = _distStem(d.label || d.val);
+    return dStem === stem || d.val.toLowerCase().startsWith(stem) || d.label?.toLowerCase().startsWith(stem);
+  });
+}
+
+function _stripDrillCtx(raw) {
+  return raw
+    .replace(/\s+(?:в|по)\s+[а-яёА-ЯЁa-zA-Z]+[а-яёА-ЯЁ]*\s*(?:район[а-яёА-ЯЁ]*|р-н[а-яёА-ЯЁ]*)/gi, '')
+    .replace(/\s+(?:в|по)\s+город[а-яёА-ЯЁ]*/gi, '')
+    .replace(/\s+в\s+Кольцово/gi, '')
+    .replace(/^(?:топ|первые)\s+\d+\s*/i, '')
+    .replace(/^(?:сколько)\s+/i, '')
+    .trim();
+}
+
+function _tryDrillDown(raw) {
+  if (!_drillCtx.raw) return false;  // нет контекста
+  const ql = raw.toLowerCase().trim();
+
+  // 1. Уточнение района: «в Центральном», «по Ленинскому», «а по Кировскому?», «советский»
+  const distMatch = ql.match(/(?:^|в\s+|по\s+|на\s+|а\s+(?:по\s+)?|опустись\s+на\s+|что\s+(?:по|в)\s+|теперь\s+(?:по\s+)?)([а-яёА-ЯЁa-zA-Z]{3,})\s*(?:район[а-яёА-ЯЁ]*|р-н[а-яёА-ЯЁ]*)?[?!.]*\s*$/i);
+  if (distMatch) {
+    const found = _findDistrictByInput(distMatch[1]);
+    if (found) {
+      // Убираем старый район / «в городе» / «по городу» / «топ N» из базового запроса
+      let baseQ = _stripDrillCtx(_drillCtx.raw);
+      if (!baseQ && _drillCtx.topic) baseQ = _drillCtx.topic.replace(/_/g, ' ');
+      const newQ = baseQ + ' в ' + found.val;
+      document.getElementById('queryInput').value = newQ;
+      ask();
+      return true;
+    }
+  }
+
+  // 2. «На карте» / «покажи на карте» — программно нажимаем кнопку карты
+  if (/(?:на\s+карт|покажи.*карт|отобра.*карт|карту)/i.test(ql)) {
+    // Ищем кнопку с onclick="loadMap" или текстом "карт"
+    const btns = document.querySelectorAll('#resultArea button, #resultArea [onclick]');
+    for (const btn of btns) {
+      const oc = btn.getAttribute('onclick') || '';
+      const tx = btn.textContent || '';
+      if (/loadMap|карт/i.test(oc) || /на\s*карт|📍.*карт/i.test(tx)) {
+        btn.click();
+        return true;
+      }
+    }
+  }
+
+  // 3. «Топ 5» / «первые 10» — уточняем количество, сохраняя район
+  const topMatch = ql.match(/(?:топ|первые|покажи)\s*(\d+)/i);
+  if (topMatch && _drillCtx.topic) {
+    // Извлекаем район из текущего контекста
+    const distInCtx = _drillCtx.raw.match(/\s+(в\s+[а-яёА-ЯЁa-zA-Z]+[а-яёА-ЯЁ]*\s*(?:район[а-яёА-ЯЁ]*|р-н[а-яёА-ЯЁ]*))/i) || _drillCtx.raw.match(/\s+(в\s+Кольцово)/i);
+    const distPart = distInCtx ? distInCtx[1] : '';
+    let baseQ = _stripDrillCtx(_drillCtx.raw);
+    const newQ = `топ ${topMatch[1]} ${baseQ}${distPart ? ' ' + distPart : ''}`;
+    document.getElementById('queryInput').value = newQ;
+    ask();
+    return true;
+  }
+
+  // 4. «Сколько?» / «сколько всего?» — COUNT, сохраняя район
+  if (/^сколько/i.test(ql) && _drillCtx.topic) {
+    const distInCtx = _drillCtx.raw.match(/\s+(в\s+[а-яёА-ЯЁa-zA-Z]+[а-яёА-ЯЁ]*\s*(?:район[а-яёА-ЯЁ]*|р-н[а-яёА-ЯЁ]*))/i) || _drillCtx.raw.match(/\s+(в\s+Кольцово)/i);
+    const distPart = distInCtx ? distInCtx[1] : '';
+    let baseQ = _stripDrillCtx(_drillCtx.raw);
+    const newQ = `сколько ${baseQ}${distPart ? ' ' + distPart : ''}`;
+    document.getElementById('queryInput').value = newQ;
+    ask();
+    return true;
+  }
+
+  // 5. «По городу» / «весь город» — убираем район
+  if (/(?:по\s+городу|весь\s+город|все\s+район|общ(?:ий|ее|ая))/i.test(ql) && _drillCtx.raw) {
+    let baseQ = _stripDrillCtx(_drillCtx.raw);
+    if (!baseQ && _drillCtx.topic) baseQ = _drillCtx.topic.replace(/_/g, ' ');
+    document.getElementById('queryInput').value = baseQ;
+    ask();
+    return true;
+  }
+
+  return false;
+}
+
 function _trySpecialQuery(raw) {
   // Strip «Сигма» wake-word prefix
   const q = raw.replace(/^(?:с[ие]г?м[ао]|si(?:gm?a|ma))[!,.:)?\s]*/i, '').trim();
@@ -2320,6 +2443,7 @@ async function ask() {
   if (!q) return;
 
   if (_trySpecialQuery(q)) return;
+  if (_tryDrillDown(q)) return;  // контекстное уточнение предыдущего запроса
 
   // Reset pagination for a fresh query
   _pageQuery  = q;
@@ -2451,6 +2575,7 @@ function _crossCityHint(data, query) {
 
 // ─── Render result ────────────────────────────────────────────────────────────
 function renderResult(data, query) {
+  _updateDrillCtx(data, query);  // запоминаем контекст для drill-down
   document.getElementById('loadingState').className = 'hidden';
   const el = document.getElementById('resultArea');
 
@@ -5254,13 +5379,13 @@ function renderUnknown(data) {
   const shuffled = [..._WORKING_QUESTIONS].sort(() => Math.random() - 0.5);
   const [q1, q2] = shuffled;
   return `
-    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-4 max-w-xl mx-auto">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm px-5 py-4">
       <div class="flex items-start gap-3">
         <span class="text-2xl flex-shrink-0 mt-0.5">🤔</span>
         <div class="flex-1 min-w-0">
           <p class="text-slate-600 text-sm leading-relaxed mb-3">${esc(msg)}</p>
           <p class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-2">Попробуйте спросить</p>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
             <button class="bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300
                            rounded-xl px-3 py-2.5 text-xs text-slate-700 hover:text-blue-700
                            transition-colors cursor-pointer text-left leading-snug"
@@ -5269,6 +5394,14 @@ function renderUnknown(data) {
                            rounded-xl px-3 py-2.5 text-xs text-slate-700 hover:text-blue-700
                            transition-colors cursor-pointer text-left leading-snug"
                     onclick="askNow('${q2}')">${esc(q2)}</button>
+          </div>
+          <div class="border-t border-slate-100 pt-3 flex flex-col sm:flex-row items-start sm:items-center gap-2">
+            <div class="flex-1 text-[10px] text-slate-400 leading-snug">
+              📝 Ваш вопрос сохранён в базе — аналитики Сигмы добавят ответ в словарь
+            </div>
+            <button onclick="_openFeedback()" class="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-full px-3 py-1.5 transition-colors whitespace-nowrap flex-shrink-0">
+              💬 Задать вопрос команде Сигма
+            </button>
           </div>
         </div>
       </div>
