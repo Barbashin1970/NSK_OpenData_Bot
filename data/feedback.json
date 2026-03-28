@@ -6,5 +6,29 @@
     "source": "voice",
     "status": "in_progress",
     "created_at": "2026-03-28T06:44:49.568810+00:00"
+  },
+  {
+    "id": 2,
+    "text": "вот нашли какой-то баг находится тут надо исправить так спасибо",
+    "category": "bug",
+    "source": "voice",
+    "status": "new",
+    "created_at": "2026-03-28T07:18:54.335886+00:00"
+  },
+  {
+    "id": 3,
+    "text": "отправь",
+    "category": "suggestion",
+    "source": "voice",
+    "status": "new",
+    "created_at": "2026-03-28T07:19:36.687244+00:00"
+  },
+  {
+    "id": 4,
+    "text": "Я прошу Записать текст раз два три",
+    "category": "suggestion",
+    "source": "voice",
+    "status": "new",
+    "created_at": "2026-03-28T07:21:40.471821+00:00"
   }
 ]

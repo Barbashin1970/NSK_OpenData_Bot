@@ -372,10 +372,12 @@
     document.getElementById('fbCharCount').textContent = this.value.length + ' / 2000';
   });
 
+  let _fbStoppingVoice = false;  // флаг: пользователь нажал стоп
+
   function _toggleVoice() {
     if (_fbRecording) { _stopVoice(); return; }
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      document.getElementById('fbVoiceStatus').textContent = 'Голосовой ввод не поддерживается в этом браузере';
+      document.getElementById('fbVoiceStatus').textContent = '⚠️ Голосовой ввод не поддерживается в этом браузере (нужен Chrome, Edge или Safari)';
       return;
     }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -383,40 +385,78 @@
     _fbRecognition.lang = 'ru-RU';
     _fbRecognition.continuous = true;
     _fbRecognition.interimResults = true;
+    _fbStoppingVoice = false;
 
     const ta = document.getElementById('fbText');
-    const baseText = ta.value;
 
     _fbRecognition.onresult = function(e) {
-      let interim = '', final = '';
+      let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) final += e.results[i][0].transcript;
-        else interim += e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          // Добавляем финальный фрагмент к тексту
+          const fragment = e.results[i][0].transcript.trim();
+          if (fragment) {
+            ta.value = (ta.value ? ta.value.trimEnd() + ' ' : '') + fragment;
+          }
+        } else {
+          interim += e.results[i][0].transcript;
+        }
       }
-      if (final) ta.value = baseText + (baseText ? ' ' : '') + final;
-      document.getElementById('fbVoiceStatus').textContent = interim ? '🔴 ' + interim : '🔴 Говорите...';
+      document.getElementById('fbVoiceStatus').innerHTML = interim
+        ? `<span class="text-red-600 font-medium">🔴 ${interim}</span>`
+        : '<span class="text-red-600">🔴 Говорите… нажмите 🎙️ для завершения</span>';
       document.getElementById('fbCharCount').textContent = ta.value.length + ' / 2000';
       document.getElementById('fbSource').textContent = '🎙️ голос';
     };
+
     _fbRecognition.onerror = function(e) {
-      document.getElementById('fbVoiceStatus').textContent = 'Ошибка: ' + e.error;
+      if (e.error === 'no-speech') {
+        // Тишина — не ошибка, просто напоминаем
+        document.getElementById('fbVoiceStatus').innerHTML = '<span class="text-amber-600">🎙️ Не слышу… говорите или нажмите 🎙️ для завершения</span>';
+        return;
+      }
+      document.getElementById('fbVoiceStatus').textContent = '⚠️ Ошибка: ' + e.error;
       _stopVoice();
     };
-    _fbRecognition.onend = function() { _stopVoice(); };
+
+    // При естественном завершении (пауза) — перезапускаем, если пользователь не нажал стоп
+    _fbRecognition.onend = function() {
+      if (_fbRecording && !_fbStoppingVoice) {
+        // Перезапуск — recognition завершился из-за паузы, но запись не остановлена
+        try { _fbRecognition.start(); } catch(e) { _stopVoice(); }
+      } else {
+        _stopVoice();
+      }
+    };
 
     _fbRecognition.start();
     _fbRecording = true;
-    document.getElementById('fbMicBtn').classList.add('animate-pulse', 'ring-4', 'ring-red-300');
-    document.getElementById('fbVoiceStatus').textContent = '🔴 Говорите...';
+    const btn = document.getElementById('fbMicBtn');
+    btn.classList.add('animate-pulse', 'ring-4', 'ring-red-300');
+    btn.innerHTML = '⏹️';
+    btn.title = 'Нажмите чтобы завершить запись';
+    document.getElementById('fbVoiceStatus').innerHTML = '<span class="text-red-600">🔴 Говорите… нажмите ⏹️ для завершения</span>';
   }
 
   function _stopVoice() {
+    _fbStoppingVoice = true;
     if (_fbRecognition) { try { _fbRecognition.stop(); } catch(e) {} _fbRecognition = null; }
     _fbRecording = false;
     const btn = document.getElementById('fbMicBtn');
-    if (btn) { btn.classList.remove('animate-pulse', 'ring-4', 'ring-red-300'); }
+    if (btn) {
+      btn.classList.remove('animate-pulse', 'ring-4', 'ring-red-300');
+      btn.innerHTML = '🎙️';
+      btn.title = 'Голосовой ввод';
+    }
     const vs = document.getElementById('fbVoiceStatus');
-    if (vs) vs.textContent = 'Нажмите 🎙️ для голосового ввода';
+    const ta = document.getElementById('fbText');
+    if (vs) {
+      if (ta && ta.value.trim().length > 0) {
+        vs.innerHTML = '✅ <span class="text-emerald-600">Запись завершена. Проверьте текст и нажмите «Отправить»</span>';
+      } else {
+        vs.textContent = 'Нажмите 🎙️ для голосового ввода';
+      }
+    }
   }
 
   async function _submitFeedback() {
