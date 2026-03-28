@@ -1139,6 +1139,40 @@ def get_power_history(
     }
 
 
+@router.get(
+    "/power/efficiency",
+    tags=["Данные"],
+    summary="Рейтинг эффективности ремонтных бригад по районам",
+    response_description="Оценки A-F по скорости устранения аварий, ночным/вечерним/выходным отключениям",
+)
+def get_power_efficiency(
+    days: int = Query(30, ge=1, le=30, description="Период анализа (дней)"),
+) -> dict:
+    """Анализирует паттерны отключений внутри дня для оценки работы ремонтных бригад.
+
+    Критерии:
+    - Быстрое устранение (утро→вечер) = хорошо
+    - Вечерние/ночные аварии = плохо (жители без ресурсов)
+    - Выходные аварии = дополнительный штраф
+    - Высокая нагрузка (домов×часов) = штраф
+    """
+    from ..power_cache import query_power_efficiency, is_power_stale, upsert_outages
+    if is_power_stale():
+        try:
+            from ..power_scraper import fetch_all_outages
+            upsert_outages(fetch_all_outages())
+        except Exception as e:
+            logging.getLogger(__name__).error("power efficiency auto-update: %s", e)
+
+    rows = query_power_efficiency(days=days)
+    return {
+        "operation": "POWER_EFFICIENCY",
+        "days": days,
+        "count": len(rows),
+        "rows": rows,
+    }
+
+
 @router.post(
     "/power/update",
     tags=["Управление"],

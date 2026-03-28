@@ -3369,21 +3369,25 @@ function renderPower(data) {
 
 // ─── POWER HISTORY (30 дней) ──────────────────────────────────────────────────
 async function _showPowerHistory(districtFilter) {
-  const resultEl = document.getElementById('resultContainer') || document.getElementById('result');
+  const resultEl = document.getElementById('resultArea');
   if (!resultEl) return;
+  resultEl.classList.remove('hidden');
 
   const dq = districtFilter ? `&district=${encodeURIComponent(districtFilter)}` : '';
   resultEl.innerHTML = `<div class="text-center py-10 text-slate-400"><div class="animate-spin inline-block w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full mb-2"></div><br>Загружаю историю ЖКХ за 30 дней...</div>`;
 
   try {
-    const [dayR, distR] = await Promise.all([
+    const [dayR, distR, effR] = await Promise.all([
       fetch(`/power/history?days=30&group_by=day${dq}`),
       fetch(`/power/history?days=30&group_by=district`),
+      fetch('/power/efficiency?days=30'),
     ]);
     const dayData = await dayR.json();
     const distData = await distR.json();
+    const effData = await effR.json();
     const days = (dayData.rows || []).slice().sort((a, b) => a.day.localeCompare(b.day));
     const dists = distData.rows || [];
+    const effRows = effData.rows || [];
     const meta = dayData.power_meta || {};
 
     // ── KPI ──────────────────────────────────────────────────────────────
@@ -3484,6 +3488,61 @@ async function _showPowerHistory(districtFilter) {
         </div>
       </div>` : '';
 
+    // ── Efficiency ratings ─────────────────────────────────────────────
+    const gradeColors = {
+      A: { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200', bar: '#34d399' },
+      B: { bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-200',   bar: '#4ade80' },
+      C: { bg: 'bg-yellow-100',  text: 'text-yellow-700',  border: 'border-yellow-200',  bar: '#facc15' },
+      D: { bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border-orange-200',  bar: '#fb923c' },
+      F: { bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-200',     bar: '#ef4444' },
+    };
+    const effHtml = effRows.length ? `
+      <div class="px-5 py-4 border-t border-slate-100">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs font-semibold text-slate-600">Рейтинг ремонтных бригад по районам</div>
+          <div class="text-[10px] text-slate-400">Оценка за 30 дней</div>
+        </div>
+        <div class="text-[10px] text-slate-400 mb-3 bg-slate-50 rounded-lg px-3 py-2">
+          Анализ внутридневных паттернов: быстрое устранение (утро→вечер) повышает оценку,
+          ночные и выходные аварии — снижают. Чем меньше жителей без ресурсов в вечернее и ночное время, тем выше рейтинг.
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          ${effRows.map(e => {
+            const gc = gradeColors[e.grade] || gradeColors.C;
+            const m = e.metrics || {};
+            const scoreW = Math.round(e.score * 10);
+            return `<div class="rounded-xl border ${gc.border} ${gc.bg} p-3 flex gap-3 items-start">
+              <div class="flex flex-col items-center flex-shrink-0">
+                <span class="${gc.text} text-2xl font-bold leading-none">${e.grade}</span>
+                <span class="text-[10px] ${gc.text} font-semibold mt-0.5">${e.score}/10</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-semibold text-slate-700 truncate">${e.district.replace(/ район$/, '')}</div>
+                <div class="w-full h-1.5 bg-white/60 rounded-full mt-1.5 overflow-hidden">
+                  <div class="h-full rounded-full" style="width:${scoreW}%;background:${gc.bar}"></div>
+                </div>
+                <div class="mt-1.5 text-[10px] text-slate-600 leading-relaxed">
+                  ${m.outage_days > 0 ? `
+                    Аварийных дней: ${m.outage_days}
+                    ${m.resolved_same_day > 0 ? ` · устранено за день: ${m.resolved_same_day}` : ''}
+                    ${m.evening_days > 0 ? ` · <span class="text-orange-600">вечерних: ${m.evening_days}</span>` : ''}
+                    ${m.night_days > 0 ? ` · <span class="text-red-600">ночных: ${m.night_days}</span>` : ''}
+                    ${m.weekend_days > 0 ? ` · <span class="text-violet-600">выходных: ${m.weekend_days}</span>` : ''}
+                  ` : '<span class="text-emerald-600">Без аварийных отключений</span>'}
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="mt-3 flex flex-wrap gap-3 text-[10px] text-slate-400">
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> A: отлично (8-10)</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-400"></span> B: хорошо (6-8)</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-yellow-400"></span> C: удовлетворительно (4-6)</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-orange-400"></span> D: плохо (2-4)</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-400"></span> F: критично (0-2)</span>
+        </div>
+      </div>` : '';
+
     // ── District filter chips ───────────────────────────────────────────
     const distChips = dists.length ? `
       <div class="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-1.5">
@@ -3499,7 +3558,7 @@ async function _showPowerHistory(districtFilter) {
         <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
           <div class="flex flex-col">
             <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">История отключений ЖКХ · 30 дней</span>
-            <span class="text-xs text-slate-400 mt-0.5">Обновлено: ${ts} · данные accumulate при каждом скрапе (каждые 30 мин)</span>
+            <span class="text-xs text-slate-400 mt-0.5">Обновлено: ${ts} · данные накапливаются при каждом скрапе (каждые 30 мин)</span>
           </div>
           <button onclick="askNow('статус отключений')" class="text-[10px] bg-slate-100 text-slate-500 hover:bg-slate-200 rounded-full px-3 py-1 transition-colors">
             ← Текущий статус
@@ -3509,7 +3568,9 @@ async function _showPowerHistory(districtFilter) {
         ${kpiHtml}
         ${barChartHtml}
         ${distTableHtml}
+        ${effHtml}
       </div>`;
+    resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     resultEl.innerHTML = `<div class="text-center text-red-500 py-8">Ошибка загрузки истории: ${e.message}</div>`;
   }
