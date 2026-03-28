@@ -4708,9 +4708,11 @@ async function loadFeedbackList() {
           <span class="text-lg flex-shrink-0 mt-0.5">${catIcon}</span>
           <div class="flex-1 min-w-0">
             <div class="text-sm text-slate-700 leading-snug">${esc(i.text)}</div>
-            <div class="flex items-center gap-2 mt-2 text-[10px] text-slate-400">
+            <div class="flex items-center flex-wrap gap-x-2 gap-y-0.5 mt-2 text-[10px] text-slate-400">
               <span>#${i.id}</span>
               <span>${ts}</span>
+              ${i.name ? `<span class="text-slate-600 font-medium">👤 ${esc(i.name)}</span>` : ''}
+              ${i.city ? `<span>🏙 ${esc(i.city)}</span>` : ''}
               <span>${i.source === 'voice' ? '🎙️ голос' : '⌨️ текст'}</span>
               <span class="${sc.text} font-medium">${sc.icon} ${sc.label}</span>
             </div>

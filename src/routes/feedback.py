@@ -25,6 +25,8 @@ class FeedbackIn(BaseModel):
     text: str
     category: str = "suggestion"  # bug | suggestion | question
     source: str = "web"           # web | voice
+    name: str = ""                # имя отправителя
+    city: str = ""                # город
 
 
 def _load() -> list[dict]:
@@ -59,6 +61,8 @@ def submit_feedback(body: FeedbackIn) -> dict:
         "text": text,
         "category": body.category,
         "source": body.source,
+        "name": body.name.strip()[:50],
+        "city": body.city.strip()[:50],
         "status": "new",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }

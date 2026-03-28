@@ -256,11 +256,11 @@
   <footer class="text-center text-xs text-slate-400 pb-4 space-y-1">
     <p class="font-medium text-slate-500">Сигма — Студия Интеграции Междугородней Аналитики</p>
     <p>
-      <a href="/studio" target="_blank" class="hover:text-blue-500 transition-colors font-medium">Studio ↗</a> ·
+      <a href="/studio" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Studio ↗</a> ·
       <a href="/display" target="_blank" class="hover:text-blue-500 transition-colors">Презентация ↗</a> ·
       <a href="https://safety-builder.streamlit.app/" target="_blank" class="hover:text-blue-500 transition-colors">Демо «ИИ-помощник строителя» ↗</a> ·
       <a href="https://github.com/Barbashin1970/NSK_OpenData_Bot" target="_blank" class="hover:text-blue-500 transition-colors">GitHub ↗</a> ·
-      <button onclick="_openFeedback()" class="hover:text-blue-500 transition-colors cursor-pointer">💬 Жалобы и предложения</button> ·
+      <button onclick="_openFeedback()" class="font-bold text-slate-600 hover:text-blue-600 transition-colors cursor-pointer">💬 Жалобы и предложения</button> ·
       <span id="footerTime"></span>
     </p>
   </footer>
@@ -297,6 +297,14 @@
             <strong>Что</strong> произошло? <strong>Где</strong> на странице? <strong>Когда</strong> (после какого действия)?
             — ответьте на эти вопросы и мы это реализуем или починим!
           </div>
+        </div>
+
+        <!-- Name + City -->
+        <div class="px-5 pt-3 flex gap-2">
+          <input id="fbName" type="text" maxlength="50" placeholder="Ваше имя"
+            class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <input id="fbCity" type="text" maxlength="50" placeholder="Город"
+            class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
         </div>
 
         <!-- Text input -->
@@ -340,6 +348,9 @@
     document.getElementById('fbText').value = '';
     document.getElementById('fbCharCount').textContent = '0 / 2000';
     document.getElementById('fbSource').textContent = '';
+    // Автозаполнение города из текущего профиля
+    const cityInput = document.getElementById('fbCity');
+    if (cityInput && !cityInput.value) cityInput.value = _cityCfg?.city_name || '';
     _fbCat = 'suggestion';
     document.querySelectorAll('.fb-cat-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.cat === 'suggestion');
@@ -471,7 +482,13 @@
       const r = await fetch('/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, category: _fbCat, source: document.getElementById('fbSource').textContent.includes('голос') ? 'voice' : 'web' }),
+        body: JSON.stringify({
+          text,
+          category: _fbCat,
+          source: document.getElementById('fbSource').textContent.includes('голос') ? 'voice' : 'web',
+          name: (document.getElementById('fbName')?.value || '').trim(),
+          city: (document.getElementById('fbCity')?.value || '').trim(),
+        }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
       document.getElementById('fbText').value = '';
@@ -1611,6 +1628,7 @@ const _CII_TOPIC_SECTION = {
 // Запоминаем последний успешный запрос и его параметры.
 // Короткие команды типа «в Центральном», «на карте», «топ 5» уточняют предыдущий.
 const _drillCtx = { raw: '', topic: '', district: '', op: '' };
+let _drillDownActive = false;  // флаг: запрос сформирован drill-down, не перехватывать
 
 function _updateDrillCtx(data, query) {
   if (!data || data.error) return;
@@ -1662,6 +1680,7 @@ function _stripDrillCtx(raw) {
 }
 
 function _tryDrillDown(raw) {
+  if (_drillDownActive) { _drillDownActive = false; return false; }  // пропускаем свой же запрос
   if (!_drillCtx.raw) return false;  // нет контекста
   const ql = raw.toLowerCase().trim();
 
@@ -1675,14 +1694,13 @@ function _tryDrillDown(raw) {
       if (!baseQ && _drillCtx.topic) baseQ = _drillCtx.topic.replace(/_/g, ' ');
       const newQ = baseQ + ' в ' + found.val;
       document.getElementById('queryInput').value = newQ;
-      ask();
+      _drillDownActive = true; ask();
       return true;
     }
   }
 
   // 2. «На карте» / «покажи на карте» — программно нажимаем кнопку карты
   if (/(?:на\s+карт|покажи.*карт|отобра.*карт|карту)/i.test(ql)) {
-    // Ищем кнопку с onclick="loadMap" или текстом "карт"
     const btns = document.querySelectorAll('#resultArea button, #resultArea [onclick]');
     for (const btn of btns) {
       const oc = btn.getAttribute('onclick') || '';
@@ -1697,13 +1715,12 @@ function _tryDrillDown(raw) {
   // 3. «Топ 5» / «первые 10» — уточняем количество, сохраняя район
   const topMatch = ql.match(/(?:топ|первые|покажи)\s*(\d+)/i);
   if (topMatch && _drillCtx.topic) {
-    // Извлекаем район из текущего контекста
     const distInCtx = _drillCtx.raw.match(/\s+(в\s+[а-яёА-ЯЁa-zA-Z]+[а-яёА-ЯЁ]*\s*(?:район[а-яёА-ЯЁ]*|р-н[а-яёА-ЯЁ]*))/i) || _drillCtx.raw.match(/\s+(в\s+Кольцово)/i);
     const distPart = distInCtx ? distInCtx[1] : '';
     let baseQ = _stripDrillCtx(_drillCtx.raw);
     const newQ = `топ ${topMatch[1]} ${baseQ}${distPart ? ' ' + distPart : ''}`;
     document.getElementById('queryInput').value = newQ;
-    ask();
+    _drillDownActive = true; ask();
     return true;
   }
 
@@ -1714,7 +1731,7 @@ function _tryDrillDown(raw) {
     let baseQ = _stripDrillCtx(_drillCtx.raw);
     const newQ = `сколько ${baseQ}${distPart ? ' ' + distPart : ''}`;
     document.getElementById('queryInput').value = newQ;
-    ask();
+    _drillDownActive = true; ask();
     return true;
   }
 
@@ -1723,7 +1740,7 @@ function _tryDrillDown(raw) {
     let baseQ = _stripDrillCtx(_drillCtx.raw);
     if (!baseQ && _drillCtx.topic) baseQ = _drillCtx.topic.replace(/_/g, ' ');
     document.getElementById('queryInput').value = baseQ;
-    ask();
+    _drillDownActive = true; ask();
     return true;
   }
 
