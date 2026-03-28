@@ -110,6 +110,7 @@ def _save_power_daily_archive(conn) -> None:
             FROM power_outages
             WHERE STRFTIME(CAST(scraped_at AS TIMESTAMP), '%Y-%m-%d')
                   = STRFTIME(CURRENT_DATE, '%Y-%m-%d')
+              AND district != 'all'
             GROUP BY day, district, utility
             ON CONFLICT (day, district, utility) DO UPDATE SET
                 active_houses   = excluded.active_houses,
@@ -423,13 +424,16 @@ def query_power_history(
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
 
         # --- Recent: aggregate from power_outages (raw snapshots) ---
-        r_wheres = [
-            f"STRFTIME(CAST(scraped_at AS TIMESTAMP), '%Y-%m-%d') >= '{cutoff}'"
-        ]
+        r_wheres = ["STRFTIME(CAST(scraped_at AS TIMESTAMP), '%Y-%m-%d') >= ?"]
+        r_params: list = [cutoff]
+        # Исключаем артефакт "all" — это не район
+        r_wheres.append("district != 'all'")
         if district_filter:
-            r_wheres.append(f"district ILIKE '%{district_filter}%'")
+            r_wheres.append("district ILIKE ?")
+            r_params.append(f"%{district_filter}%")
         if utility_filter:
-            r_wheres.append(f"utility ILIKE '%{utility_filter}%'")
+            r_wheres.append("utility ILIKE ?")
+            r_params.append(f"%{utility_filter}%")
         r_where = "WHERE " + " AND ".join(r_wheres)
 
         sql_recent = f"""
@@ -446,17 +450,21 @@ def query_power_history(
             {r_where}
             GROUP BY day, district, utility
         """
-        cur = conn.execute(sql_recent)
+        cur = conn.execute(sql_recent, r_params)
         cols = [d[0] for d in cur.description]
         recent = [dict(zip(cols, row)) for row in cur.fetchall()]
         recent_keys = {(r["day"], r["district"], r["utility"]) for r in recent}
 
         # --- Archive: fill gaps from power_daily_archive ---
-        a_wheres = [f"day >= '{cutoff}'"]
+        a_wheres = ["day >= ?"]
+        a_params: list = [cutoff]
+        a_wheres.append("district != 'all'")
         if district_filter:
-            a_wheres.append(f"district ILIKE '%{district_filter}%'")
+            a_wheres.append("district ILIKE ?")
+            a_params.append(f"%{district_filter}%")
         if utility_filter:
-            a_wheres.append(f"utility ILIKE '%{utility_filter}%'")
+            a_wheres.append("utility ILIKE ?")
+            a_params.append(f"%{utility_filter}%")
         a_where = "WHERE " + " AND ".join(a_wheres)
 
         sql_archive = f"""
@@ -466,7 +474,7 @@ def query_power_history(
             FROM power_daily_archive
             {a_where}
         """
-        cur2 = conn.execute(sql_archive)
+        cur2 = conn.execute(sql_archive, a_params)
         cols2 = [d[0] for d in cur2.description]
         archive = [dict(zip(cols2, row)) for row in cur2.fetchall()]
 
