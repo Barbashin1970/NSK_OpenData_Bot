@@ -96,6 +96,7 @@ features:
 
   power_outages_url: "https://omskrts.ru/users/people/disconnections/"
   power_outages_base: "https://omskrts.ru"
+  power_outages_scraper: "omsk"  # omskrts.ru POST JSON API
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 # По одной точке на каждый округ — координаты центра округа.

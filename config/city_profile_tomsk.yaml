@@ -75,9 +75,11 @@ features:
     - "tof"
     - "аэровокзал"
 
-  # Отключения ЖКХ — публичный источник для Томска не определён
-  power_outages_url: ""
-  power_outages_base: ""
+  # Отключения ЖКХ — testo.tomsk.ru + gogov.ru fallback
+  power_outages_url: "https://testo.tomsk.ru/"
+  power_outages_base: "https://testo.tomsk.ru"
+  power_outages_scraper: "gogov"  # fallback: gogov.ru/hotwater/tomsk
+  power_outages_gogov_slug: "tomsk"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:

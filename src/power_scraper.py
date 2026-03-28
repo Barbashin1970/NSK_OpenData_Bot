@@ -22,7 +22,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-from .city_config import get_feature as _get_city_feature, get_city_id as _get_city_id
+from .city_config import get_feature as _get_city_feature, get_city_id as _get_city_id  # noqa: F401
 from .constants import SCRAPER_HEADERS, SCRAPER_TIMEOUT
 
 log = logging.getLogger(__name__)
@@ -223,10 +223,29 @@ def fetch_outages_detail(
 def fetch_all_outages() -> list[dict[str, Any]]:
     """Основная функция получения данных об отключениях.
 
-    Диспетчеризует по city_id: каждый город может иметь свой скрапер.
-    По умолчанию используется новосибирский парсер (051.novo-sibirsk.ru).
+    Диспетчеризует по полю power_outages_scraper из city_profile.yaml.
+    Если поле не задано — fallback по city_id для обратной совместимости.
     """
+    scraper = _get_city_feature("power_outages_scraper", "")
     city = _get_city_id()
+
+    # Явный скрапер из профиля (приоритет)
+    if scraper == "nsk":
+        return scrape_summary()
+    if scraper == "omsk":
+        from .power_scraper_omsk import fetch_all_outages as _omsk_fetch
+        return _omsk_fetch()
+    if scraper == "khabarovsk":
+        from .power_scraper_khabarovsk import fetch_all_outages as _khv_fetch
+        return _khv_fetch()
+    if scraper == "spb":
+        from .power_scraper_spb import fetch_all_outages as _spb_fetch
+        return _spb_fetch()
+    if scraper == "gogov":
+        from .power_scraper_gogov import fetch_all_outages as _gogov_fetch
+        return _gogov_fetch()
+
+    # Fallback по city_id (обратная совместимость)
     if city == "omsk":
         from .power_scraper_omsk import fetch_all_outages as _omsk_fetch
         return _omsk_fetch()
@@ -236,5 +255,12 @@ def fetch_all_outages() -> list[dict[str, Any]]:
     if city == "spb":
         from .power_scraper_spb import fetch_all_outages as _spb_fetch
         return _spb_fetch()
-    # Дефолт: Новосибирск и любой город с совместимым 051-сайтом
-    return scrape_summary()
+
+    # Если есть URL — пробуем НСК-парсер (051-совместимый сайт)
+    url = _get_city_feature("power_outages_url", "")
+    if url:
+        return scrape_summary()
+
+    # Нет скрапера и нет URL — возвращаем пустой результат
+    log.warning(f"Город {city}: нет скрапера ЖКХ (power_outages_scraper не задан)")
+    return []

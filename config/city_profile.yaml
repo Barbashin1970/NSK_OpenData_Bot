@@ -172,6 +172,10 @@ features:
   # Отключения ЖКХ — городской сайт 051
   power_outages_url: "http://051.novo-sibirsk.ru/sitepages/off.aspx"
   power_outages_base: "http://051.novo-sibirsk.ru"
+  power_outages_scraper: "nsk"  # 051.novo-sibirsk.ru HTML scraping
+  # Кольцово: электроснабжение — eseti.ru (ASP.NET, требует Playwright)
+  # Кольцово: водоснабжение — через 051 (Советский район, НФС-5)
+  eseti_url: "https://www.eseti.ru/ShutDownsInf/disconnection.aspx"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 # По одной точке на каждый район — координаты центра района.

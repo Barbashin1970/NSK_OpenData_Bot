@@ -77,6 +77,8 @@ features:
 
   power_outages_url: ""
   power_outages_base: ""
+  power_outages_scraper: "gogov"  # fallback: gogov.ru/hotwater/vladivostok
+  power_outages_gogov_slug: "vladivostok"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:

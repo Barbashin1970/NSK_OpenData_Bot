@@ -97,8 +97,10 @@ features:
     - "новокузнецк аэропорт"
     - "спиченково"
 
-  power_outages_url: "https://www.kuzbassenergo.ru/consumers/disconnections/"
-  power_outages_base: "https://www.kuzbassenergo.ru"
+  power_outages_url: "https://skek.ru/potrebitelyam/planovye-otklyucheniya/"
+  power_outages_base: "https://skek.ru"
+  power_outages_scraper: "gogov"  # fallback: gogov.ru/hotwater/kemerovo
+  power_outages_gogov_slug: "kemerovo"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 # По одной точке на каждый район — координаты центра района.

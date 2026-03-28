@@ -73,8 +73,10 @@ features:
     - "ovb"
     - "аэровокзал"
 
-  power_outages_url: ""
-  power_outages_base: ""
+  # Отключения ЖКХ — данные через 051.novo-sibirsk.ru (Советский район)
+  power_outages_url: "http://051.novo-sibirsk.ru/sitepages/off.aspx"
+  power_outages_base: "http://051.novo-sibirsk.ru"
+  power_outages_scraper: "nsk"  # использует новосибирский скрапер (Советский район)
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 # Open-Meteo grid ~11 км — все 4 зоны Академгородка (~2 км) попадают в одну

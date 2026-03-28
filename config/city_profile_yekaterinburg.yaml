@@ -83,6 +83,8 @@ features:
 
   power_outages_url: "https://netvody.com/ekaterinburg"
   power_outages_base: "https://netvody.com"
+  power_outages_scraper: "gogov"  # fallback: gogov.ru/hotwater/ekaterinburg
+  power_outages_gogov_slug: "ekaterinburg"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:

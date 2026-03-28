@@ -81,8 +81,10 @@ features:
     - "kja"
     - "аэровокзал"
 
-  power_outages_url: "http://www.admkrsk.ru/citytoday/municipal/Pages/default.aspx"
-  power_outages_base: "http://www.admkrsk.ru"
+  power_outages_url: "https://krastek.ru/disconnections/"
+  power_outages_base: "https://krastek.ru"
+  power_outages_scraper: "gogov"  # fallback: gogov.ru/hotwater/krasnoyarsk
+  power_outages_gogov_slug: "krasnoyarsk"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:

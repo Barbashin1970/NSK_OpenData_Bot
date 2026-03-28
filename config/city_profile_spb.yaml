@@ -109,6 +109,7 @@ features:
 
   power_outages_url: "https://rosseti-lenenergo.ru/planned_work/"
   power_outages_base: "https://rosseti-lenenergo.ru"
+  power_outages_scraper: "spb"  # rosseti-lenenergo.ru HTML scraping
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:

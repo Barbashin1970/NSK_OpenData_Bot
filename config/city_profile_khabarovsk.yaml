@@ -75,6 +75,7 @@ features:
 
   power_outages_url: "https://www.dvhab.ru/city/%D0%BE%D1%82%D0%BA%D0%BB%D1%8E%D1%87%D0%B5%D0%BD%D0%B8%D1%8F/"
   power_outages_base: "https://www.dvhab.ru"
+  power_outages_scraper: "khabarovsk"  # dvhab.ru HTML scraping
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:

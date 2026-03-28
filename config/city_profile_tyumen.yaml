@@ -73,6 +73,8 @@ features:
 
   power_outages_url: "https://dom.tyumen-city.ru/category/?guid=3cb02621-d202-4d0b-813b-0e571f980f15"
   power_outages_base: "https://dom.tyumen-city.ru"
+  power_outages_scraper: "gogov"  # fallback: gogov.ru/hotwater/tyumen
+  power_outages_gogov_slug: "tyumen"
 
 # ── Станции экологического мониторинга ───────────────────────────────────────
 ecology_stations:
