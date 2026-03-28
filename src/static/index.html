@@ -1648,11 +1648,18 @@ function _powerHistorySkeleton(districtFilter) {
 }
 
 // ─── Ecology Report (30-day dashboard) ────────────────────────────────────────
+let _ecoReportAbort = null;
+
 async function _showEcoReport(districtFilter) {
   const el = document.getElementById('resultArea');
   _pushView('ecoReport');
   el.className = 'fade-in';
   const distLabel = districtFilter ? districtFilter.replace(/\s*район$/i, '') : null;
+
+  // Отменяем предыдущие запросы
+  if (_ecoReportAbort) _ecoReportAbort.abort();
+  _ecoReportAbort = new AbortController();
+  const signal = _ecoReportAbort.signal;
 
   // ── Skeleton UI — мгновенный отклик, данные подгружаются ──────────────
   el.innerHTML = _ecoReportSkeleton(distLabel);
@@ -1661,9 +1668,9 @@ async function _showEcoReport(districtFilter) {
   try {
     const dq = districtFilter ? `&district=${encodeURIComponent(districtFilter)}` : '';
     const [histR, excR, statusR] = await Promise.all([
-      fetch('/ecology/history?days=30' + dq),
-      fetch('/ecology/aqi-exceedances?days=30&aqi_threshold=40' + dq),
-      fetch('/ecology/status' + (districtFilter ? '?district=' + encodeURIComponent(districtFilter) : '')),
+      fetch('/ecology/history?days=30' + dq, { signal }),
+      fetch('/ecology/aqi-exceedances?days=30&aqi_threshold=40' + dq, { signal }),
+      fetch('/ecology/status' + (districtFilter ? '?district=' + encodeURIComponent(districtFilter) : ''), { signal }),
     ]);
     if (!histR.ok || !excR.ok || !statusR.ok) {
       const bad = [histR, excR, statusR].find(r => !r.ok);
@@ -1973,6 +1980,7 @@ async function _showEcoReport(districtFilter) {
         </div>
       </div>`;
   } catch (e) {
+    if (e.name === 'AbortError') return;
     console.error('Eco report error:', e);
     el.innerHTML = `<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка загрузки экологического отчёта: ${e.message || e}</div>`;
   }
@@ -3565,11 +3573,18 @@ function renderPower(data) {
 }
 
 // ─── POWER HISTORY (30 дней) ──────────────────────────────────────────────────
+let _powerHistoryAbort = null;  // AbortController для отмены предыдущих запросов
+
 async function _showPowerHistory(districtFilter) {
   const resultEl = document.getElementById('resultArea');
   if (!resultEl) return;
   _pushView('powerHistory');
   resultEl.classList.remove('hidden');
+
+  // Отменяем предыдущие запросы (если пользователь кликнул быстро)
+  if (_powerHistoryAbort) _powerHistoryAbort.abort();
+  _powerHistoryAbort = new AbortController();
+  const signal = _powerHistoryAbort.signal;
 
   const dq = districtFilter ? `&district=${encodeURIComponent(districtFilter)}` : '';
   // ── Skeleton UI — мгновенный отклик ──────────────────────────────────
@@ -3577,10 +3592,14 @@ async function _showPowerHistory(districtFilter) {
 
   try {
     const [dayR, distR, effR] = await Promise.all([
-      fetch(`/power/history?days=30&group_by=day${dq}`),
-      fetch(`/power/history?days=30&group_by=district`),
-      fetch('/power/efficiency?days=30'),
+      fetch(`/power/history?days=30&group_by=day${dq}`, { signal }),
+      fetch(`/power/history?days=30&group_by=district`, { signal }),
+      fetch('/power/efficiency?days=30', { signal }),
     ]);
+    if (!dayR.ok || !distR.ok || !effR.ok) {
+      const bad = [dayR, distR, effR].find(r => !r.ok);
+      throw new Error(`HTTP ${bad.status}: ${bad.statusText}`);
+    }
     const dayData = await dayR.json();
     const distData = await distR.json();
     const effData = await effR.json();
@@ -3792,6 +3811,7 @@ async function _showPowerHistory(districtFilter) {
       </div>`;
     resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
+    if (e.name === 'AbortError') return;  // пользователь кликнул другой район — игнорируем
     resultEl.innerHTML = `<div class="text-center text-red-500 py-8">Ошибка загрузки истории: ${e.message}</div>`;
   }
 }

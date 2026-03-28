@@ -2,6 +2,7 @@
 
 import logging
 import re as _re
+import threading
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -21,6 +22,10 @@ from ..query_log import log_query as _log_query
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Мьютекс для предотвращения одновременного scrape+write в DuckDB
+# (3 параллельных запроса из фронта все вызывают is_power_stale → upsert)
+_power_update_lock = threading.Lock()
 
 
 # ── Метро-подсказки для транзитных маршрутов ──────────────────────────────────
@@ -1108,24 +1113,31 @@ def get_power_history(
         query_power_history_by_day, query_power_history_by_district,
         get_power_meta,
     )
-    # Auto-update if stale
-    if is_power_stale():
+    # Auto-update if stale (с мьютексом — только один поток обновляет)
+    if is_power_stale() and _power_update_lock.acquire(blocking=False):
         try:
             from ..power_scraper import fetch_all_outages
             upsert_outages(fetch_all_outages())
         except Exception as e:
-            logging.getLogger(__name__).error("power history auto-update: %s", e)
+            log.error("power history auto-update: %s", e)
+        finally:
+            _power_update_lock.release()
 
-    if group_by == "district":
-        rows = query_power_history_by_district(utility_filter=utility, days=days)
-        columns = ["district", "active_houses", "planned_houses", "days_with_outages"]
-    else:
-        rows = query_power_history_by_day(
-            district_filter=district, utility_filter=utility, days=days,
-        )
-        columns = ["day", "active_houses", "planned_houses", "active_records", "planned_records"]
+    try:
+        if group_by == "district":
+            rows = query_power_history_by_district(utility_filter=utility, days=days)
+            columns = ["district", "active_houses", "planned_houses", "days_with_outages"]
+        else:
+            rows = query_power_history_by_day(
+                district_filter=district, utility_filter=utility, days=days,
+            )
+            columns = ["day", "active_houses", "planned_houses", "active_records", "planned_records"]
 
-    meta = get_power_meta(utility_filter=utility, district_filter=district)
+        meta = get_power_meta(utility_filter=utility, district_filter=district)
+    except Exception as e:
+        log.error("power history query error: %s", e)
+        rows, columns, meta = [], [], {}
+
     return {
         "operation": "POWER_HISTORY_30D",
         "days": days,
@@ -1157,14 +1169,21 @@ def get_power_efficiency(
     - Высокая нагрузка (домов×часов) = штраф
     """
     from ..power_cache import query_power_efficiency, is_power_stale, upsert_outages
-    if is_power_stale():
+    if is_power_stale() and _power_update_lock.acquire(blocking=False):
         try:
             from ..power_scraper import fetch_all_outages
             upsert_outages(fetch_all_outages())
         except Exception as e:
-            logging.getLogger(__name__).error("power efficiency auto-update: %s", e)
+            log.error("power efficiency auto-update: %s", e)
+        finally:
+            _power_update_lock.release()
 
-    rows = query_power_efficiency(days=days)
+    try:
+        rows = query_power_efficiency(days=days)
+    except Exception as e:
+        log.error("power efficiency query error: %s", e)
+        rows = []
+
     return {
         "operation": "POWER_EFFICIENCY",
         "days": days,
