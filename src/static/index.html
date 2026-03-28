@@ -971,13 +971,14 @@ async function _fetchDashData() {
   };
 }
 
-function _renderDashFromData(dashEl, power, eco, risks, trafficData, transit, isStale) {
+async function _renderDashFromData(dashEl, power, eco, risks, trafficData, transit, isStale) {
   const staleIndicator = isStale
     ? '<div class="flex items-center gap-1.5 text-[10px] text-sky-500 mb-1"><div class="animate-spin w-2.5 h-2.5 border border-sky-400 border-t-transparent rounded-full"></div> обновление…</div>'
     : '';
-  dashEl.innerHTML = staleIndicator + (currentRole === 'mayor'
-    ? renderMayorDashboard(power, eco, risks, trafficData)
-    : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData));
+  const dashContent = currentRole === 'mayor'
+    ? await renderMayorDashboard(power, eco, risks, trafficData)
+    : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData);
+  dashEl.innerHTML = staleIndicator + dashContent;
   _restoreDashCollapse();
   // Скрыть info-карточку "панель загружается…" после рендера дашборда
   const ra = document.getElementById('resultArea');
@@ -1375,7 +1376,7 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
     </div>`;
 }
 
-function renderMayorDashboard(power, eco, risks, trafficData) {
+async function renderMayorDashboard(power, eco, risks, trafficData) {
   const pm = power?.power_meta || {};
   const activeH  = pm.active_houses  || 0;
   const plannedH = pm.planned_houses || 0;
@@ -1509,31 +1510,54 @@ function renderMayorDashboard(power, eco, risks, trafficData) {
   const riskBg = riskCount === 0 ? 'bg-emerald-50/50' : riskCount <= 1 ? 'bg-amber-50/40' : 'bg-red-50/30';
   const riskBorder = riskCount === 0 ? 'border-emerald-200' : riskCount <= 1 ? 'border-amber-200' : 'border-red-200';
 
-  const riskBlock = `
-    <div class="${riskBg} rounded-2xl border ${riskBorder} overflow-hidden">
-      <div class="px-4 py-2.5 border-b border-white/60">
-        <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">⚠️ Риски и угрозы</span>
-      </div>
-      <div class="px-4 py-3">
-        ${riskCount === 0
-          ? `<div class="text-center py-2">
-              <div class="text-2xl mb-1">✅</div>
-              <div class="text-xs text-emerald-600 font-medium">Угроз не обнаружено</div>
-            </div>`
-          : `<div class="space-y-2">
-              ${riskItems.slice(0, 3).map(r => {
-                const isCrit = r.severity === 'critical';
-                return `<div class="flex items-start gap-2 cursor-pointer hover:opacity-80" onclick="askNow('риски для жизни в городе')">
-                  <span class="text-sm flex-shrink-0 mt-0.5">${r.icon||'⚠️'}</span>
-                  <div class="min-w-0">
-                    <div class="text-xs font-semibold ${isCrit ? 'text-red-700' : 'text-amber-700'} leading-tight">${esc(r.title)}</div>
-                    <div class="text-[10px] text-slate-400 mt-0.5">${esc(r.metrics||'')}</div>
-                  </div>
-                </div>`;
-              }).join('')}
-            </div>`}
-      </div>
-    </div>`;
+  // ▸ Бюджет (вместо рисков — они дублируют сигнальную полоску)
+  const _budgetCategories = ['🏫 Образование','🏗️ Экономика','🔧 ЖКХ','👥 Соцполитика','🏛️ Госвопросы','⚽ Спорт','🎭 Культура','💳 Долг'];
+  const _citySlug = _cityCfg?.city_id || 'novosibirsk';
+  let budgetBlock = '';
+  try {
+    const bR = await fetch('/budget/' + _citySlug);
+    if (bR.ok) {
+      const bd = await bR.json();
+      const fmtB = v => v >= 1000 ? (v/1000).toFixed(1) + ' млрд' : Math.round(v) + ' млн';
+      budgetBlock = `
+        <div class="bg-amber-50/50 rounded-2xl border border-amber-200 overflow-hidden cursor-pointer" onclick="_showBudget('${_citySlug}')">
+          <div class="px-4 py-2.5 flex justify-between items-center border-b border-white/60">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">💰 Бюджет ${bd.year}</span>
+            <span class="text-[10px] text-blue-600 hover:underline">Подробнее</span>
+          </div>
+          <div class="px-4 py-3">
+            <div class="flex items-baseline gap-2 mb-2">
+              <div class="text-2xl font-black text-slate-700 leading-none">${fmtB(bd.total_expense_mln)}</div>
+              <div class="text-[10px] text-slate-500">расходы</div>
+            </div>
+            <div class="space-y-1">
+              ${bd.expenses.slice(0,5).map(e =>
+                `<div class="flex items-center gap-1.5 text-[10px]">
+                  <span class="w-3 text-center">${e.icon}</span>
+                  <span class="flex-1 text-slate-600 truncate">${e.category}</span>
+                  <span class="font-bold text-slate-700">${e.pct}%</span>
+                </div>`
+              ).join('')}
+            </div>
+          </div>
+        </div>`;
+    }
+  } catch(e) {}
+  if (!budgetBlock) {
+    budgetBlock = `
+      <div class="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden">
+        <div class="px-4 py-2.5 border-b border-slate-100">
+          <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">💰 Бюджет</span>
+        </div>
+        <div class="px-4 py-4 text-center">
+          <div class="text-[10px] text-slate-400 mb-2">Статьи расходов</div>
+          <div class="space-y-1 text-[10px] text-slate-500">
+            ${_budgetCategories.map(c => `<div>${c}</div>`).join('')}
+          </div>
+          <div class="mt-3 text-[10px] text-blue-500 cursor-pointer" onclick="_showBudget()">Добавьте данные →</div>
+        </div>
+      </div>`;
+  }
 
   const ts = new Date().toLocaleString('ru-RU', {day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit'});
   return `
@@ -1550,7 +1574,7 @@ function renderMayorDashboard(power, eco, risks, trafficData) {
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         ${pwrBlock}
         ${ecoBlock}
-        ${riskBlock}
+        ${budgetBlock}
       </div>
     </div>`;
 }
@@ -3511,6 +3535,7 @@ function renderEcoIndex() {
         Источник: Росприроднадзор (2-ТП «Воздух»), ГИБДД/Росстат, Яндекс.Пробки.
         Рейтинги 1–2: стационарные источники. Рейтинг 3: сводный (стационар + транспорт + метео).
         <span class="block mt-1 text-blue-400">💡 Кликните на город для детальной информации</span>
+        <button onclick="_showBudget()" class="mt-1 text-blue-500 hover:text-blue-700">💰 Бюджеты городов →</button>
       </div>
     </div>
     <div id="ecoCityDetail" class="hidden mt-4"></div>`;
@@ -4661,6 +4686,7 @@ async function _showPowerRating() {
             <div>Оценка складывается из: <strong>количества аварийных отключений</strong>, <strong>скорости устранения</strong> (утро→вечер),
             <strong>времени суток</strong> (вечерние/ночные аварии — штраф), <strong>выходных аварий</strong> и <strong>доли чистых дней</strong> (бонус).</div>
             <div>Данные обновляются каждые 30 мин. Клик по району → детальный отчёт за 30 дней.</div>
+            <div class="mt-1"><button onclick="_showBudget()" class="text-blue-500 hover:text-blue-700">💰 Сколько город тратит на ЖКХ →</button></div>
           </div>
         </div>
       </div>`;
@@ -6099,6 +6125,18 @@ async function renderTopics(topics) {
     </div>
   ` : '';
 
+  // Бюджет города
+  const budgetCard = `
+    <div class="topic-card bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-2xl p-4 cursor-pointer hover:shadow-md transition-all active:scale-95"
+         onclick="_showBudget()">
+      <div class="flex items-start justify-between mb-2">
+        <span class="text-2xl">💰</span>
+        <span class="bg-amber-100 text-amber-600 text-[10px] font-bold px-2 py-0.5 rounded-full">бюджет</span>
+      </div>
+      <div class="font-semibold text-sm text-slate-800 leading-tight">Бюджет города</div>
+      <div class="text-xs text-slate-500 mt-1">Доходы · расходы · сравнение</div>
+    </div>`;
+
   // Пользовательские аналитические отчёты
   let customCards = '';
   try {
@@ -6123,7 +6161,7 @@ async function renderTopics(topics) {
   } catch(e) {}
 
   // Порядок: ЦИИ → Новости → Экология → ЖКХ → Метро → Аэропорт → Камеры → Медицина → Строительство → Тепло → Выбросы → Рейтинг → Игра → Отчёты → остальные датасеты
-  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + metroCard + airportCard + camerasCard + medicalCard + constructionPermitsCard + constructionCommCard + heatSourcesCard + emissionsCard + ecoIndexCard + gameCard + customCards + cards + pendingCards;
+  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + metroCard + airportCard + camerasCard + medicalCard + constructionPermitsCard + constructionCommCard + heatSourcesCard + emissionsCard + ecoIndexCard + budgetCard + gameCard + customCards + cards + pendingCards;
 }
 
 // ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────
