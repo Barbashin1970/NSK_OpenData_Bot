@@ -30,5 +30,15 @@
     "source": "voice",
     "status": "new",
     "created_at": "2026-03-28T07:21:40.471821+00:00"
+  },
+  {
+    "id": 5,
+    "text": "проверка Как отправить данные из обратной связи",
+    "category": "suggestion",
+    "source": "voice",
+    "name": "",
+    "city": "Новосибирск",
+    "status": "new",
+    "created_at": "2026-03-28T11:22:39.516569+00:00"
   }
 ]
