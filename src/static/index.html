@@ -1387,6 +1387,13 @@ function _trySpecialQuery(raw) {
   }
   // ── [/PUZZLE GAME] ────────────────────────────────────────────────────────
 
+  // ── Рейтинг качества ЖКХ по районам ──────────────────────────────────────
+  if (/рейтинг\S*\s+(?:качеств\S*\s+)?(?:жкх|коммунал|услуг)|качеств\S*\s+(?:жкх|коммунал)\S*\s+(?:по\s+)?район/i.test(ql)) {
+    document.getElementById('loadingState').className = 'hidden';
+    _showPowerRating();
+    return true;
+  }
+
   // ── Экологический отчёт за месяц ──────────────────────────────────────────
   if (/(?:статистик\S*\s+(?:погод|эколог|воздух|aqi))|(?:(?:покажи|отчёт|отчет|сводк\S*)\s+(?:по\s+)?(?:экологи|погод|воздух|aqi))|(?:экологи\S*\s+за\s+(?:последн|мес|нед|\d+\s*дн))|(?:погод\S*\s+за\s+(?:последн|мес|нед|\d+\s*дн))|(?:(?:aqi|качеств\S+\s+воздуха)\s+за\s+(?:последн|мес))/i.test(ql)) {
     document.getElementById('loadingState').className = 'hidden';
@@ -3572,6 +3579,226 @@ function renderPower(data) {
   `;
 }
 
+// ─── POWER RATING — рейтинг качества ЖКХ по районам ──────────────────────────
+async function _showPowerRating() {
+  const el = document.getElementById('resultArea');
+  _pushView('powerRating');
+  el.className = 'fade-in';
+
+  // Skeleton
+  el.innerHTML = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-100">
+        <div class="text-xs font-semibold uppercase tracking-widest text-slate-400">Рейтинг качества ЖКХ по районам</div>
+        <div class="flex items-center gap-2 mt-1 text-xs text-sky-500">
+          <div class="animate-spin w-3.5 h-3.5 border-2 border-sky-400 border-t-transparent rounded-full"></div> загрузка данных…
+        </div>
+      </div>
+      <div class="p-5 space-y-3">
+        ${Array.from({length:10}, () => `<div class="h-10 w-full ${_skeletonPulse}"></div>`).join('')}
+      </div>
+    </div>`;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  try {
+    const [distR, effR] = await Promise.all([
+      fetch('/power/history?days=30&group_by=district'),
+      fetch('/power/efficiency?days=30'),
+    ]);
+    if (!distR.ok || !effR.ok) throw new Error(`HTTP ${(distR.ok ? effR : distR).status}`);
+    const distData = await distR.json();
+    const effData = await effR.json();
+    const dists = distData.rows || [];
+    const effRows = effData.rows || [];
+
+    // Пустые данные — город без ЖКХ-данных
+    if (!dists.length && !effRows.length) {
+      el.innerHTML = `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 px-5 py-4 flex items-center gap-3">
+            <span class="text-3xl">🏆</span>
+            <div>
+              <div class="font-semibold text-slate-800">Рейтинг качества ЖКХ по районам</div>
+              <div class="text-xs text-slate-500">${_cityCfg?.city_name || 'Город'}</div>
+            </div>
+          </div>
+          <div class="px-5 py-10 text-center">
+            <div class="text-4xl mb-3">📭</div>
+            <div class="text-sm text-slate-600 font-medium">Данные об отключениях ЖКХ пока не собраны</div>
+            <div class="text-xs text-slate-400 mt-2 max-w-md mx-auto">
+              Система начнёт собирать данные автоматически. Рейтинг появится после накопления статистики за несколько дней.
+              Для Новосибирска данные обновляются каждые 30 минут с портала 051.novo-sibirsk.ru.
+            </div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    // Объединяем данные: efficiency score + outage stats
+    const effMap = {};
+    effRows.forEach(e => { effMap[e.district] = e; });
+
+    // Сортируем по score (лучшие сверху)
+    const ranked = dists.map(d => ({
+      district: d.district,
+      active_houses: d.active_houses || 0,
+      planned_houses: d.planned_houses || 0,
+      days_with_outages: d.days_with_outages || 0,
+      eff: effMap[d.district] || null,
+    })).sort((a, b) => {
+      const sa = a.eff?.score ?? 0;
+      const sb = b.eff?.score ?? 0;
+      return sb - sa;  // лучший score сверху
+    });
+
+    const totalActive = ranked.reduce((s, r) => s + r.active_houses, 0);
+    const totalPlanned = ranked.reduce((s, r) => s + r.planned_houses, 0);
+    const avgScore = effRows.length ? +(effRows.reduce((s, e) => s + e.score, 0) / effRows.length).toFixed(1) : 0;
+    const bestDist = ranked[0];
+    const worstDist = ranked[ranked.length - 1];
+
+    const gradeColors = {
+      A: { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300', bar: '#34d399' },
+      B: { bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-300',   bar: '#4ade80' },
+      C: { bg: 'bg-yellow-100',  text: 'text-yellow-700',  border: 'border-yellow-200',  bar: '#facc15' },
+      D: { bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border-orange-200',  bar: '#fb923c' },
+      F: { bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-200',     bar: '#ef4444' },
+    };
+
+    const maxOutage = Math.max(1, ...ranked.map(r => r.active_houses));
+
+    const rowsHtml = ranked.map((r, i) => {
+      const e = r.eff;
+      const gc = gradeColors[e?.grade || 'C'];
+      const score = e?.score ?? 0;
+      const rank = i < 3 ? ['🥇','🥈','🥉'][i] : `${i+1}`;
+      const pctBar = Math.round(r.active_houses / maxOutage * 100);
+      const m = e?.metrics || {};
+      const cleanDays = m.clean_days ?? 0;
+
+      return `
+        <tr class="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer"
+            onclick="_showPowerHistory('${r.district.replace(/'/g, "\\'")}')">
+          <td class="py-3 px-3 text-center w-10">
+            <span class="text-sm">${rank}</span>
+          </td>
+          <td class="py-3 px-3">
+            <div class="flex items-center gap-2">
+              <span class="${gc.bg} ${gc.text} ${gc.border} border text-xs font-bold w-7 h-7 rounded-lg flex items-center justify-center">${e?.grade || '—'}</span>
+              <div>
+                <div class="text-sm font-medium text-slate-700">${esc(r.district)}</div>
+                <div class="text-[10px] text-slate-400">${score}/10 · ${cleanDays > 0 ? `<span class="text-emerald-600">${cleanDays} чистых дн.</span>` : '<span class="text-red-500">нет чистых дней</span>'}${m.resolved_same_day > 0 ? ` · устранено за день: ${m.resolved_same_day}` : ''}</div>
+              </div>
+            </div>
+          </td>
+          <td class="py-3 px-3 w-1/4">
+            <div class="flex items-center gap-2">
+              <div class="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div class="h-full rounded-full" style="width:${pctBar}%;background:${gc.bar}"></div>
+              </div>
+              <span class="text-xs font-semibold text-red-600 w-10 text-right">${r.active_houses}</span>
+            </div>
+          </td>
+          <td class="py-3 px-3 text-right text-xs text-amber-600 w-16">${r.planned_houses}</td>
+          <td class="py-3 px-3 text-right text-xs text-slate-500 w-16">${r.days_with_outages} дн.</td>
+        </tr>`;
+    }).join('');
+
+    // Общая оценка города
+    const cityGrade = avgScore >= 8 ? 'A' : avgScore >= 6 ? 'B' : avgScore >= 4 ? 'C' : avgScore >= 2 ? 'D' : 'F';
+    const cityGc = gradeColors[cityGrade];
+
+    el.innerHTML = `
+      <div class="space-y-4">
+        <!-- City overall -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 px-5 py-4 flex items-center gap-4">
+            <span class="text-3xl">🏆</span>
+            <div class="flex-1">
+              <div class="font-semibold text-slate-800">Рейтинг качества ЖКХ по районам</div>
+              <div class="text-xs text-slate-500">Анализ за 30 дней · данные ${_cityCfg?.city_name || 'города'}</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-center">
+                <div class="${cityGc.bg} ${cityGc.text} ${cityGc.border} border text-2xl font-bold w-12 h-12 rounded-xl flex items-center justify-center">${cityGrade}</div>
+                <div class="text-[10px] text-slate-400 mt-1">Город</div>
+              </div>
+              <div class="text-right">
+                <div class="text-lg font-bold text-slate-700">${avgScore}<span class="text-sm text-slate-400">/10</span></div>
+                <div class="text-[10px] text-slate-400">Средний балл</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- KPI strip -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100 border-b border-slate-100">
+            <div class="px-4 py-3 text-center">
+              <div class="text-2xl font-bold text-red-600">${totalActive.toLocaleString('ru-RU')}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Аварийных домов</div>
+            </div>
+            <div class="px-4 py-3 text-center">
+              <div class="text-2xl font-bold text-amber-600">${totalPlanned.toLocaleString('ru-RU')}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Плановых</div>
+            </div>
+            <div class="px-4 py-3 text-center">
+              <div class="text-2xl font-bold text-emerald-600">${bestDist ? esc(bestDist.district.replace(/ район$/, '')) : '—'}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Лучший район</div>
+            </div>
+            <div class="px-4 py-3 text-center">
+              <div class="text-2xl font-bold text-slate-600">${worstDist ? esc(worstDist.district.replace(/ район$/, '')) : '—'}</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Требует внимания</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rating table -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-5 py-3 border-b border-slate-100 flex justify-between items-center">
+            <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">По районам</span>
+            <span class="text-xs text-slate-400">Итого аварийных: <strong class="text-red-600">${totalActive.toLocaleString('ru-RU')}</strong> домов</span>
+          </div>
+          <table class="w-full">
+            <thead>
+              <tr class="text-left text-[10px] font-semibold uppercase text-slate-400 border-b border-slate-100">
+                <th class="px-3 py-2 w-10">#</th>
+                <th class="px-3 py-2">Район</th>
+                <th class="px-3 py-2 w-1/4">Аварийных домов</th>
+                <th class="px-3 py-2 text-right w-16">Плановых</th>
+                <th class="px-3 py-2 text-right w-16">Дней</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <div class="px-5 py-3 border-t border-slate-100 flex flex-wrap gap-3 text-[10px] text-slate-400">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> A: отлично</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-400"></span> B: хорошо</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-yellow-400"></span> C: удовлетворительно</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-orange-400"></span> D: плохо</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-400"></span> F: критично</span>
+            <button onclick="_showPowerHistory()" class="ml-auto text-xs text-blue-500 hover:text-blue-700">
+              📊 Отчёт за 30 дней →
+            </button>
+          </div>
+        </div>
+
+        <!-- Methodology -->
+        <div class="bg-slate-50 rounded-2xl border border-slate-200 px-5 py-4">
+          <div class="text-xs font-semibold text-slate-600 mb-2">📐 Методология оценки</div>
+          <div class="text-[11px] text-slate-500 leading-relaxed space-y-1">
+            <div>Оценка складывается из: <strong>количества аварийных отключений</strong>, <strong>скорости устранения</strong> (утро→вечер),
+            <strong>времени суток</strong> (вечерние/ночные аварии — штраф), <strong>выходных аварий</strong> и <strong>доли чистых дней</strong> (бонус).</div>
+            <div>Данные обновляются каждые 30 мин. Клик по району → детальный отчёт за 30 дней.</div>
+          </div>
+        </div>
+      </div>`;
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    el.innerHTML = `<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка загрузки рейтинга ЖКХ: ${e.message}</div>`;
+  }
+}
+
 // ─── POWER HISTORY (30 дней) ──────────────────────────────────────────────────
 let _powerHistoryAbort = null;  // AbortController для отмены предыдущих запросов
 
@@ -4561,6 +4788,7 @@ function renderInfo(_data) {
         { icon: '🔮', name: 'Газоснабжение',              q: 'отключения газа сейчас' },
         { icon: '📋', name: 'Плановые отключения',        q: 'плановые отключения на неделю' },
         { icon: '📈', name: 'История отключений',         q: 'история отключений за неделю' },
+        { icon: '🏆', name: 'Рейтинг ЖКХ по районам',    q: 'рейтинг качества жкх по районам' },
       ],
     },
     {
