@@ -286,9 +286,12 @@ def _load_saved_api_keys() -> None:
 
 @app.on_event("startup")
 def _seed_ecology_history() -> None:
-    """При старте заполняет ecology_daily_archive заглушками за последние 20 дней."""
+    """При старте: сначала загружает seed из git, потом заглушки для остальных дней."""
     try:
-        from .ecology_cache import seed_history_placeholder
+        from .ecology_cache import load_ecology_seed, seed_history_placeholder
+        loaded = load_ecology_seed()
+        if loaded:
+            logging.getLogger(__name__).info(f"ecology seed: загружено {loaded} записей из git")
         seed_history_placeholder(days=20, temp_c=-10.0)
     except Exception as e:
         logging.getLogger(__name__).warning(f"seed_ecology_history: {e}")

@@ -16,6 +16,7 @@ from .cache import _get_conn          # единственный _get_conn на 
 from .constants import (
     DATA_DIR, POWER_HISTORY_DAYS, POWER_TTL_MINUTES
 )
+from .rule_engine import rules as _rules
 
 log = logging.getLogger(__name__)
 
@@ -655,53 +656,59 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
                 if dow in (0, 6):
                     weekend_days += 1
 
-            # ── Расчёт score (0-10) ──────────────────────────────────────
-            score = 10.0
+            # ── Расчёт score (0-10) из YAML-регламента ──────────────────
+            cfg = _rules.get("power_rating_rules")
+            pen = cfg.get("penalties", {})
+            bon = cfg.get("bonuses", {})
+            gen = cfg.get("general", {})
 
-            # Штраф за вечерние аварии: чем больше дней с вечерними — тем хуже
+            score = float(gen.get("base_score", 10.0))
+
+            # Штраф за вечерние аварии
             evening_ratio = evening_days / total_days if total_days > 0 else 0
-            score -= evening_ratio * 3.0  # до -3
+            score -= evening_ratio * float(pen.get("evening_outages", {}).get("weight", 3.0))
 
-            # Штраф за ночные аварии (серьёзнее)
+            # Штраф за ночные аварии
             night_ratio = night_days / total_days if total_days > 0 else 0
-            score -= night_ratio * 4.0  # до -4
+            score -= night_ratio * float(pen.get("night_outages", {}).get("weight", 4.0))
 
             # Штраф за выходные аварии
             weekend_ratio = weekend_days / total_days if total_days > 0 else 0
-            score -= weekend_ratio * 1.5  # до -1.5
+            score -= weekend_ratio * float(pen.get("weekend_outages", {}).get("weight", 1.5))
 
-            # Бонус за быстрое устранение (утро → нет вечером)
+            # Бонус за быстрое устранение
             if total_days > 0:
                 resolution_rate = resolved_same_day / total_days
-                score += resolution_rate * 2.0  # до +2
+                score += resolution_rate * float(bon.get("same_day_resolution", {}).get("weight", 2.0))
 
-            # Бонус за чистые дни (без аварий) — чем больше, тем лучше
+            # Бонус за чистые дни
             clean_days = max(0, days - total_days)
             clean_ratio = clean_days / days if days > 0 else 0
-            score += clean_ratio * 2.0  # до +2 за 100% чистых дней
+            score += clean_ratio * float(bon.get("clean_days", {}).get("weight", 2.0))
 
             # Штраф за высокую нагрузку (house-hours)
             avg_house_hours = total_house_hours / total_days if total_days > 0 else 0
-            if avg_house_hours > 200:
-                score -= 1.5
-            elif avg_house_hours > 100:
-                score -= 1.0
-            elif avg_house_hours > 50:
-                score -= 0.5
+            load_thresholds = pen.get("high_load", {}).get("thresholds", [
+                {"above": 200, "penalty": 1.5},
+                {"above": 100, "penalty": 1.0},
+                {"above": 50, "penalty": 0.5},
+            ])
+            for lt in sorted(load_thresholds, key=lambda x: x["above"], reverse=True):
+                if avg_house_hours > lt["above"]:
+                    score -= lt["penalty"]
+                    break
 
-            score = max(0.0, min(10.0, round(score, 1)))
+            score = max(
+                float(gen.get("min_score", 0.0)),
+                min(float(gen.get("max_score", 10.0)), round(score, 1)),
+            )
 
-            # Grade
-            if score >= 8.0:
-                grade = "A"
-            elif score >= 6.0:
-                grade = "B"
-            elif score >= 4.0:
-                grade = "C"
-            elif score >= 2.0:
-                grade = "D"
-            else:
-                grade = "F"
+            # Grade из YAML
+            grade = "F"
+            for g in cfg.get("grades", []):
+                if score >= float(g.get("threshold", 0)):
+                    grade = g["grade"]
+                    break
 
             results.append({
                 "district": district,

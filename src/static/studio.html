@@ -821,6 +821,10 @@ async function _studioAuth() {
           🚗 Транспортный индекс
         </button>
         <button class="rules-nav-btn w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                data-rule="power_rating_rules">
+          🏆 Рейтинг ЖКХ
+        </button>
+        <button class="rules-nav-btn w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
                 data-rule="holiday_calendar">
           📅 Производственный календарь
         </button>
@@ -3276,6 +3280,7 @@ const RULE_LABELS = {
   life_indices_rules:  '📊 Индексы жизни (life_indices_rules.yaml)',
   ecology_rules:       '🌿 Экология (ecology_rules.yaml)',
   mobile_index_rules:  '🚗 Транспортный индекс (mobile_index_rules.yaml)',
+  power_rating_rules:  '🏆 Рейтинг ЖКХ (power_rating_rules.yaml)',
   holiday_calendar:    '📅 Производственный календарь (holiday_calendar.yaml)',
 };
 
@@ -3304,6 +3309,20 @@ const MOBILE_INDEX_QUICK = [
   { path: ['meteo', 'gamma_wind'],                 label: '💨 Рассеивание ветром',        min: 0, max: 1,  step: 0.05 },
   { path: ['meteo', 'gamma_calm'],                 label: '🌫 Накопление при штиле',      min: 0, max: 1,  step: 0.05 },
   { path: ['meteo', 'delta_basin'],                label: '⛰ Надбавка за котловину',      min: 0, max: 1,  step: 0.05 },
+];
+
+// Ключевые слайдеры для power_rating_rules (рейтинг ЖКХ)
+const POWER_RATING_QUICK = [
+  { path: ['penalties', 'evening_outages', 'weight'],    label: '🌆 Штраф: вечерние аварии',       min: 0, max: 6, step: 0.5 },
+  { path: ['penalties', 'night_outages', 'weight'],      label: '🌙 Штраф: ночные аварии',         min: 0, max: 6, step: 0.5 },
+  { path: ['penalties', 'weekend_outages', 'weight'],    label: '📅 Штраф: выходные аварии',       min: 0, max: 4, step: 0.5 },
+  { path: ['bonuses', 'same_day_resolution', 'weight'],  label: '⚡ Бонус: устранение за день',    min: 0, max: 4, step: 0.5 },
+  { path: ['bonuses', 'clean_days', 'weight'],            label: '✅ Бонус: чистые дни',            min: 0, max: 4, step: 0.5 },
+  { path: ['grades', 0, 'threshold'],                     label: '🅰️ Порог грейда A',               min: 5, max: 10, step: 0.5 },
+  { path: ['grades', 1, 'threshold'],                     label: '🅱️ Порог грейда B',               min: 3, max: 9,  step: 0.5 },
+  { path: ['grades', 2, 'threshold'],                     label: '©️ Порог грейда C',               min: 2, max: 7,  step: 0.5 },
+  { path: ['grades', 3, 'threshold'],                     label: '🅳 Порог грейда D',               min: 0, max: 5,  step: 0.5 },
+  { path: ['general', 'analysis_days'],                    label: '📊 Окно анализа (дней)',          min: 7, max: 90, step: 1 },
 ];
 
 let _rulesCurrentName  = null;
@@ -3377,11 +3396,12 @@ async function loadRule(name) {
     document.getElementById('rules-status-badge').textContent = 'Загружено';
     document.getElementById('rules-notify').classList.add('hidden');
 
-    // Quick params — traffic_rules и mobile_index_rules
+    // Quick params — traffic_rules, mobile_index_rules, power_rating_rules
     const qp = document.getElementById('rules-quick-params');
-    if (name === 'traffic_rules' || name === 'mobile_index_rules') {
+    const quickMap = { traffic_rules: TRAFFIC_QUICK, mobile_index_rules: MOBILE_INDEX_QUICK, power_rating_rules: POWER_RATING_QUICK };
+    if (quickMap[name]) {
       qp.classList.remove('hidden');
-      renderQuickParams(data.parsed, name === 'mobile_index_rules' ? MOBILE_INDEX_QUICK : TRAFFIC_QUICK);
+      renderQuickParams(data.parsed, quickMap[name]);
     } else {
       qp.classList.add('hidden');
     }
@@ -3494,8 +3514,8 @@ async function rulesApply() {
 function rulesReset() {
   if (!_rulesCurrentName) return;
   document.getElementById('rules-yaml-textarea').value = _rulesOriginalYaml;
-  if (_rulesCurrentName === 'traffic_rules') renderQuickParams(_rulesParsed, TRAFFIC_QUICK);
-  if (_rulesCurrentName === 'mobile_index_rules') renderQuickParams(_rulesParsed, MOBILE_INDEX_QUICK);
+  const qm = { traffic_rules: TRAFFIC_QUICK, mobile_index_rules: MOBILE_INDEX_QUICK, power_rating_rules: POWER_RATING_QUICK };
+  if (qm[_rulesCurrentName]) renderQuickParams(_rulesParsed, qm[_rulesCurrentName]);
   showRulesNotify('info', 'Сброшено до последнего сохранённого состояния');
 }
 

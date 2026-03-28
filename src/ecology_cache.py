@@ -657,6 +657,90 @@ def seed_history_placeholder(
         conn.close()
 
 
+def load_ecology_seed() -> int:
+    """Загружает данные из ecology_seed.json в ecology_daily_archive.
+
+    Файл создаётся вручную (экспорт из локальной БД) и коммитится в git.
+    При деплое на Railway/Render данные загружаются при первом запуске,
+    обеспечивая полноценный отчёт с первого дня.
+
+    ON CONFLICT DO UPDATE — реальные данные (snapshots > 1) заменяют заглушки.
+    """
+    import json
+    from pathlib import Path
+
+    init_ecology_tables()
+
+    # Ищем seed-файл для текущего города
+    city_id = "novosibirsk"
+    try:
+        from .city_config import get_city
+        city_id = get_city().get("id", "novosibirsk")
+    except Exception:
+        pass
+
+    seed_path = Path(DATA_DIR) / "cities" / city_id / "ecology_seed.json"
+    if not seed_path.exists():
+        return 0
+
+    try:
+        with open(seed_path, encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception as e:
+        log.warning("load_ecology_seed: не удалось прочитать %s: %s", seed_path, e)
+        return 0
+
+    records = payload.get("records", [])
+    if not records:
+        return 0
+
+    conn = _get_conn()
+    inserted = 0
+    try:
+        for r in records:
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO ecology_daily_archive
+                        (day, district, pm25_avg, pm25_max, pm10_avg, aqi_avg,
+                         temp_avg, wind_avg, humidity_avg, snapshots)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (day, district) DO UPDATE SET
+                        pm25_avg = CASE WHEN excluded.snapshots > ecology_daily_archive.snapshots
+                                        THEN excluded.pm25_avg ELSE ecology_daily_archive.pm25_avg END,
+                        pm25_max = CASE WHEN excluded.snapshots > ecology_daily_archive.snapshots
+                                        THEN excluded.pm25_max ELSE ecology_daily_archive.pm25_max END,
+                        pm10_avg = CASE WHEN excluded.snapshots > ecology_daily_archive.snapshots
+                                        THEN excluded.pm10_avg ELSE ecology_daily_archive.pm10_avg END,
+                        aqi_avg = CASE WHEN excluded.snapshots > ecology_daily_archive.snapshots
+                                       THEN excluded.aqi_avg ELSE ecology_daily_archive.aqi_avg END,
+                        temp_avg = CASE WHEN excluded.snapshots > ecology_daily_archive.snapshots
+                                        THEN excluded.temp_avg ELSE ecology_daily_archive.temp_avg END,
+                        wind_avg = CASE WHEN excluded.snapshots > ecology_daily_archive.snapshots
+                                        THEN excluded.wind_avg ELSE ecology_daily_archive.wind_avg END,
+                        humidity_avg = CASE WHEN excluded.snapshots > ecology_daily_archive.snapshots
+                                            THEN excluded.humidity_avg ELSE ecology_daily_archive.humidity_avg END,
+                        snapshots = CASE WHEN excluded.snapshots > ecology_daily_archive.snapshots
+                                         THEN excluded.snapshots ELSE ecology_daily_archive.snapshots END
+                    """,
+                    [
+                        r["day"], r["district"],
+                        r.get("pm25_avg", 0), r.get("pm25_max", 0),
+                        r.get("pm10_avg", 0), r.get("aqi_avg", 0),
+                        r.get("temp_avg", 0), r.get("wind_avg", 0),
+                        r.get("humidity_avg", 0), r.get("snapshots", 0),
+                    ],
+                )
+                inserted += 1
+            except Exception as e:
+                log.debug("load_ecology_seed skip %s/%s: %s", r.get("day"), r.get("district"), e)
+
+        log.info("load_ecology_seed: загружено %d из %d записей из %s", inserted, len(records), seed_path)
+        return inserted
+    finally:
+        conn.close()
+
+
 def upsert_forecast(records: list[dict]) -> int:
     """Сохраняет 7-дневный прогноз погоды в eco_forecast.
 

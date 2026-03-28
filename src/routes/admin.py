@@ -22,7 +22,7 @@ router = APIRouter()
 _RULES_DIR_VOLUME = Path(__file__).parent.parent.parent / "data" / "rules"
 _RULES_DIR_SEED = Path(__file__).parent.parent.parent / "config" / "rules"
 _RULES_DIR = _RULES_DIR_VOLUME if _RULES_DIR_VOLUME.parent.exists() else _RULES_DIR_SEED
-_ALLOWED_RULES = {"traffic_rules", "holiday_calendar", "ecology_rules", "life_indices_rules", "mobile_index_rules"}
+_ALLOWED_RULES = {"traffic_rules", "holiday_calendar", "ecology_rules", "life_indices_rules", "mobile_index_rules", "power_rating_rules"}
 _API_KEYS_FILE = Path(__file__).parent.parent.parent / "data" / "api_keys.json"
 
 _DEV_DEFAULT_HASH = _hashlib.sha256(b"sigma2024").hexdigest()
