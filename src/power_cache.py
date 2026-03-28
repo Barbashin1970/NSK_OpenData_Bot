@@ -675,6 +675,11 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
                 resolution_rate = resolved_same_day / total_days
                 score += resolution_rate * 2.0  # до +2
 
+            # Бонус за чистые дни (без аварий) — чем больше, тем лучше
+            clean_days = max(0, days - total_days)
+            clean_ratio = clean_days / days if days > 0 else 0
+            score += clean_ratio * 2.0  # до +2 за 100% чистых дней
+
             # Штраф за высокую нагрузку (house-hours)
             avg_house_hours = total_house_hours / total_days if total_days > 0 else 0
             if avg_house_hours > 200:
@@ -704,6 +709,7 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
                 "grade": grade,
                 "metrics": {
                     "outage_days": total_days,
+                    "clean_days": clean_days,
                     "evening_days": evening_days,
                     "night_days": night_days,
                     "weekend_days": weekend_days,

@@ -3385,20 +3385,37 @@ async function _showPowerHistory(districtFilter) {
     const dayData = await dayR.json();
     const distData = await distR.json();
     const effData = await effR.json();
-    const days = (dayData.rows || []).slice().sort((a, b) => a.day.localeCompare(b.day));
+    const rawDays = (dayData.rows || []).slice().sort((a, b) => a.day.localeCompare(b.day));
     const dists = distData.rows || [];
     const effRows = effData.rows || [];
     const meta = dayData.power_meta || {};
+
+    // ── Заполняем пропущенные дни (зелёные — без отключений) ──────────
+    const dayMap = {};
+    rawDays.forEach(d => { dayMap[d.day] = d; });
+    const today = new Date();
+    const days = [];
+    for (let i = 29; i >= 0; i--) {
+      const dt = new Date(today);
+      dt.setDate(dt.getDate() - i);
+      const key = dt.toISOString().slice(0, 10);
+      days.push(dayMap[key] || { day: key, active_houses: 0, planned_houses: 0, active_records: 0, planned_records: 0 });
+    }
 
     // ── KPI ──────────────────────────────────────────────────────────────
     const totalActive = days.reduce((s, d) => s + (d.active_houses || 0), 0);
     const totalPlanned = days.reduce((s, d) => s + (d.planned_houses || 0), 0);
     const daysWithActive = days.filter(d => d.active_houses > 0).length;
+    const cleanDays = days.filter(d => (d.active_houses || 0) === 0 && (d.planned_houses || 0) === 0).length;
     const maxActive = Math.max(0, ...days.map(d => d.active_houses || 0));
     const avgActive = daysWithActive > 0 ? Math.round(totalActive / daysWithActive) : 0;
 
     const kpiHtml = `
-      <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100 border-b border-slate-100">
+      <div class="grid grid-cols-2 sm:grid-cols-5 divide-x divide-slate-100 border-b border-slate-100">
+        <div class="px-4 py-3 text-center">
+          <div class="text-2xl font-bold text-emerald-600">${cleanDays}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Чистых дней</div>
+        </div>
         <div class="px-4 py-3 text-center">
           <div class="text-2xl font-bold ${daysWithActive === 0 ? 'text-emerald-600' : daysWithActive <= 5 ? 'text-yellow-600' : 'text-red-600'}">${daysWithActive}</div>
           <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Дней с авариями</div>
@@ -3417,9 +3434,9 @@ async function _showPowerHistory(districtFilter) {
         </div>
       </div>`;
 
-    // ── Bar chart (active=red, planned=yellow, stacked) ─────────────────
+    // ── Bar chart (active=red, planned=yellow, green=clean) ─────────────
     const maxBar = Math.max(30, ...days.map(d => (d.active_houses || 0) + (d.planned_houses || 0)));
-    const barChartHtml = days.length ? `
+    const barChartHtml = `
       <div class="px-5 py-4">
         <div class="text-xs font-semibold text-slate-600 mb-2">Домов без ресурсов по дням${districtFilter ? ` · ${districtFilter}` : ''}</div>
         <div class="overflow-x-auto pb-2">
@@ -3428,28 +3445,32 @@ async function _showPowerHistory(districtFilter) {
               const aH = d.active_houses || 0;
               const pH = d.planned_houses || 0;
               const total = aH + pH;
+              const isClean = total === 0;
               const hA = total > 0 ? Math.max(2, Math.round(aH / maxBar * 150)) : 0;
               const hP = total > 0 ? Math.max(0, Math.round(pH / maxBar * 150)) : 0;
-              const hEmpty = (total === 0) ? 4 : 0;
-              const title = `${d.day.slice(5)}: аварийных ${aH}, плановых ${pH}`;
+              const hGreen = isClean ? 150 : 0;
+              const label = isClean ? '' : total;
+              const title = isClean
+                ? `${d.day.slice(5)}: без отключений`
+                : `${d.day.slice(5)}: аварийных ${aH}, плановых ${pH}`;
               return `<div class="flex flex-col items-center flex-1 min-w-[18px]" title="${title}">
-                <span class="text-[9px] text-slate-400 mb-0.5 leading-none">${total || ''}</span>
+                <span class="text-[9px] ${isClean ? 'text-emerald-500 font-semibold' : 'text-slate-400'} mb-0.5 leading-none">${isClean ? '0' : label}</span>
                 <div class="w-full flex flex-col justify-end">
+                  ${hGreen > 0 ? `<div style="height:${hGreen}px" class="w-full bg-emerald-300 rounded-t-sm opacity-70"></div>` : ''}
                   ${hP > 0 ? `<div style="height:${hP}px" class="w-full bg-amber-400 rounded-t-sm"></div>` : ''}
                   ${hA > 0 ? `<div style="height:${hA}px" class="w-full bg-red-500 ${hP > 0 ? '' : 'rounded-t-sm'}"></div>` : ''}
-                  ${hEmpty > 0 ? `<div style="height:${hEmpty}px" class="w-full bg-emerald-200 rounded-t-sm"></div>` : ''}
                 </div>
-                <span class="text-[8px] text-slate-400 mt-0.5 leading-none whitespace-nowrap">${d.day.slice(8)}</span>
+                <span class="text-[8px] ${isClean ? 'text-emerald-500 font-semibold' : 'text-slate-400'} mt-0.5 leading-none whitespace-nowrap">${d.day.slice(8)}</span>
               </div>`;
             }).join('')}
           </div>
           <div class="flex items-center gap-3 mt-2 px-1 text-[10px] text-slate-400">
-            <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#ef4444"></span>Аварийные</span>
+            <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#6ee7b7"></span>Без отключений</span>
             <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#fbbf24"></span>Плановые</span>
-            <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#a7f3d0"></span>Без отключений</span>
+            <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#ef4444"></span>Аварийные</span>
           </div>
         </div>
-      </div>` : '<div class="px-5 py-8 text-center text-sm text-slate-400">Нет данных за выбранный период</div>';
+      </div>`;
 
     // ── District ranking table ──────────────────────────────────────────
     const distTableHtml = dists.length ? `
@@ -3522,8 +3543,8 @@ async function _showPowerHistory(districtFilter) {
                   <div class="h-full rounded-full" style="width:${scoreW}%;background:${gc.bar}"></div>
                 </div>
                 <div class="mt-1.5 text-[10px] text-slate-600 leading-relaxed">
-                  ${m.outage_days > 0 ? `
-                    Аварийных дней: ${m.outage_days}
+                  ${m.clean_days > 0 ? `<span class="text-emerald-600">Чистых дней: ${m.clean_days}</span> · ` : ''}${m.outage_days > 0 ? `
+                    Аварийных: ${m.outage_days}
                     ${m.resolved_same_day > 0 ? ` · устранено за день: ${m.resolved_same_day}` : ''}
                     ${m.evening_days > 0 ? ` · <span class="text-orange-600">вечерних: ${m.evening_days}</span>` : ''}
                     ${m.night_days > 0 ? ` · <span class="text-red-600">ночных: ${m.night_days}</span>` : ''}
