@@ -3788,17 +3788,17 @@ async function _showPowerRating() {
         eff: eff,
       };
     }).sort((a, b) => {
-      const sa = a.eff?.score ?? 0;
-      const sb = b.eff?.score ?? 0;
-      return sb - sa;  // лучший score сверху
+      // Главный критерий: меньше аварийных = лучше (предиктивный ремонт)
+      // При равенстве: выше score из efficiency
+      return a.active_houses - b.active_houses || (b.eff?.score ?? 0) - (a.eff?.score ?? 0);
     });
 
     const totalActive = ranked.reduce((s, r) => s + r.active_houses, 0);
     const totalPlanned = ranked.reduce((s, r) => s + r.planned_houses, 0);
     const avgScore = ranked.length ? +(ranked.reduce((s, r) => s + (r.eff?.score ?? 0), 0) / ranked.length).toFixed(1) : 0;
-    const bestDist = [...ranked].sort((a, b) => (b.eff?.score ?? 0) - (a.eff?.score ?? 0) || a.active_houses - b.active_houses)[0];
-    // Худший: по аварийным, при равенстве — по плановым; если совпал с лучшим — берём следующего
-    const worstSorted = [...ranked].sort((a, b) => b.active_houses - a.active_houses || b.planned_houses - a.planned_houses);
+    const bestDist = ranked[0];  // уже отсортировано: первый = минимум аварийных
+    // Худший: последний в рейтинге; если совпал с лучшим — берём следующего
+    const worstSorted = [...ranked].reverse();
     const worstDist = worstSorted.find(d => d.district !== bestDist?.district) || (worstSorted.length > 1 ? worstSorted[1] : null);
 
     const gradeColors = {

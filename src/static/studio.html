@@ -3311,6 +3311,36 @@ const MOBILE_INDEX_QUICK = [
   { path: ['meteo', 'delta_basin'],                label: '⛰ Надбавка за котловину',      min: 0, max: 1,  step: 0.05 },
 ];
 
+// Ключевые слайдеры для ecology_rules (экологические риски)
+const ECOLOGY_QUICK = [
+  { path: ['risks', 'smog_trap', 'wind_threshold_ms'],        label: '🌫 Штиль: порог ветра (м/с)',         min: 0.5, max: 5,  step: 0.1 },
+  { path: ['risks', 'smog_trap', 'pm25_warning_threshold'],   label: '🌫 Штиль: PM2.5 предупреждение',     min: 5,   max: 50, step: 1 },
+  { path: ['risks', 'smog_trap', 'pm25_critical_threshold'],  label: '🌫 Штиль: PM2.5 критично',           min: 15,  max: 80, step: 1 },
+  { path: ['risks', 'pdk', 'threshold'],                       label: '☢️ Норма ВОЗ PM2.5 (мкг/м³)',       min: 10,  max: 75, step: 1 },
+  { path: ['risks', 'black_ice', 'temp_min'],                  label: '🧊 Чёрный лёд: мин. (°C)',           min: -10, max: 0,  step: 0.5 },
+  { path: ['risks', 'black_ice', 'temp_max'],                  label: '🧊 Чёрный лёд: макс. (°C)',          min: -2,  max: 5,  step: 0.5 },
+  { path: ['risks', 'temp_shock', 'delta_threshold'],          label: '🌡 Термошок: перепад за 24ч (°C)',   min: -30, max: -5, step: 1 },
+  { path: ['risks', 'extreme_cold', 'warning_threshold'],      label: '❄ Мороз: предупреждение (°C)',       min: -35, max: -10, step: 1 },
+  { path: ['risks', 'extreme_cold', 'critical_threshold'],     label: '❄ Мороз: критично (°C)',             min: -50, max: -20, step: 1 },
+];
+
+// Ключевые слайдеры для life_indices_rules (индексы жизни)
+const LIFE_INDICES_QUICK = [
+  // Водитель
+  { path: ['driver', 'temp_black_ice_score'],   label: '🚗 Чёрный лёд: штраф',             min: 0, max: 8, step: 1 },
+  { path: ['driver', 'wind_strong_ms'],         label: '🚗 Сильный ветер: порог (м/с)',     min: 5, max: 20, step: 1 },
+  { path: ['driver', 'wind_strong_score'],      label: '🚗 Сильный ветер: штраф',           min: 0, max: 5, step: 1 },
+  // Прогулка
+  { path: ['walk', 'pm25_high'],                label: '🚶 PM2.5 высокий порог',            min: 15, max: 60, step: 1 },
+  { path: ['walk', 'pm25_high_penalty'],        label: '🚶 PM2.5 высокий штраф',            min: 0, max: 6, step: 1 },
+  { path: ['walk', 'aqi_medium'],               label: '🚶 AQI средний порог',              min: 20, max: 60, step: 5 },
+  { path: ['walk', 'temp_chilly'],              label: '🚶 Прохладно: порог (°C)',           min: -15, max: 0, step: 1 },
+  { path: ['walk', 'wind_threshold_ms'],        label: '🚶 Ветер: порог (м/с)',              min: 5, max: 20, step: 1 },
+  // Коммунальное
+  { path: ['utility', 'temp_critical'],         label: '🏗️ Критич. мороз: порог (°C)',      min: -50, max: -20, step: 1 },
+  { path: ['utility', 'smog_score'],            label: '🏗️ Штиль+загрязнение: штраф',       min: 0, max: 5, step: 1 },
+];
+
 // Ключевые слайдеры для power_rating_rules (рейтинг ЖКХ)
 const POWER_RATING_QUICK = [
   { path: ['penalties', 'evening_outages', 'weight'],    label: '🌆 Штраф: вечерние аварии',       min: 0, max: 6, step: 0.5 },
@@ -3398,7 +3428,7 @@ async function loadRule(name) {
 
     // Quick params — traffic_rules, mobile_index_rules, power_rating_rules
     const qp = document.getElementById('rules-quick-params');
-    const quickMap = { traffic_rules: TRAFFIC_QUICK, mobile_index_rules: MOBILE_INDEX_QUICK, power_rating_rules: POWER_RATING_QUICK };
+    const quickMap = { traffic_rules: TRAFFIC_QUICK, mobile_index_rules: MOBILE_INDEX_QUICK, power_rating_rules: POWER_RATING_QUICK, ecology_rules: ECOLOGY_QUICK, life_indices_rules: LIFE_INDICES_QUICK };
     if (quickMap[name]) {
       qp.classList.remove('hidden');
       renderQuickParams(data.parsed, quickMap[name]);
