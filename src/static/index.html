@@ -3461,6 +3461,9 @@ function powerMetaBar(meta) {
       <button onclick="_showPowerHistory()" class="ml-auto text-[10px] bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-full px-3 py-1 transition-colors">
         📊 Отчёт за 30 дней
       </button>
+      <button onclick="_showPowerRating()" class="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 rounded-full px-3 py-1 transition-colors">
+        🏆 Рейтинг
+      </button>
     </div>
   `;
 }
@@ -3639,13 +3642,44 @@ async function _showPowerRating() {
     effRows.forEach(e => { effMap[e.district] = e; });
 
     // Сортируем по score (лучшие сверху)
-    const ranked = dists.map(d => ({
-      district: d.district,
-      active_houses: d.active_houses || 0,
-      planned_houses: d.planned_houses || 0,
-      days_with_outages: d.days_with_outages || 0,
-      eff: effMap[d.district] || null,
-    })).sort((a, b) => {
+    // Если efficiency данных нет (нет raw-снимков), рассчитываем score из истории
+    const ranked = dists.map(d => {
+      let eff = effMap[d.district] || null;
+      const daysOut = d.days_with_outages || 0;
+      if (!eff && daysOut >= 0) {
+        // Fallback: score из district history (без детализации по часам)
+        const cleanDays = Math.max(0, 30 - daysOut);
+        const cleanRatio = cleanDays / 30;
+        // Базовый score: 10 - штраф за дни с авариями + бонус за чистые дни
+        let fallbackScore = 10.0 - (daysOut / 30) * 5.0 + cleanRatio * 2.0;
+        // Штраф за высокую нагрузку аварий
+        const avgActive = daysOut > 0 ? (d.active_houses || 0) / daysOut : 0;
+        if (avgActive > 200) fallbackScore -= 1.5;
+        else if (avgActive > 100) fallbackScore -= 1.0;
+        else if (avgActive > 50) fallbackScore -= 0.5;
+        fallbackScore = Math.max(0, Math.min(10, +fallbackScore.toFixed(1)));
+        const grade = fallbackScore >= 8 ? 'A' : fallbackScore >= 6 ? 'B' : fallbackScore >= 4 ? 'C' : fallbackScore >= 2 ? 'D' : 'F';
+        eff = {
+          district: d.district,
+          score: fallbackScore,
+          grade: grade,
+          metrics: {
+            outage_days: daysOut,
+            clean_days: cleanDays,
+            evening_days: 0, night_days: 0, weekend_days: 0,
+            resolved_same_day: 0, resolution_rate: 0,
+            total_house_hours: 0, evening_house_hours: 0, peak_houses: 0,
+          }
+        };
+      }
+      return {
+        district: d.district,
+        active_houses: d.active_houses || 0,
+        planned_houses: d.planned_houses || 0,
+        days_with_outages: daysOut,
+        eff: eff,
+      };
+    }).sort((a, b) => {
       const sa = a.eff?.score ?? 0;
       const sb = b.eff?.score ?? 0;
       return sb - sa;  // лучший score сверху
@@ -3653,9 +3687,9 @@ async function _showPowerRating() {
 
     const totalActive = ranked.reduce((s, r) => s + r.active_houses, 0);
     const totalPlanned = ranked.reduce((s, r) => s + r.planned_houses, 0);
-    const avgScore = effRows.length ? +(effRows.reduce((s, e) => s + e.score, 0) / effRows.length).toFixed(1) : 0;
+    const avgScore = ranked.length ? +(ranked.reduce((s, r) => s + (r.eff?.score ?? 0), 0) / ranked.length).toFixed(1) : 0;
     const bestDist = ranked[0];
-    const worstDist = ranked[ranked.length - 1];
+    const worstDist = [...ranked].sort((a, b) => b.active_houses - a.active_houses)[0];
 
     const gradeColors = {
       A: { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300', bar: '#34d399' },
