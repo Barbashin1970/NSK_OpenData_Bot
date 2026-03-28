@@ -635,6 +635,14 @@ function setDistrictFilter(dist) {
 
 let _dashRetried = false;
 
+// ─── Кеш дашборда: 5 мин TTL, ключ = role + district ────────────────────────
+const _DASH_TTL = 5 * 60 * 1000;  // 5 минут
+const _dashCache = {};  // { key: { ts, power, eco, risks, trafficData, transit } }
+
+function _dashCacheKey() {
+  return currentRole + '|' + (currentRole === 'official' ? officialDistrict : '');
+}
+
 async function loadRoleDashboard() {
   _dashRetried = false;
   return _loadRoleDashboardImpl(false);
@@ -642,45 +650,86 @@ async function loadRoleDashboard() {
 
 async function _loadRoleDashboardImpl(isRetry) {
   const dashEl = document.getElementById('dashContent');
-  if (!isRetry) {
-    dashEl.innerHTML = '<div class="text-slate-400 text-sm text-center py-3">Загрузка данных...</div>';
-  }
-  try {
-    const fetches = [
-      fetch('/ask?q=' + encodeURIComponent('отключения ЖКХ сейчас')),
-      fetch('/ecology/status'),
-      fetch('/ecology/risks'),
-      fetch('/traffic-index'),
-    ];
-    if (currentRole === 'official') {
-      fetches.push(fetch('/transit/districts'));
+  const cacheKey = _dashCacheKey();
+  const cached = _dashCache[cacheKey];
+
+  // ── Есть свежий кеш → мгновенный рендер ──────────────────────────────
+  if (cached && (Date.now() - cached.ts < _DASH_TTL) && !isRetry) {
+    _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit);
+    // Тихо обновляем в фоне, если кеш старше 2 минут
+    if (Date.now() - cached.ts > 2 * 60 * 1000) {
+      _fetchDashData().then(d => {
+        if (d) { _dashCache[cacheKey] = { ts: Date.now(), ...d }; _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit); }
+      }).catch(() => {});
     }
-    const results = await Promise.all(fetches);
-    const power       = results[0].ok ? await results[0].json() : null;
-    const eco         = results[1].ok ? await results[1].json() : null;
-    const risks       = results[2].ok ? await results[2].json() : null;
-    const trafficData = results[3]?.ok ? await results[3].json() : null;
-    const transit     = (currentRole === 'official' && results[4]?.ok) ? await results[4].json() : null;
-    dashEl.innerHTML = currentRole === 'mayor'
-      ? renderMayorDashboard(power, eco, risks, trafficData)
-      : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData);
-    _restoreDashCollapse();
+    return;
+  }
+
+  // ── Нет кеша → skeleton + загрузка ────────────────────────────────────
+  if (!isRetry) {
+    // Если есть устаревший кеш — показать его пока грузятся свежие данные
+    if (cached) {
+      _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit, true);
+    } else {
+      dashEl.innerHTML = `<div class="space-y-3 py-2">
+        <div class="flex items-center gap-2 text-xs text-sky-500"><div class="animate-spin w-3 h-3 border-2 border-sky-400 border-t-transparent rounded-full"></div> Загрузка данных…</div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          ${Array.from({length:4}, () => `<div class="rounded-xl border border-slate-200 p-3"><div class="h-5 w-20 ${_skeletonPulse} mb-2"></div><div class="h-8 w-14 ${_skeletonPulse}"></div></div>`).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
+  try {
+    const d = await _fetchDashData();
+    _dashCache[cacheKey] = { ts: Date.now(), ...d };
+    _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit);
 
     // Если AQI отсутствует — повторяем один раз через 5 с (экология могла ещё не загрузиться)
-    const hasAqi = eco?.rows?.some(r => r.aqi != null);
+    const hasAqi = d.eco?.rows?.some(r => r.aqi != null);
     if (!hasAqi && !isRetry && (currentRole === 'mayor' || currentRole === 'official')) {
       _dashRetried = true;
       setTimeout(() => _loadRoleDashboardImpl(true), 5000);
     }
-    // Скрыть info-карточку "панель загружается…" после рендера дашборда
-    const ra = document.getElementById('resultArea');
-    if (ra && ra.classList.contains('bg-violet-50')) ra.className = 'hidden';
-    requestAnimationFrame(() => {
-      document.querySelectorAll('.bar-fill[data-pct]').forEach(b => { b.style.width = b.dataset.pct + '%'; });
-    });
   } catch(e) {
     dashEl.innerHTML = '<div class="text-red-400 text-sm text-center py-3">Ошибка загрузки данных панели</div>';
   }
+}
+
+async function _fetchDashData() {
+  const fetches = [
+    fetch('/ask?q=' + encodeURIComponent('отключения ЖКХ сейчас')),
+    fetch('/ecology/status'),
+    fetch('/ecology/risks'),
+    fetch('/traffic-index'),
+  ];
+  if (currentRole === 'official') {
+    fetches.push(fetch('/transit/districts'));
+  }
+  const results = await Promise.all(fetches);
+  return {
+    power:       results[0].ok ? await results[0].json() : null,
+    eco:         results[1].ok ? await results[1].json() : null,
+    risks:       results[2].ok ? await results[2].json() : null,
+    trafficData: results[3]?.ok ? await results[3].json() : null,
+    transit:     (currentRole === 'official' && results[4]?.ok) ? await results[4].json() : null,
+  };
+}
+
+function _renderDashFromData(dashEl, power, eco, risks, trafficData, transit, isStale) {
+  const staleIndicator = isStale
+    ? '<div class="flex items-center gap-1.5 text-[10px] text-sky-500 mb-1"><div class="animate-spin w-2.5 h-2.5 border border-sky-400 border-t-transparent rounded-full"></div> обновление…</div>'
+    : '';
+  dashEl.innerHTML = staleIndicator + (currentRole === 'mayor'
+    ? renderMayorDashboard(power, eco, risks, trafficData)
+    : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData));
+  _restoreDashCollapse();
+  // Скрыть info-карточку "панель загружается…" после рендера дашборда
+  const ra = document.getElementById('resultArea');
+  if (ra && ra.classList.contains('bg-violet-50')) ra.className = 'hidden';
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.bar-fill[data-pct]').forEach(b => { b.style.width = b.dataset.pct + '%'; });
+  });
 }
 
 function _getCityEcoRating() {
@@ -1126,6 +1175,30 @@ function askNow(q) {
   ask();
 }
 
+// ─── History API — навигация кнопкой «Назад» ─────────────────────────────────
+const _viewHistory = [];  // стек предыдущих состояний resultArea
+let _historyPushing = false;
+
+function _pushView(tag) {
+  const el = document.getElementById('resultArea');
+  const html = el.innerHTML;
+  if (!html || html.includes('animate-spin') || html.includes('⏳')) return;
+  history.pushState({ viewTag: tag, ts: Date.now() }, '');
+  _viewHistory.push({ tag, html, cls: el.className });
+}
+
+window.addEventListener('popstate', function(e) {
+  if (_viewHistory.length === 0) return;
+  const prev = _viewHistory.pop();
+  const el = document.getElementById('resultArea');
+  el.className = prev.cls || 'fade-in';
+  el.innerHTML = prev.html;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+// Начальное состояние — чтобы первый «Назад» не уходил со страницы
+history.replaceState({ viewTag: 'home', ts: Date.now() }, '');
+
 async function updateAndReload(topic) {
   try {
     const r = await fetch('/update?topic=' + encodeURIComponent(topic), {method:'POST'});
@@ -1334,6 +1407,7 @@ function _trySpecialQuery(raw) {
 
 async function _showRisksView() {
   const el = document.getElementById('resultArea');
+  _pushView('risks');
   el.className = 'fade-in';
   el.innerHTML = '<div class="text-center py-10 text-slate-400 text-sm">⏳ Загрузка данных о выбросах…</div>';
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1473,12 +1547,115 @@ async function _showRisksView() {
   }
 }
 
+// ─── Skeleton UI — мгновенные заглушки пока грузятся данные ───────────────────
+const _skeletonPulse = 'animate-pulse bg-slate-200 rounded';
+
+function _ecoReportSkeleton(distLabel) {
+  const dl = distLabel ? ` · ${esc(distLabel)}` : '';
+  return `
+    <div class="space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-gradient-to-r from-sky-50 to-emerald-50 border-b border-slate-200 px-5 py-4 flex items-center gap-3">
+          <span class="text-2xl">🌍</span>
+          <div class="flex-1">
+            <div class="font-semibold text-slate-800">Экологический отчёт за 30 дней${dl}</div>
+            <div class="text-xs text-slate-500">Качество воздуха, погода, превышения AQI · ${_cityCfg?.city_name || 'город'}</div>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-sky-500">
+            <div class="animate-spin w-3.5 h-3.5 border-2 border-sky-400 border-t-transparent rounded-full"></div>
+            загрузка данных…
+          </div>
+        </div>
+        <!-- Skeleton KPI strip -->
+        <div class="px-5 py-3 flex flex-wrap gap-3 border-b border-slate-100 bg-white">
+          ${['💨 AQI', '🌡️ Температура', '🌬️ Ветер', '🫁 PM2.5'].map(lbl => `
+            <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 flex-1 min-w-[100px]">
+              <span class="text-lg">${lbl.split(' ')[0]}</span>
+              <div>
+                <div class="text-[10px] text-slate-400 uppercase font-semibold tracking-wide">${lbl.split(' ')[1]}</div>
+                <div class="h-6 w-16 ${_skeletonPulse} mt-1"></div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <!-- Skeleton commentary -->
+        <div class="px-5 py-3 space-y-2">
+          <div class="h-10 w-full ${_skeletonPulse}"></div>
+          <div class="h-10 w-3/4 ${_skeletonPulse}"></div>
+        </div>
+      </div>
+      <!-- Skeleton chart -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-lg">📊</span>
+          <div class="font-semibold text-sm text-slate-800">Динамика AQI</div>
+        </div>
+        <div class="flex items-end gap-1 h-[120px]">
+          ${Array.from({length:30}, (_,i) => `<div class="flex-1 ${_skeletonPulse}" style="height:${20 + Math.random()*80}px"></div>`).join('')}
+        </div>
+      </div>
+      <!-- Skeleton summary -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-slate-100">
+          <div class="font-semibold text-sm text-slate-800">📋 Сводка за 30 дней</div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100">
+          ${['Ср. AQI','Ср. PM2.5','Ср. t°C','Дней AQI>40'].map(l => `
+            <div class="px-4 py-3 text-center">
+              <div class="h-8 w-12 mx-auto ${_skeletonPulse}"></div>
+              <div class="text-[10px] text-slate-500 mt-1 uppercase font-semibold">${l}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function _powerHistorySkeleton(districtFilter) {
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
+        <div class="flex flex-col">
+          <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">История отключений ЖКХ · 30 дней</span>
+          <div class="flex items-center gap-2 mt-1 text-xs text-sky-500">
+            <div class="animate-spin w-3.5 h-3.5 border-2 border-sky-400 border-t-transparent rounded-full"></div>
+            загрузка данных…
+          </div>
+        </div>
+      </div>
+      <!-- Skeleton KPI -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 divide-x divide-slate-100 border-b border-slate-100">
+        ${['Чистых дней','Дней с авариями','Макс. домов/день','Ср. домов/день','Плановых'].map(l => `
+          <div class="px-4 py-3 text-center">
+            <div class="h-8 w-10 mx-auto ${_skeletonPulse}"></div>
+            <div class="text-[10px] text-slate-500 mt-1 uppercase font-semibold">${l}</div>
+          </div>
+        `).join('')}
+      </div>
+      <!-- Skeleton bar chart -->
+      <div class="px-5 py-4">
+        <div class="text-xs font-semibold text-slate-600 mb-2">Домов без ресурсов по дням${districtFilter ? ` · ${districtFilter}` : ''}</div>
+        <div class="flex items-end gap-px h-[150px]">
+          ${Array.from({length:30}, (_,i) => `<div class="flex-1 ${_skeletonPulse}" style="height:${15 + Math.random()*120}px"></div>`).join('')}
+        </div>
+      </div>
+      <!-- Skeleton district table -->
+      <div class="px-5 py-4 border-t border-slate-100">
+        <div class="text-xs font-semibold text-slate-600 mb-2">Рейтинг районов</div>
+        ${Array.from({length:5}, () => `<div class="h-6 w-full ${_skeletonPulse} mb-2"></div>`).join('')}
+      </div>
+    </div>`;
+}
+
 // ─── Ecology Report (30-day dashboard) ────────────────────────────────────────
 async function _showEcoReport(districtFilter) {
   const el = document.getElementById('resultArea');
+  _pushView('ecoReport');
   el.className = 'fade-in';
   const distLabel = districtFilter ? districtFilter.replace(/\s*район$/i, '') : null;
-  el.innerHTML = '<div class="text-center py-10 text-slate-400 text-sm">⏳ Загрузка экологического отчёта…</div>';
+
+  // ── Skeleton UI — мгновенный отклик, данные подгружаются ──────────────
+  el.innerHTML = _ecoReportSkeleton(distLabel);
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try {
@@ -1488,6 +1665,10 @@ async function _showEcoReport(districtFilter) {
       fetch('/ecology/aqi-exceedances?days=30&aqi_threshold=40' + dq),
       fetch('/ecology/status' + (districtFilter ? '?district=' + encodeURIComponent(districtFilter) : '')),
     ]);
+    if (!histR.ok || !excR.ok || !statusR.ok) {
+      const bad = [histR, excR, statusR].find(r => !r.ok);
+      throw new Error(`HTTP ${bad.status}: ${bad.statusText}`);
+    }
     const hist    = await histR.json();
     const exc     = await excR.json();
     const status  = await statusR.json();
@@ -1793,7 +1974,7 @@ async function _showEcoReport(districtFilter) {
       </div>`;
   } catch (e) {
     console.error('Eco report error:', e);
-    el.innerHTML = '<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка загрузки экологического отчёта</div>';
+    el.innerHTML = `<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка загрузки экологического отчёта: ${e.message || e}</div>`;
   }
 }
 
@@ -1809,6 +1990,7 @@ async function ask() {
   _pageOffset = 0;
   _pageSize   = 20;
 
+  _pushView('ask');
   setLoading(q);
 
   // Академгородок: запросы по ЖКХ и экологии проксируются в Новосибирск (Советский район)
@@ -1846,7 +2028,21 @@ function setLoading(q) {
   const ls = document.getElementById('loadingState');
   ls.className = 'flex items-center gap-3 text-slate-500 text-sm';
   document.getElementById('loadingText').textContent = `Ищу ответ на: «${q}»`;
-  document.getElementById('resultArea').className = 'hidden';
+  // Показываем skeleton-заглушку в resultArea вместо полного скрытия
+  const el = document.getElementById('resultArea');
+  el.className = 'fade-in';
+  el.innerHTML = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-100">
+        <div class="h-5 w-48 ${_skeletonPulse}"></div>
+      </div>
+      <div class="px-5 py-4 space-y-3">
+        <div class="h-4 w-full ${_skeletonPulse}"></div>
+        <div class="h-4 w-5/6 ${_skeletonPulse}"></div>
+        <div class="h-4 w-4/6 ${_skeletonPulse}"></div>
+        <div class="h-20 w-full ${_skeletonPulse} mt-2"></div>
+      </div>
+    </div>`;
   setTimeout(() => ls.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 }
 
@@ -2175,6 +2371,7 @@ function renderEmissions(data) {
 // ─── ECO-INDEX — Сводный рейтинг городов по чистоте воздуха ───────────────────
 
 function showEcoIndex(tab) {
+  _pushView('ecoIndex');
   document.getElementById('loadingState').className = 'hidden';
   const el = document.getElementById('resultArea');
   el.className = 'fade-in space-y-4';
@@ -3247,7 +3444,7 @@ function powerMetaBar(meta) {
       <span>🔴 Аварийных: <strong class="text-red-600">${meta.active_houses || 0}</strong> домов</span>
       <span>🟡 Плановых: <strong class="text-amber-600">${meta.planned_houses || 0}</strong> домов</span>
       <button onclick="_showPowerHistory()" class="ml-auto text-[10px] bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-full px-3 py-1 transition-colors">
-        📊 30 дней
+        📊 Отчёт за 30 дней
       </button>
     </div>
   `;
@@ -3371,10 +3568,12 @@ function renderPower(data) {
 async function _showPowerHistory(districtFilter) {
   const resultEl = document.getElementById('resultArea');
   if (!resultEl) return;
+  _pushView('powerHistory');
   resultEl.classList.remove('hidden');
 
   const dq = districtFilter ? `&district=${encodeURIComponent(districtFilter)}` : '';
-  resultEl.innerHTML = `<div class="text-center py-10 text-slate-400"><div class="animate-spin inline-block w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full mb-2"></div><br>Загружаю историю ЖКХ за 30 дней...</div>`;
+  // ── Skeleton UI — мгновенный отклик ──────────────────────────────────
+  resultEl.innerHTML = _powerHistorySkeleton(districtFilter);
 
   try {
     const [dayR, distR, effR] = await Promise.all([
@@ -4784,6 +4983,7 @@ function toggleCiiPanel() {
 }
 
 async function loadCiiSection(key) {
+  _pushView('cii');
   const resultArea = document.getElementById('resultArea');
   const loading = document.getElementById('loadingState');
   resultArea.classList.add('hidden');
@@ -4977,6 +5177,7 @@ function _buildNewsFeedHtml(posts) {
 }
 
 async function loadNewsPublic() {
+  _pushView('news');
   const resultArea = document.getElementById('resultArea');
   const loading = document.getElementById('loadingState');
   resultArea.classList.add('hidden');
