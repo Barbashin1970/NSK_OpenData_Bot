@@ -2083,17 +2083,11 @@ const STTests = (() => {
         source.close(); source = null;
         el('st-run-btn').disabled = false;
         if (d.no_pytest) {
-          _setProgress(0, 0, 0, 0);
-          el('st-pct-text').textContent = 'N/A';
-          el('st-progress-fill').style.width = '0%';
-          el('st-progress-fill').style.background = '#334155';
-          const r = el('st-result');
-          r.textContent = '⚠ pytest не установлен в этом окружении';
-          r.style.color = '#94a3b8';
+          // pytest нет — запускаем полную проверку источников вместо бесполезного pytest
+          _addLine('⚠ pytest не установлен — запускаю проверку всех источников данных…', 'warn');
           _addLine('', '');
-          _addLine('⚠ pytest не установлен в этом окружении.', 'warn');
-          _addLine('Тестирование доступно только в локальной разработке.', 'dim');
-          _addLine('Для запуска локально: pip install pytest && python -m pytest tests/', 'dim');
+          checkStatus();
+          return;
         } else {
           _setProgress(100, d.passed, d.failed, d.total);
           el('st-progress-fill').style.background = d.failed > 0

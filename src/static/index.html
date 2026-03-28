@@ -5616,8 +5616,8 @@ function renderInfo(_data) {
       color: 'blue',
       items: [
         { icon: '🚗', name: 'Пробки сейчас',             q: 'пробки сейчас' },
-        (!_cityCfg || _cityCfg.has_metro)   ? { icon: '🚇', name: `Метро ${_metroName}`,   q: _metroQ }   : null,
-        (!_cityCfg || _cityCfg.has_airport) ? { icon: '✈️', name: `Аэропорт ${_airportName}`, q: _airportQ } : null,
+        (!_cityCfg || _cityCfg.has_metro)   ? { icon: '🚇', name: 'Схема метро',           q: _metroQ }   : null,
+        (!_cityCfg || _cityCfg.has_airport) ? { icon: '✈️', name: 'Аэропорт',               q: _airportQ } : null,
         { icon: '🚌', name: 'Остановки транспорта',      q: `остановки в ${_d1.prep}` },
         { icon: '🗺️', name: 'Маршруты между районами',  q: `как проехать из ${_tr1} в ${_tr2}` },
         { icon: '🅿️', name: 'Парковки',                 q: `парковки в ${_d2.prep}` },
@@ -5659,6 +5659,20 @@ function renderInfo(_data) {
         _hasMeta('heat_sources') ? { icon: '🔥', name: 'Тепловые источники ТЭЦ', q: 'тепловые источники' } : null,
         _hasMeta('emissions') ? { icon: '🏭', name: 'Промышленные выбросы',     q: 'выбросы в атмосферу' } : null,
         { icon: '🛡️', name: 'Риски и угрозы города',    q: 'риски для жизни в городе' },
+        { icon: '🏙️', name: 'Экорейтинг городов',       q: 'рейтинг городов по экологии' },
+      ],
+    },
+    {
+      id: 'sources',
+      label: 'Источники данных',
+      color: 'slate',
+      items: [
+        { icon: '🏛️', name: 'Мэрия и портал OpenData',  q: '', onclick: "window.open('https://opendata.novo-sibirsk.ru','_blank')" },
+        { icon: '🗺️', name: 'OpenStreetMap (OSM)',       q: '', onclick: "window.open('https://www.openstreetmap.org','_blank')" },
+        { icon: '🌤️', name: 'Open-Meteo (погода/AQI)',   q: '', onclick: "window.open('https://open-meteo.com','_blank')" },
+        { icon: '📡', name: 'Росприроднадзор (2-ТП)',    q: '', onclick: "window.open('https://rpn.gov.ru','_blank')" },
+        { icon: '📍', name: '2GIS (геокодирование)',      q: '', onclick: "window.open('https://2gis.ru','_blank')" },
+        { icon: '🚔', name: 'ГИБДД (камеры)',            q: '', onclick: "window.open('https://гибдд.рф','_blank')" },
       ],
     },
     {
@@ -5668,7 +5682,6 @@ function renderInfo(_data) {
       items: [
         { icon: '📤', name: 'Загрузить CSV-отчёт',       q: '', onclick: "window.open('/studio#data','_blank')" },
         { icon: '🏆', name: 'Рейтинг ЖКХ по районам',    q: 'рейтинг качества жкх по районам' },
-        { icon: '🏙️', name: 'Экорейтинг городов России', q: 'рейтинг городов по экологии' },
         { icon: '📐', name: 'Регламенты и пороги',        q: '', onclick: "window.open('/studio#rules','_blank')" },
         { icon: '💬', name: 'Жалобы и предложения',       q: '', onclick: '_openFeedback()' },
         { icon: '🔧', name: 'Студия (admin-панель)',      q: '', onclick: "window.open('/studio','_blank')" },
@@ -5684,6 +5697,7 @@ function renderInfo(_data) {
     purple:  { bg: 'bg-purple-50',  border: 'border-purple-200',  text: 'text-purple-700',  hover: 'hover:bg-purple-100' },
     red:     { bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     hover: 'hover:bg-red-100' },
     indigo:  { bg: 'bg-indigo-50',  border: 'border-indigo-200',  text: 'text-indigo-700',  hover: 'hover:bg-indigo-100' },
+    slate:   { bg: 'bg-slate-50',   border: 'border-slate-200',   text: 'text-slate-600',   hover: 'hover:bg-slate-100' },
   };
 
   const hasVoice = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
@@ -5717,7 +5731,7 @@ function renderInfo(_data) {
           <img src="/static/img/sigma-cat-sm.png" class="h-16 w-auto flex-shrink-0 object-contain drop-shadow-md" alt="Сима">
           <div class="min-w-0">
             <p class="font-semibold text-base leading-snug">Привет! Я — Сима</p>
-            <p class="text-blue-100 text-xs mt-0.5 leading-relaxed">Голосовой помощник и аналитическая платформа открытых данных${_cityCfg?.city_name_genitive ? ' ' + esc(_cityCfg.city_name_genitive) : ' города'}.</p>
+            <p class="text-blue-100 text-xs mt-0.5 leading-relaxed">Голосовой помощник и аналитическая платформа открытых данных городской среды.</p>
             <p class="text-blue-200/70 text-[10px] mt-1 leading-relaxed">Для жителей — голосовые запросы · Для руководителей — дашборды и рейтинги · Для аналитиков — no-code конструктор отчётов</p>
           </div>
         </div>
@@ -5726,9 +5740,8 @@ function renderInfo(_data) {
       <!-- Разделы -->
       <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">${sectionsHtml}</div>
       <!-- Подпись -->
-      <div class="px-4 pb-3 text-center text-[10px] text-slate-400 leading-relaxed">
-        Источники: мэрия · OpenStreetMap · Open-Meteo · Росприроднадзор · 2GIS · ГИБДД
-        <br>Фреймворк Сигма · ЦИИ НГУ · rule-based, без AI в runtime
+      <div class="px-4 pb-3 text-center text-[10px] text-slate-400">
+        Фреймворк Сигма · ЦИИ НГУ · rule-based, без AI в runtime
       </div>
     </div>
   `;
