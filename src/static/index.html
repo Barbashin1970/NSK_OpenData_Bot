@@ -1900,6 +1900,13 @@ function _trySpecialQuery(raw) {
     return true;
   }
 
+  // ── Бюджет города ───────────────────────────────────────────────────────
+  if (/бюджет|расход\S*\s+город|доход\S*\s+город|финанс\S*\s+город|сколько\s+трат|муниципальн\S*\s+бюджет/i.test(ql)) {
+    document.getElementById('loadingState').className = 'hidden';
+    _showBudget();
+    return true;
+  }
+
   // ── [PUZZLE GAME] Триггер: «пятнашки», «игра», «puzzle» ──────────────────
   if (/пятнашк|пазл|puzzle|^игр[ауы]?$/i.test(ql)) {
     document.getElementById('queryInput').value = '';
@@ -3063,6 +3070,78 @@ function _showCityEmission(cityName) {
         </div>
       </div>`;
     detailEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+async function _showBudget(citySlug) {
+  const el = document.getElementById('resultArea');
+  _pushView('budget');
+  el.className = 'fade-in';
+  el.innerHTML = `<div class="text-center py-8 text-slate-400"><div class="animate-spin w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full mx-auto mb-2"></div>Загрузка бюджета…</div>`;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  try {
+    const slug = citySlug || _cityCfg?.city_id || 'novosibirsk';
+    const [bR, cR] = await Promise.all([fetch('/budget/' + slug), fetch('/budget-compare')]);
+    if (!bR.ok) throw new Error('Бюджетные данные для этого города пока не загружены');
+    const b = await bR.json();
+    const compare = cR.ok ? (await cR.json()).cities || [] : [];
+    const fmtB = v => v >= 1000 ? (v / 1000).toFixed(1) + ' млрд' : Math.round(v).toLocaleString('ru-RU') + ' млн';
+    const maxExp = Math.max(1, ...b.expenses.map(e => e.amount_mln));
+    const perCapita = b.population ? Math.round(b.total_expense_mln * 1e6 / b.population).toLocaleString('ru-RU') : '—';
+
+    const expHtml = b.expenses.map(e => {
+      const pct = Math.round(e.amount_mln / maxExp * 100);
+      const bc = e.pct > 30 ? 'bg-blue-500' : e.pct > 10 ? 'bg-blue-400' : 'bg-blue-300';
+      return `<div class="flex items-center gap-2 py-1.5">
+        <span class="text-sm w-5 text-center">${e.icon}</span>
+        <span class="text-xs text-slate-600 w-40 truncate">${e.category}</span>
+        <div class="flex-1 bg-slate-100 rounded-full h-2.5"><div class="${bc} h-2.5 rounded-full" style="width:${pct}%"></div></div>
+        <span class="text-xs font-bold text-slate-700 w-20 text-right">${fmtB(e.amount_mln)}</span>
+        <span class="text-[10px] text-slate-400 w-10 text-right">${e.pct}%</span>
+      </div>`;
+    }).join('');
+
+    const incHtml = b.income.map(i => `<div class="text-center px-3 py-2">
+      <div class="text-lg font-bold text-slate-700">${i.pct}%</div>
+      <div class="text-[10px] text-slate-500">${i.icon} ${i.category.replace(/ доходы| поступления/, '')}</div>
+    </div>`).join('');
+
+    const compareHtml = compare.length > 1 ? `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-slate-100"><span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Сравнение бюджетов городов</span></div>
+        <table class="w-full text-xs"><thead><tr class="text-left text-[10px] font-semibold uppercase text-slate-400 border-b border-slate-100">
+          <th class="px-4 py-2">Город</th><th class="px-4 py-2 text-right">Расходы</th><th class="px-4 py-2 text-right">На жителя</th><th class="px-4 py-2 text-right">Образование</th><th class="px-4 py-2 text-right">ЖКХ</th>
+        </tr></thead><tbody>${compare.map(c => {
+          const cur = c.city_id === slug;
+          return `<tr class="border-b border-slate-50 ${cur ? 'bg-blue-50 font-semibold' : 'hover:bg-slate-50'} cursor-pointer" onclick="_showBudget('${c.city_id}')">
+            <td class="px-4 py-2 ${cur ? 'text-blue-700' : 'text-slate-700'}">${esc(c.city)}</td>
+            <td class="px-4 py-2 text-right">${fmtB(c.total_expense_mln)}</td>
+            <td class="px-4 py-2 text-right font-mono">${c.per_capita_rub.toLocaleString('ru-RU')}</td>
+            <td class="px-4 py-2 text-right">${c.education_pct}%</td>
+            <td class="px-4 py-2 text-right">${c.zhkh_pct}%</td>
+          </tr>`;
+        }).join('')}</tbody></table>
+      </div>` : '';
+
+    el.innerHTML = `<div class="space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-amber-200 px-5 py-4 flex items-center gap-3">
+          <span class="text-2xl">💰</span>
+          <div class="flex-1"><div class="font-semibold text-slate-800">Бюджет · ${esc(b.city)} · ${b.year}</div><div class="text-xs text-slate-500">${esc(b.source)}</div></div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100 border-b border-slate-100">
+          <div class="px-4 py-3 text-center"><div class="text-xl font-bold text-emerald-600">${fmtB(b.total_income_mln)}</div><div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Доходы</div></div>
+          <div class="px-4 py-3 text-center"><div class="text-xl font-bold text-blue-600">${fmtB(b.total_expense_mln)}</div><div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Расходы</div></div>
+          <div class="px-4 py-3 text-center"><div class="text-xl font-bold ${b.deficit_mln > 0 ? 'text-red-600' : 'text-emerald-600'}">${b.deficit_mln > 0 ? '-' : ''}${fmtB(Math.abs(b.deficit_mln))}</div><div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">${b.deficit_mln > 0 ? 'Дефицит' : 'Профицит'}</div></div>
+          <div class="px-4 py-3 text-center"><div class="text-xl font-bold text-slate-700">${perCapita}</div><div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">руб/жителя</div></div>
+        </div>
+        <div class="flex divide-x divide-slate-100 border-b border-slate-100">${incHtml}</div>
+        <div class="px-5 py-4"><div class="text-xs font-semibold text-slate-600 mb-2">Расходы по статьям</div>${expHtml}</div>
+      </div>
+      ${compareHtml}
+    </div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="text-center py-8 text-red-400 text-sm">${e.message}</div>`;
   }
 }
 
@@ -5660,6 +5739,7 @@ function renderInfo(_data) {
         _hasMeta('emissions') ? { icon: '🏭', name: 'Промышленные выбросы',     q: 'выбросы в атмосферу' } : null,
         { icon: '🛡️', name: 'Риски и угрозы города',    q: 'риски для жизни в городе' },
         { icon: '🏙️', name: 'Экорейтинг городов',       q: 'рейтинг городов по экологии' },
+        { icon: '💰', name: 'Бюджет города',              q: 'бюджет города' },
       ],
     },
     {

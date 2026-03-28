@@ -75,6 +75,19 @@ async def api_remove_term(request: Request):
     return {"ok": True}
 
 
+@router.delete(
+    "/api/unknown-query",
+    summary="Удалить нераспознанный запрос",
+)
+async def api_remove_unknown(request: Request):
+    body = await request.json()
+    query = (body.get("query") or "").strip()
+    if not query:
+        return JSONResponse(status_code=400, content={"error": "empty query"})
+    removed = remove_unknown_query(query)
+    return {"ok": removed}
+
+
 @router.get(
     "/api/unknown-queries",
     summary="Топ нераспознанных запросов",

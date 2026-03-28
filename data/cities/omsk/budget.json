@@ -1,0 +1,25 @@
+{
+  "city": "Омск",
+  "city_id": "omsk",
+  "year": 2025,
+  "source": "budget.omsk.ifinmon.ru, admomsk.ru",
+  "population": 1140000,
+  "total_income_mln": 34100,
+  "total_expense_mln": 34100,
+  "deficit_mln": 0,
+  "income": [
+    { "category": "Налоговые доходы", "amount_mln": 16400, "pct": 48.1, "icon": "💰" },
+    { "category": "Безвозмездные поступления", "amount_mln": 15200, "pct": 44.6, "icon": "🏛️" },
+    { "category": "Неналоговые доходы", "amount_mln": 2500, "pct": 7.3, "icon": "🏢" }
+  ],
+  "expenses": [
+    { "category": "Образование", "amount_mln": 17200, "pct": 50.4, "icon": "🏫" },
+    { "category": "Национальная экономика", "amount_mln": 5900, "pct": 17.3, "icon": "🏗️" },
+    { "category": "ЖКХ", "amount_mln": 4100, "pct": 12.0, "icon": "🔧" },
+    { "category": "Социальная политика", "amount_mln": 2800, "pct": 8.2, "icon": "👥" },
+    { "category": "Общегосударственные вопросы", "amount_mln": 2100, "pct": 6.2, "icon": "🏛️" },
+    { "category": "Физкультура и спорт", "amount_mln": 800, "pct": 2.3, "icon": "⚽" },
+    { "category": "Культура", "amount_mln": 700, "pct": 2.1, "icon": "🎭" },
+    { "category": "Обслуживание долга", "amount_mln": 500, "pct": 1.5, "icon": "💳" }
+  ]
+}

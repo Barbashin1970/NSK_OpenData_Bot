@@ -1352,3 +1352,66 @@ def get_city_emissions(city_slug: str):
         "total_municipalities": len(rows),
         "rows": rows,
     }
+
+
+# ── Budget data (бюджет любого города) ───────────────────────────────────
+@router.get(
+    "/budget/{city_slug}",
+    tags=["Финансы и бюджет"],
+    summary="Бюджет города (доходы, расходы по статьям)",
+)
+def get_city_budget(city_slug: str):
+    """Загружает бюджетные данные из data/cities/{city_slug}/budget.json."""
+    import json as _json
+    from pathlib import Path
+    from ..constants import PROJECT_ROOT
+
+    safe_slug = _re.sub(r"[^a-z0-9_-]", "", city_slug.lower())
+    path = Path(PROJECT_ROOT) / "data" / "cities" / safe_slug / "budget.json"
+    if not path.exists():
+        return JSONResponse({"error": f"Бюджет для '{city_slug}' не найден"}, status_code=404)
+    return _json.loads(path.read_text(encoding="utf-8"))
+
+
+@router.get(
+    "/budget-compare",
+    tags=["Финансы и бюджет"],
+    summary="Сравнение бюджетов городов",
+)
+def compare_budgets():
+    """Все доступные бюджеты для сравнительного рейтинга."""
+    import json as _json
+    from pathlib import Path
+    from ..constants import PROJECT_ROOT
+
+    cities_dir = Path(PROJECT_ROOT) / "data" / "cities"
+    budgets = []
+    for d in sorted(cities_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        bp = d / "budget.json"
+        if not bp.exists():
+            continue
+        try:
+            data = _json.loads(bp.read_text(encoding="utf-8"))
+            pop = data.get("population", 1)
+            total_exp = data.get("total_expense_mln", 0)
+            expenses_map = {e["category"]: e["amount_mln"] for e in data.get("expenses", [])}
+            budgets.append({
+                "city": data.get("city", d.name),
+                "city_id": data.get("city_id", d.name),
+                "year": data.get("year"),
+                "population": pop,
+                "total_income_mln": data.get("total_income_mln", 0),
+                "total_expense_mln": total_exp,
+                "deficit_mln": data.get("deficit_mln", 0),
+                "per_capita_rub": round(total_exp * 1e6 / pop) if pop else 0,
+                "education_pct": next((e["pct"] for e in data.get("expenses", []) if "бразован" in e["category"]), 0),
+                "zhkh_pct": next((e["pct"] for e in data.get("expenses", []) if "ЖКХ" in e["category"]), 0),
+                "zhkh_per_capita": round(expenses_map.get("ЖКХ", 0) * 1e6 / pop) if pop else 0,
+                "expenses": data.get("expenses", []),
+            })
+        except Exception:
+            pass
+    budgets.sort(key=lambda b: b["per_capita_rub"], reverse=True)
+    return {"cities": budgets, "count": len(budgets)}

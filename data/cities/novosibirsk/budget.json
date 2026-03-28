@@ -1,0 +1,25 @@
+{
+  "city": "Новосибирск",
+  "city_id": "novosibirsk",
+  "year": 2025,
+  "source": "gorsovetnsk.ru, novo-sibirsk.ru",
+  "population": 1620000,
+  "total_income_mln": 97800,
+  "total_expense_mln": 99100,
+  "deficit_mln": 1350,
+  "income": [
+    { "category": "Налоговые доходы", "amount_mln": 46800, "pct": 47.8, "icon": "💰" },
+    { "category": "Безвозмездные поступления", "amount_mln": 44250, "pct": 45.2, "icon": "🏛️" },
+    { "category": "Неналоговые доходы", "amount_mln": 6750, "pct": 6.9, "icon": "🏢" }
+  ],
+  "expenses": [
+    { "category": "Образование", "amount_mln": 55487, "pct": 51.2, "icon": "🏫" },
+    { "category": "Национальная экономика", "amount_mln": 22063, "pct": 20.4, "icon": "🏗️" },
+    { "category": "Общегосударственные вопросы", "amount_mln": 7924, "pct": 7.3, "icon": "🏛️" },
+    { "category": "ЖКХ", "amount_mln": 7707, "pct": 7.1, "icon": "🔧" },
+    { "category": "Социальная политика", "amount_mln": 7575, "pct": 7.0, "icon": "👥" },
+    { "category": "Физкультура и спорт", "amount_mln": 3261, "pct": 3.0, "icon": "⚽" },
+    { "category": "Культура", "amount_mln": 2710, "pct": 2.5, "icon": "🎭" },
+    { "category": "Обслуживание долга", "amount_mln": 2300, "pct": 2.1, "icon": "💳" }
+  ]
+}

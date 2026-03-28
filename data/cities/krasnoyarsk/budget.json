@@ -1,0 +1,25 @@
+{
+  "city": "Красноярск",
+  "city_id": "krasnoyarsk",
+  "year": 2025,
+  "source": "budget.admkrsk.ru",
+  "population": 1093000,
+  "total_income_mln": 62500,
+  "total_expense_mln": 64200,
+  "deficit_mln": 1700,
+  "income": [
+    { "category": "Налоговые доходы", "amount_mln": 28100, "pct": 44.9, "icon": "💰" },
+    { "category": "Безвозмездные поступления", "amount_mln": 30200, "pct": 48.3, "icon": "🏛️" },
+    { "category": "Неналоговые доходы", "amount_mln": 4200, "pct": 6.7, "icon": "🏢" }
+  ],
+  "expenses": [
+    { "category": "Образование", "amount_mln": 31800, "pct": 49.5, "icon": "🏫" },
+    { "category": "Национальная экономика", "amount_mln": 12500, "pct": 19.5, "icon": "🏗️" },
+    { "category": "ЖКХ", "amount_mln": 6400, "pct": 10.0, "icon": "🔧" },
+    { "category": "Общегосударственные вопросы", "amount_mln": 4800, "pct": 7.5, "icon": "🏛️" },
+    { "category": "Социальная политика", "amount_mln": 4100, "pct": 6.4, "icon": "👥" },
+    { "category": "Физкультура и спорт", "amount_mln": 1900, "pct": 3.0, "icon": "⚽" },
+    { "category": "Культура", "amount_mln": 1500, "pct": 2.3, "icon": "🎭" },
+    { "category": "Обслуживание долга", "amount_mln": 1200, "pct": 1.9, "icon": "💳" }
+  ]
+}

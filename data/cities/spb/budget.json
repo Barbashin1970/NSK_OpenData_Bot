@@ -1,0 +1,26 @@
+{
+  "city": "Санкт-Петербург",
+  "city_id": "spb",
+  "year": 2025,
+  "source": "fincom.gov.spb.ru, budget.gov.ru",
+  "population": 5384000,
+  "total_income_mln": 958000,
+  "total_expense_mln": 1008000,
+  "deficit_mln": 50000,
+  "income": [
+    { "category": "Налоговые доходы", "amount_mln": 748000, "pct": 78.1, "icon": "💰" },
+    { "category": "Безвозмездные поступления", "amount_mln": 155000, "pct": 16.2, "icon": "🏛️" },
+    { "category": "Неналоговые доходы", "amount_mln": 55000, "pct": 5.7, "icon": "🏢" }
+  ],
+  "expenses": [
+    { "category": "Образование", "amount_mln": 252000, "pct": 25.0, "icon": "🏫" },
+    { "category": "Национальная экономика", "amount_mln": 231000, "pct": 22.9, "icon": "🏗️" },
+    { "category": "Здравоохранение", "amount_mln": 140000, "pct": 13.9, "icon": "🏥" },
+    { "category": "Социальная политика", "amount_mln": 130000, "pct": 12.9, "icon": "👥" },
+    { "category": "ЖКХ", "amount_mln": 95000, "pct": 9.4, "icon": "🔧" },
+    { "category": "Общегосударственные вопросы", "amount_mln": 62000, "pct": 6.2, "icon": "🏛️" },
+    { "category": "Культура", "amount_mln": 48000, "pct": 4.8, "icon": "🎭" },
+    { "category": "Физкультура и спорт", "amount_mln": 25000, "pct": 2.5, "icon": "⚽" },
+    { "category": "Обслуживание долга", "amount_mln": 25000, "pct": 2.5, "icon": "💳" }
+  ]
+}
