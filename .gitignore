@@ -7,6 +7,8 @@ data/meta.json
 data/api_keys.json
 data/ciinsu/config.json
 data/ciinsu/knowledge_base.json
+data/custom/
+data/feedback.json
 *.db
 *.duckdb
 

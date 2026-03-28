@@ -219,9 +219,14 @@ async def dev_password_change(body: dict):
 
 # ── Available cities (for city-switcher in index.html) ────────────────────────
 
+_cities_cache: dict | None = None
+
 @router.get("/api/available-cities", include_in_schema=False)
 def api_available_cities():
-    """Список всех доступных профилей городов для выпадающего меню."""
+    """Список всех доступных профилей городов (кэш при первом вызове)."""
+    global _cities_cache
+    if _cities_cache is not None:
+        return _cities_cache
     import yaml as _yaml
     _config_dir = Path(__file__).parent.parent.parent / "config"
     cities = []
@@ -234,7 +239,8 @@ def api_available_cities():
                 cities.append({"city_id": c.get("id", ""), "city_name": c.get("name", "")})
         except Exception:
             pass
-    return {"cities": cities}
+    _cities_cache = {"cities": cities}
+    return _cities_cache
 
 
 @router.post("/api/set-city", include_in_schema=False)

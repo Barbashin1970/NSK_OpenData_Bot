@@ -24,6 +24,20 @@
     /* 2GIS badge: скрыт по умолчанию, на десктопе показываем когда ключ загружен */
     #mapglBadge[data-available] { display: none; }
     @media (min-width: 640px) { #mapglBadge[data-available] { display: flex; } }
+    /* Тултип для терминов (AQI, PM2.5) */
+    .term-hint { position: relative; cursor: help; border-bottom: 1px dotted currentColor; }
+    .term-hint .term-tip {
+      display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      background: #1e293b; color: #fff; font-size: 11px; line-height: 1.4; padding: 8px 12px;
+      border-radius: 10px; white-space: normal; width: max-content; max-width: 280px;
+      z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,.25); pointer-events: none;
+      font-weight: 400; text-transform: none; letter-spacing: 0;
+    }
+    .term-hint .term-tip::after {
+      content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+      border: 5px solid transparent; border-top-color: #1e293b;
+    }
+    .term-hint:hover .term-tip, .term-hint:focus .term-tip { display: block; }
     .chip { transition: all .15s ease; }
     .chip:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.15); }
     .chip:active { transform: translateY(0); }
@@ -2103,7 +2117,7 @@ function _ecoReportSkeleton(distLabel) {
       <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
         <div class="flex items-center gap-2 mb-3">
           <span class="text-lg">📊</span>
-          <div class="font-semibold text-sm text-slate-800">Динамика AQI</div>
+          <div class="font-semibold text-sm text-slate-800">Динамика ${_termHint('AQI')}</div>
         </div>
         <div class="flex items-end gap-1 h-[120px]">
           ${Array.from({length:30}, (_,i) => `<div class="flex-1 ${_skeletonPulse}" style="height:${20 + Math.random()*80}px"></div>`).join('')}
@@ -2335,7 +2349,7 @@ async function _showEcoReport(districtFilter) {
       const maxH = Math.max(...hourBuckets);
       heatmapHtml = `
         <div class="mt-3">
-          <div class="text-xs font-semibold text-slate-600 mb-2">Часы превышений AQI > 40 (суммарно за 30 дней)</div>
+          <div class="text-xs font-semibold text-slate-600 mb-2">Часы превышений ${_termHint('AQI')} > 40 (суммарно за 30 дней)</div>
           <div class="flex items-end gap-px" style="height:60px">
             ${hourBuckets.map((v, h) => {
               const ht = maxH > 0 ? Math.max(3, Math.round(v / maxH * 50)) : 3;
@@ -2386,7 +2400,7 @@ async function _showEcoReport(districtFilter) {
             <div class="flex items-center gap-2 px-3 py-2 rounded-xl ${nowC.bg} flex-1 min-w-[120px]">
               <span class="text-lg">💨</span>
               <div>
-                <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Сейчас AQI</div>
+                <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Сейчас ${_termHint('AQI')}</div>
                 <div class="text-lg font-bold ${nowC.text}">${nowAqi ?? '—'} <span class="text-xs font-medium">${nowC.label}</span></div>
               </div>
             </div>
@@ -2407,7 +2421,7 @@ async function _showEcoReport(districtFilter) {
             <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-50 flex-1 min-w-[100px]">
               <span class="text-lg">🫁</span>
               <div>
-                <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">PM2.5</div>
+                <div class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">${_termHint('PM2.5')}</div>
                 <div class="text-lg font-bold text-violet-700">${nowPm25 != null ? nowPm25 + ' мкг/м³' : '—'}</div>
               </div>
             </div>
@@ -2428,7 +2442,7 @@ async function _showEcoReport(districtFilter) {
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
           <div class="flex items-center gap-2 mb-3">
             <span class="text-lg">📊</span>
-            <div class="font-semibold text-sm text-slate-800">Динамика AQI</div>
+            <div class="font-semibold text-sm text-slate-800">Динамика ${_termHint('AQI')}</div>
             <div class="ml-auto text-xs text-slate-400">Среднее: <strong class="${aqiColor(avgAqi).text}">${avgAqi ?? '—'}</strong> · Макс: <strong>${maxAqi ?? '—'}</strong></div>
           </div>
           ${barChartHtml}
@@ -2450,7 +2464,7 @@ async function _showEcoReport(districtFilter) {
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
           <div class="flex items-center gap-2 mb-1">
             <span class="text-lg">🔥</span>
-            <div class="font-semibold text-sm text-slate-800">Превышения AQI</div>
+            <div class="font-semibold text-sm text-slate-800">Превышения ${_termHint('AQI')}</div>
             <div class="ml-auto text-xs text-slate-400">${excDays} ${_pluralDays(excDays)} · ${exc.total_records || 0} записей</div>
           </div>
           ${heatmapHtml}
@@ -2464,11 +2478,11 @@ async function _showEcoReport(districtFilter) {
           <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100">
             <div class="px-4 py-3 text-center">
               <div class="text-2xl font-bold ${aqiColor(avgAqi).text}">${avgAqi ?? '—'}</div>
-              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Ср. AQI</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Ср. ${_termHint('AQI')}</div>
             </div>
             <div class="px-4 py-3 text-center">
               <div class="text-2xl font-bold text-violet-600">${avgPm25 ?? '—'}</div>
-              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Ср. PM2.5</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Ср. ${_termHint('PM2.5')}</div>
             </div>
             <div class="px-4 py-3 text-center">
               <div class="text-2xl font-bold text-blue-600">${avgTemp ?? '—'}°</div>
@@ -2476,7 +2490,7 @@ async function _showEcoReport(districtFilter) {
             </div>
             <div class="px-4 py-3 text-center">
               <div class="text-2xl font-bold ${excDays === 0 ? 'text-emerald-600' : excDays <= 3 ? 'text-yellow-600' : 'text-red-600'}">${excDays}</div>
-              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Дней AQI>40</div>
+              <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Дней ${_termHint('AQI')}>40</div>
             </div>
           </div>
           <div class="px-5 py-2.5 border-t border-slate-100 flex flex-wrap items-center text-xs text-slate-400 gap-3">
@@ -3049,6 +3063,53 @@ function _showCityEmission(cityName) {
         </div>
       </div>`;
     detailEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+async function _showCustomReport(slug) {
+  const el = document.getElementById('resultArea');
+  _pushView('customReport');
+  el.className = 'fade-in';
+  el.innerHTML = `<div class="text-center py-8 text-slate-400"><div class="animate-spin w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full mx-auto mb-2"></div>Загрузка отчёта…</div>`;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  try {
+    const r = await fetch('/custom-reports/' + encodeURIComponent(slug));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const meta = data.meta;
+    const cols = data.columns || [];
+    const rows = data.rows || [];
+    const fmtV = v => typeof v === 'number' ? v.toLocaleString('ru-RU') : esc(String(v ?? ''));
+
+    const rowsHtml = rows.slice(0, 50).map((row, i) => `
+      <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+        ${cols.map(c => `<td class="px-3 py-2 text-sm text-slate-700 whitespace-nowrap">${fmtV(row[c])}</td>`).join('')}
+      </tr>`).join('');
+
+    el.innerHTML = `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-200 px-5 py-4 flex items-center gap-3">
+          <span class="text-2xl">${meta.icon || '📊'}</span>
+          <div class="flex-1">
+            <div class="font-semibold text-slate-800">${esc(meta.name)}</div>
+            <div class="text-xs text-slate-500">${meta.row_count} строк · ${cols.length} колонок${meta.description ? ' · ' + esc(meta.description) : ''}</div>
+          </div>
+          <span class="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-2.5 py-1 rounded-full">отчёт</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="text-left text-[10px] font-semibold uppercase text-slate-400 border-b border-slate-100">
+                ${cols.map(c => `<th class="px-3 py-2 whitespace-nowrap">${esc(c)}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+        ${rows.length > 50 ? `<div class="px-5 py-3 text-center text-xs text-slate-400 border-t border-slate-100">Показано 50 из ${rows.length} строк</div>` : ''}
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="text-center py-8 text-red-400 text-sm">⚠ Ошибка: ${e.message}</div>`;
   }
 }
 
@@ -4778,6 +4839,18 @@ function aqiColor(aqi) {
   return                  { bg: 'bg-red-100',     text: 'text-red-700',     label: 'Опасное' };
 }
 
+// ─── Словарь терминов для ? тултипов ──────────────────────────────────────────
+const _TERM_HINTS = {
+  AQI: 'AQI (Air Quality Index) — индекс качества воздуха от 0 до 100+. До 20 — отлично, 20–40 — хорошо, 40–60 — умеренно, выше 60 — плохо. Учитывает PM2.5, PM10, NO₂.',
+  'PM2.5': 'PM2.5 — мельчайшие частицы пыли (< 2.5 мкм), проникающие в лёгкие и кровь. Норма ВОЗ: до 15 мкг/м³ (среднегодовая), до 35 мкг/м³ (суточная). Источники: транспорт, ТЭЦ, печное отопление.',
+  'ПДК': 'ПДК — предельно допустимая концентрация загрязняющего вещества. Превышение означает риск для здоровья при длительном воздействии.',
+};
+function _termHint(label) {
+  const tip = _TERM_HINTS[label];
+  if (!tip) return label;
+  return `<span class="term-hint" tabindex="0">${label}<span class="text-blue-400 text-[8px] ml-0.5 align-super">?</span><span class="term-tip">${tip}</span></span>`;
+}
+
 // ─── Life Indices (вычисляются client-side из ECO_STATUS rows) ────────────────
 function computeLifeIndices(rows) {
   if (!rows || !rows.length) return null;
@@ -4990,12 +5063,12 @@ function renderEcology(data) {
           <div class="flex items-start justify-between mb-1">
             <div class="text-sm font-semibold text-slate-800 leading-tight">${esc(dist)}</div>
             <span class="${c.bg} ${c.text} text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ml-1">
-              AQI ${r.aqi ?? '—'}
+              ${_termHint('AQI')} ${r.aqi ?? '—'}
             </span>
           </div>
           <div class="text-xs ${c.text} mb-2 font-medium">${c.label}</div>
           <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-            <span class="text-slate-400">PM2.5</span><span class="font-medium text-slate-700">${pm25} мкг/м³</span>
+            <span class="text-slate-400">${_termHint('PM2.5')}</span><span class="font-medium text-slate-700">${pm25} мкг/м³</span>
             <span class="text-slate-400">Темп.</span><span class="font-medium text-slate-700">${temp}</span>
             <span class="text-slate-400">Ветер</span><span class="font-medium text-slate-700">${wind}</span>
             <span class="text-slate-400">Влажн.</span><span class="font-medium text-slate-700">${hum}</span>
@@ -5532,11 +5605,9 @@ function renderInfo(_data) {
         { icon: '🌿', name: 'Качество воздуха сейчас',   q: 'качество воздуха в городе' },
         { icon: '😷', name: 'Превышения ПДК PM2.5',      q: 'превышение ПДК по PM2.5' },
         { icon: '🌡️', name: 'Прогноз погоды',            q: 'прогноз погоды на неделю' },
-        { icon: '⚠️', name: 'Риски для жизни',           q: 'риски для жизни в городе' },
-        { icon: '📊', name: 'Отчёт за 30 дней',             q: 'статистика экологии за месяц' },
+        { icon: '📊', name: 'Экоотчёт за 30 дней',       q: 'статистика экологии за месяц' },
         { icon: '📉', name: 'Динамика загрязнения',       q: 'динамика качества воздуха' },
-        _hasMeta('emissions') ? { icon: '🏭', name: 'Выбросы по предприятиям', q: 'выбросы в атмосферу' } : null,
-        { icon: '🏙️', name: 'Рейтинг городов по чистоте', q: 'рейтинг городов по экологии' },
+        { icon: '🚶', name: 'Индексы жизни города',       q: 'качество воздуха в городе' },
       ],
     },
     {
@@ -5581,11 +5652,26 @@ function renderInfo(_data) {
     },
     {
       id: 'safety',
-      label: 'Безопасность',
+      label: 'Безопасность и энергетика',
       color: 'red',
       items: [
         { icon: '📷', name: 'Камеры фиксации ПДД',      q: 'камеры видеофиксации' },
-        _hasMeta('heat_sources') ? { icon: '🌡️', name: 'Тепловые источники ТЭЦ', q: 'тепловые источники' } : null,
+        _hasMeta('heat_sources') ? { icon: '🔥', name: 'Тепловые источники ТЭЦ', q: 'тепловые источники' } : null,
+        _hasMeta('emissions') ? { icon: '🏭', name: 'Промышленные выбросы',     q: 'выбросы в атмосферу' } : null,
+        { icon: '🛡️', name: 'Риски и угрозы города',    q: 'риски для жизни в городе' },
+      ],
+    },
+    {
+      id: 'nocode',
+      label: 'No-Code аналитика',
+      color: 'indigo',
+      items: [
+        { icon: '📤', name: 'Загрузить CSV-отчёт',       q: '', onclick: "window.open('/studio#data','_blank')" },
+        { icon: '🏆', name: 'Рейтинг ЖКХ по районам',    q: 'рейтинг качества жкх по районам' },
+        { icon: '🏙️', name: 'Экорейтинг городов России', q: 'рейтинг городов по экологии' },
+        { icon: '📐', name: 'Регламенты и пороги',        q: '', onclick: "window.open('/studio#rules','_blank')" },
+        { icon: '💬', name: 'Жалобы и предложения',       q: '', onclick: '_openFeedback()' },
+        { icon: '🔧', name: 'Студия (admin-панель)',      q: '', onclick: "window.open('/studio','_blank')" },
       ],
     },
   ];
@@ -5597,6 +5683,7 @@ function renderInfo(_data) {
     orange:  { bg: 'bg-orange-50',  border: 'border-orange-200',  text: 'text-orange-700',  hover: 'hover:bg-orange-100' },
     purple:  { bg: 'bg-purple-50',  border: 'border-purple-200',  text: 'text-purple-700',  hover: 'hover:bg-purple-100' },
     red:     { bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     hover: 'hover:bg-red-100' },
+    indigo:  { bg: 'bg-indigo-50',  border: 'border-indigo-200',  text: 'text-indigo-700',  hover: 'hover:bg-indigo-100' },
   };
 
   const hasVoice = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
@@ -5606,13 +5693,14 @@ function renderInfo(_data) {
 
   const sectionsHtml = sections.filter(Boolean).map(sec => {
     const c = colorMap[sec.color] || colorMap.blue;
-    const items = sec.items.filter(Boolean).map(it => `
-      <button onclick="setQuery('${esc(it.q)}')"
+    const items = sec.items.filter(Boolean).map(it => {
+      const action = it.onclick ? it.onclick : `setQuery('${esc(it.q)}')`;
+      return `<button onclick="${action}"
               class="flex items-center gap-2 w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-700 ${c.hover} transition-colors group">
         <span class="text-sm flex-shrink-0 w-5 text-center">${it.icon}</span>
         <span class="group-hover:text-slate-900 leading-tight">${esc(it.name)}</span>
-      </button>
-    `).join('');
+      </button>`;
+    }).join('');
     return `
       <div class="${c.bg} ${c.border} border rounded-xl p-3">
         <div class="text-xs font-semibold ${c.text} uppercase tracking-wide mb-2">${esc(sec.label)}</div>
@@ -5629,7 +5717,8 @@ function renderInfo(_data) {
           <img src="/static/img/sigma-cat-sm.png" class="h-16 w-auto flex-shrink-0 object-contain drop-shadow-md" alt="Сима">
           <div class="min-w-0">
             <p class="font-semibold text-base leading-snug">Привет! Я — Сима</p>
-            <p class="text-blue-100 text-xs mt-0.5 leading-relaxed">Ваш голосовой навигатор по открытым данным${_cityCfg?.city_name_genitive ? ' ' + esc(_cityCfg.city_name_genitive) : ' города'}. Спросите меня о городе — голосом или текстом.</p>
+            <p class="text-blue-100 text-xs mt-0.5 leading-relaxed">Голосовой помощник и аналитическая платформа открытых данных${_cityCfg?.city_name_genitive ? ' ' + esc(_cityCfg.city_name_genitive) : ' города'}.</p>
+            <p class="text-blue-200/70 text-[10px] mt-1 leading-relaxed">Для жителей — голосовые запросы · Для руководителей — дашборды и рейтинги · Для аналитиков — no-code конструктор отчётов</p>
           </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">${voiceHint}</div>
@@ -5637,8 +5726,9 @@ function renderInfo(_data) {
       <!-- Разделы -->
       <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">${sectionsHtml}</div>
       <!-- Подпись -->
-      <div class="px-4 pb-3 text-center text-xs text-slate-400">
-        Данные: мэрия Новосибирска · OpenStreetMap · Open-Meteo · 051.novo-sibirsk.ru
+      <div class="px-4 pb-3 text-center text-[10px] text-slate-400 leading-relaxed">
+        Источники: мэрия · OpenStreetMap · Open-Meteo · Росприроднадзор · 2GIS · ГИБДД
+        <br>Фреймворк Сигма · ЦИИ НГУ · rule-based, без AI в runtime
       </div>
     </div>
   `;
@@ -5691,7 +5781,7 @@ async function loadTopics() {
   }
 }
 
-function renderTopics(topics) {
+async function renderTopics(topics) {
   // Скрываем CSV-темы если у города нет подключённого opendata-портала (Омск и др.)
   // Также скрываем темы без данных в кэше
   const cards = topics.filter(t => t.rows != null && t.rows > 0).map(t => {
@@ -5916,8 +6006,31 @@ function renderTopics(topics) {
     </div>
   ` : '';
 
-  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Метро → Аэропорт → Камеры → Медицина → Строительство → Тепло → Выбросы → Рейтинг → Игра → остальные датасеты
-  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + metroCard + airportCard + camerasCard + medicalCard + constructionPermitsCard + constructionCommCard + heatSourcesCard + emissionsCard + ecoIndexCard + gameCard + cards + pendingCards;
+  // Пользовательские аналитические отчёты
+  let customCards = '';
+  try {
+    const cr = await fetch('/custom-reports');
+    if (cr.ok) {
+      const crData = await cr.json();
+      const cityId = _cityCfg?.city_id || '';
+      customCards = (crData.reports || [])
+        .filter(r => !r.city_id || r.city_id === cityId)
+        .map(r => `
+          <div class="topic-card bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-4 cursor-pointer hover:shadow-md transition-all active:scale-95"
+               onclick="_showCustomReport('${r.slug}')">
+            <div class="flex items-start justify-between mb-2">
+              <span class="text-2xl">${r.icon || '📊'}</span>
+              <span class="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-2 py-0.5 rounded-full">отчёт</span>
+            </div>
+            <div class="font-semibold text-sm text-slate-800 leading-tight">${esc(r.name)}</div>
+            <div class="text-xs text-slate-500 mt-1">${r.row_count} строк · ${(r.columns||[]).length} колонок</div>
+          </div>
+        `).join('');
+    }
+  } catch(e) {}
+
+  // Порядок: ЦИИ → Новости → Экология → ЖКХ → Метро → Аэропорт → Камеры → Медицина → Строительство → Тепло → Выбросы → Рейтинг → Игра → Отчёты → остальные датасеты
+  document.getElementById('topicsGrid').innerHTML = ciiCard + newsCard + ecoCard + powerCard + metroCard + airportCard + camerasCard + medicalCard + constructionPermitsCard + constructionCommCard + heatSourcesCard + emissionsCard + ecoIndexCard + gameCard + customCards + cards + pendingCards;
 }
 
 // ─── ЦИИ НГУ панель ─────────────────────────────────────────────────────────
