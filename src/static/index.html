@@ -257,9 +257,190 @@
       <a href="/display" target="_blank" class="hover:text-blue-500 transition-colors">Презентация ↗</a> ·
       <a href="https://safety-builder.streamlit.app/" target="_blank" class="hover:text-blue-500 transition-colors">Демо «ИИ-помощник строителя» ↗</a> ·
       <a href="https://github.com/Barbashin1970/NSK_OpenData_Bot" target="_blank" class="hover:text-blue-500 transition-colors">GitHub ↗</a> ·
+      <button onclick="_openFeedback()" class="hover:text-blue-500 transition-colors cursor-pointer">💬 Жалобы и предложения</button> ·
       <span id="footerTime"></span>
     </p>
   </footer>
+
+  <!-- Feedback modal -->
+  <div id="feedbackModal" class="fixed inset-0 z-[9999] hidden">
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="_closeFeedback()"></div>
+    <div class="absolute bottom-0 left-0 right-0 sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-lg w-full">
+      <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4 text-white">
+          <div class="flex justify-between items-center">
+            <div>
+              <div class="font-semibold text-sm">💬 Жалобы и предложения</div>
+              <div class="text-[10px] text-blue-200 mt-0.5">Опишите: Что? Где? Когда? — и мы починим!</div>
+            </div>
+            <button onclick="_closeFeedback()" class="text-white/70 hover:text-white text-xl leading-none">&times;</button>
+          </div>
+        </div>
+
+        <!-- Category -->
+        <div class="px-5 pt-4 flex gap-2">
+          <button onclick="_setFbCat(this,'bug')" class="fb-cat-btn active flex-1 py-2 rounded-xl text-xs font-medium border transition-all"
+                  data-cat="bug">🐛 Баг</button>
+          <button onclick="_setFbCat(this,'suggestion')" class="fb-cat-btn flex-1 py-2 rounded-xl text-xs font-medium border transition-all"
+                  data-cat="suggestion">💡 Идея</button>
+          <button onclick="_setFbCat(this,'question')" class="fb-cat-btn flex-1 py-2 rounded-xl text-xs font-medium border transition-all"
+                  data-cat="question">❓ Вопрос</button>
+        </div>
+
+        <!-- Hint -->
+        <div class="px-5 pt-3">
+          <div id="fbHint" class="text-[10px] text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
+            <strong>Что</strong> произошло? <strong>Где</strong> на странице? <strong>Когда</strong> (после какого действия)?
+            — ответьте на эти вопросы и мы это реализуем или починим!
+          </div>
+        </div>
+
+        <!-- Text input -->
+        <div class="px-5 pt-3">
+          <textarea id="fbText" rows="4" maxlength="2000"
+            class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Опишите проблему или предложение..."></textarea>
+          <div class="flex justify-between items-center mt-1">
+            <span id="fbCharCount" class="text-[10px] text-slate-400">0 / 2000</span>
+            <span id="fbSource" class="text-[10px] text-slate-400"></span>
+          </div>
+        </div>
+
+        <!-- Voice + Send -->
+        <div class="px-5 py-4 flex items-center gap-3">
+          <button id="fbMicBtn" onclick="_toggleVoice()"
+            class="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 active:scale-95 text-white text-2xl flex items-center justify-center shadow-lg transition-all flex-shrink-0"
+            title="Голосовой ввод">
+            🎙️
+          </button>
+          <div class="flex-1 text-[10px] text-slate-400" id="fbVoiceStatus">
+            Нажмите 🎙️ для голосового ввода
+          </div>
+          <button onclick="_submitFeedback()" id="fbSendBtn"
+            class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-6 py-3 rounded-xl shadow-md transition-all active:scale-95">
+            Отправить →
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // ── Feedback widget ──────────────────────────────────────────────────────
+  let _fbCat = 'suggestion';
+  let _fbRecognition = null;
+  let _fbRecording = false;
+
+  function _openFeedback() {
+    document.getElementById('feedbackModal').classList.remove('hidden');
+    document.getElementById('fbText').value = '';
+    document.getElementById('fbCharCount').textContent = '0 / 2000';
+    document.getElementById('fbSource').textContent = '';
+    _fbCat = 'suggestion';
+    document.querySelectorAll('.fb-cat-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.cat === 'suggestion');
+      b.classList.toggle('bg-blue-600', b.dataset.cat === 'suggestion');
+      b.classList.toggle('text-white', b.dataset.cat === 'suggestion');
+      b.classList.toggle('border-blue-600', b.dataset.cat === 'suggestion');
+      b.classList.toggle('bg-white', b.dataset.cat !== 'suggestion');
+      b.classList.toggle('text-slate-600', b.dataset.cat !== 'suggestion');
+      b.classList.toggle('border-slate-200', b.dataset.cat !== 'suggestion');
+    });
+  }
+  function _closeFeedback() { document.getElementById('feedbackModal').classList.add('hidden'); _stopVoice(); }
+
+  function _setFbCat(el, cat) {
+    _fbCat = cat;
+    document.querySelectorAll('.fb-cat-btn').forEach(b => {
+      const a = b.dataset.cat === cat;
+      b.classList.toggle('bg-blue-600', a); b.classList.toggle('text-white', a); b.classList.toggle('border-blue-600', a);
+      b.classList.toggle('bg-white', !a); b.classList.toggle('text-slate-600', !a); b.classList.toggle('border-slate-200', !a);
+    });
+    const hints = {
+      bug: '<strong>Что</strong> сломалось? <strong>Где</strong> на странице? <strong>Когда</strong> (после какого действия)? Скриншот приветствуется.',
+      suggestion: '<strong>Что</strong> хотите улучшить? <strong>Где</strong> это находится? <strong>Как</strong> должно работать по-вашему?',
+      question: '<strong>Что</strong> непонятно? <strong>Где</strong> столкнулись? Что ожидали увидеть?',
+    };
+    document.getElementById('fbHint').innerHTML = hints[cat] || hints.suggestion;
+  }
+
+  document.getElementById('fbText').addEventListener('input', function() {
+    document.getElementById('fbCharCount').textContent = this.value.length + ' / 2000';
+  });
+
+  function _toggleVoice() {
+    if (_fbRecording) { _stopVoice(); return; }
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      document.getElementById('fbVoiceStatus').textContent = 'Голосовой ввод не поддерживается в этом браузере';
+      return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    _fbRecognition = new SR();
+    _fbRecognition.lang = 'ru-RU';
+    _fbRecognition.continuous = true;
+    _fbRecognition.interimResults = true;
+
+    const ta = document.getElementById('fbText');
+    const baseText = ta.value;
+
+    _fbRecognition.onresult = function(e) {
+      let interim = '', final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      if (final) ta.value = baseText + (baseText ? ' ' : '') + final;
+      document.getElementById('fbVoiceStatus').textContent = interim ? '🔴 ' + interim : '🔴 Говорите...';
+      document.getElementById('fbCharCount').textContent = ta.value.length + ' / 2000';
+      document.getElementById('fbSource').textContent = '🎙️ голос';
+    };
+    _fbRecognition.onerror = function(e) {
+      document.getElementById('fbVoiceStatus').textContent = 'Ошибка: ' + e.error;
+      _stopVoice();
+    };
+    _fbRecognition.onend = function() { _stopVoice(); };
+
+    _fbRecognition.start();
+    _fbRecording = true;
+    document.getElementById('fbMicBtn').classList.add('animate-pulse', 'ring-4', 'ring-red-300');
+    document.getElementById('fbVoiceStatus').textContent = '🔴 Говорите...';
+  }
+
+  function _stopVoice() {
+    if (_fbRecognition) { try { _fbRecognition.stop(); } catch(e) {} _fbRecognition = null; }
+    _fbRecording = false;
+    const btn = document.getElementById('fbMicBtn');
+    if (btn) { btn.classList.remove('animate-pulse', 'ring-4', 'ring-red-300'); }
+    const vs = document.getElementById('fbVoiceStatus');
+    if (vs) vs.textContent = 'Нажмите 🎙️ для голосового ввода';
+  }
+
+  async function _submitFeedback() {
+    const text = document.getElementById('fbText').value.trim();
+    if (!text || text.length < 5) {
+      document.getElementById('fbVoiceStatus').textContent = '⚠️ Минимум 5 символов';
+      return;
+    }
+    const btn = document.getElementById('fbSendBtn');
+    btn.disabled = true; btn.textContent = '⏳';
+    try {
+      const r = await fetch('/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, category: _fbCat, source: document.getElementById('fbSource').textContent.includes('голос') ? 'voice' : 'web' }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      document.getElementById('fbText').value = '';
+      document.getElementById('fbVoiceStatus').innerHTML = '✅ <span class="text-emerald-600 font-medium">Отправлено! Спасибо за обратную связь.</span>';
+      setTimeout(_closeFeedback, 2000);
+    } catch(e) {
+      document.getElementById('fbVoiceStatus').textContent = '⚠️ ' + e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Отправить →';
+    }
+  }
+  </script>
 
 
 </main>
@@ -958,65 +1139,138 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
   const ecoR = _dashEcoRatingKpi();
   if (ecoR) kpis.push(ecoR);
 
-  const kpiHtml = kpis.map(k => `
-    <div class="dash-kpi border rounded-2xl p-4 ${k.bg} ${k.border} cursor-pointer hover:shadow-md active:scale-95 transition-all"
-         onclick="${k.onclick}" title="Нажмите для подробностей">
-      <div class="flex items-center gap-1.5 mb-2">
-        <span class="text-base">${k.icon}</span>
-        <span class="text-xs text-slate-500 font-medium leading-tight">${k.label}</span>
-      </div>
-      <div class="text-3xl font-bold ${k.color} leading-none tracking-tight">${k.val}</div>
-      <div class="text-xs text-slate-400 mt-1">${k.note}</div>
-    </div>
-  `).join('');
+  // ── Светофор-полоска: одним взглядом всё понятно ─────────────────────────
+  // Паттерн: зелёный/жёлтый/красный + число — мгновенное считывание
+  const _signal = (ok, warn) => ok ? 'bg-emerald-500' : warn ? 'bg-amber-400' : 'bg-red-500';
+  const pwrOk = activeH === 0;
+  const aqiOk = avgAqi != null && avgAqi <= 40;
+  const aqiWarn = avgAqi != null && avgAqi <= 60;
+  const riskOk = riskCount === 0;
 
-  // ─ Таблица аварийных отключений ──────────────────────────────────────────
+  const signalHtml = `
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div class="grid grid-cols-4 divide-x divide-slate-100">
+        ${[
+          { dot: _signal(pwrOk, activeH <= 100), icon: pwrOk ? '✅' : '🔴', lbl: 'Аварии', val: activeH === 0 ? '—' : activeH.toLocaleString('ru-RU'),
+            sub: pwrOk ? 'нет' : `${activeH} дом.`, click: `askNow('${qEmerg}')` },
+          { dot: _signal(aqiOk, aqiWarn), icon: '🍃', lbl: 'AQI', val: avgAqi != null ? String(avgAqi) : '—',
+            sub: avgAqi != null ? ac.label : 'нет данных', click: `askNow('${qEco}')` },
+          { dot: _signal(riskOk, riskCount <= 1), icon: '⚠️', lbl: 'Риски', val: riskCount === 0 ? '—' : String(riskCount),
+            sub: riskOk ? 'нет' : `${riskCount} актив.`, click: `askNow('${qRisks}')` },
+          { dot: tKpi ? _signal(parseFloat(tKpi.val) < 4, parseFloat(tKpi.val) < 7) : 'bg-slate-300',
+            icon: tKpi?.icon || '🚗', lbl: 'Дороги', val: tKpi?.val || '—',
+            sub: tKpi?.note || 'нет данных', click: tKpi?.onclick || '' },
+        ].map(s => `
+          <div class="py-3 px-2 text-center cursor-pointer hover:bg-slate-50 transition-colors" onclick="${s.click}">
+            <div class="flex items-center justify-center gap-1.5 mb-1">
+              <span class="w-2 h-2 rounded-full ${s.dot} flex-shrink-0"></span>
+              <span class="text-[10px] text-slate-500 font-medium uppercase tracking-wide">${s.lbl}</span>
+            </div>
+            <div class="text-xl font-bold text-slate-800 leading-none">${s.val}</div>
+            <div class="text-[10px] text-slate-400 mt-1 truncate">${s.sub}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+
+  // ── Два блока рядом: ЖКХ слева, Экология справа ──────────────────────────
+  // ЖКХ: аварии + плановые + рейтинг
   const pwrRows = distPwrRows
     .filter(r => r.group_type === 'active' && Number(r.houses||0) > 0)
     .sort((a,b) => Number(b.houses||0) - Number(a.houses||0))
-    .slice(0, d ? 10 : 5);  // при фокусе на районе — больше строк
+    .slice(0, d ? 8 : 5);
 
-  const pwrTitle = d
-    ? `Аварийные отключения · ${dShort}`
-    : `Аварийные отключения · топ по районам`;
-  const pwrMore  = d
+  const pwrMore = d
     ? `askNow('отключения ЖКХ в ${dShort} районе')`
     : `askNow('отключения ЖКХ сейчас')`;
 
-  const pwrTable = `
-    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-      <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
-        <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">${pwrTitle}</span>
-        <button class="text-xs text-blue-600 hover:underline" onclick="${pwrMore}">Подробнее →</button>
+  const pwrBlock = `
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="px-4 py-2.5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400">🔧 ЖКХ</span>
+        <div class="flex gap-1">
+          <button class="text-[10px] text-blue-600 hover:underline" onclick="_showPowerHistory()">30 дн.</button>
+          <span class="text-slate-300">·</span>
+          <button class="text-[10px] text-blue-600 hover:underline" onclick="_showPowerRating()">Рейтинг</button>
+        </div>
       </div>
-      ${pwrRows.length ? `<table class="w-full"><tbody>${pwrRows.map(r => {
-          const _q = `отключения ${(r.utility||'').split(' ')[0].toLowerCase()} в ${r.district||''}`;
-          return `
-          <tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors cursor-pointer"
-              onclick="askNow(decodeURIComponent('${encodeURIComponent(_q)}'))">
-            <td class="px-4 py-2.5 text-xs text-slate-500 w-28">${esc((r.utility||'').split(' ')[0])}</td>
-            <td class="px-4 py-2.5 text-sm text-slate-700 font-medium">${esc(r.district||'—')}</td>
-            <td class="px-4 py-2.5 text-sm font-bold text-red-600 text-right">${r.houses} д.</td>
-          </tr>`;
-        }).join('')}</tbody></table>`
-      : `<div class="px-4 py-4 text-sm text-emerald-600 font-medium flex items-center gap-2">
-           <span>✅</span><span>Аварийных отключений нет${d ? ` в ${dShort}` : ''}</span>
-         </div>`}
+      <div class="flex-1">
+        ${pwrRows.length ? `
+          <div class="divide-y divide-slate-50">
+            ${pwrRows.map(r => {
+              const _q = `отключения ${(r.utility||'').split(' ')[0].toLowerCase()} в ${r.district||''}`;
+              return `<div class="px-4 py-2 flex items-center gap-2 hover:bg-slate-50 cursor-pointer transition-colors"
+                onclick="askNow(decodeURIComponent('${encodeURIComponent(_q)}'))">
+                <span class="text-red-500 text-xs font-bold w-10 text-right">${r.houses}</span>
+                <span class="text-xs text-slate-600 flex-1 truncate">${esc(r.district||'—')}</span>
+                <span class="text-[10px] text-slate-400">${esc((r.utility||'').split(' ')[0])}</span>
+              </div>`;
+            }).join('')}
+          </div>
+          <div class="px-4 py-2 border-t border-slate-100 flex justify-between text-[10px] text-slate-400">
+            <span>Плановых: <strong class="text-amber-600">${plannedH.toLocaleString('ru-RU')}</strong></span>
+            <button class="text-blue-600 hover:underline" onclick="${pwrMore}">Все →</button>
+          </div>`
+        : `<div class="px-4 py-6 text-center">
+            <div class="text-2xl mb-1">✅</div>
+            <div class="text-xs text-emerald-600 font-medium">Аварий нет${d ? ` в ${dShort}` : ''}</div>
+            <div class="text-[10px] text-slate-400 mt-1">Плановых: ${plannedH.toLocaleString('ru-RU')}</div>
+          </div>`}
+      </div>
     </div>`;
 
-  // ─ AQI chips ──────────────────────────────────────────────────────────────
-  const ecoChipRows = d ? ecoRows : allEcoRows.slice(0, 8);
-  const ecoChips = ecoChipRows.map(r => {
-    const c2 = aqiColor(r.aqi);
-    const distRaw = r.district || '';
-    const isOkrug = distRaw.toLowerCase().endsWith('округ');
-    const dist = distRaw.replace(/ (район|округ)$/i, '');
-    const _q = `качество воздуха в ${dist} ${isOkrug ? 'округе' : 'районе'}`;
-    return `<span class="${c2.bg} ${c2.text} border border-current/20 px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity"
-      onclick="askNow(decodeURIComponent('${encodeURIComponent(_q)}')">${dist}: ${r.aqi??'—'}</span>`;
-  }).join('');
+  // Экология: AQI по районам + индексы жизни
+  const ecoChipRows = d ? ecoRows : allEcoRows.slice(0, 11);
+  const ix = computeLifeIndices(ecoRows);
 
-  // ─ Фильтр по районам — полоска под заголовком ─────────────────────────────
+  const ecoBlock = `
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="px-4 py-2.5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400">🍃 Экология</span>
+        <div class="flex gap-1">
+          <button class="text-[10px] text-blue-600 hover:underline" onclick="_showEcoReport()">Отчёт</button>
+          <span class="text-slate-300">·</span>
+          <button class="text-[10px] text-blue-600 hover:underline" onclick="showEcoIndex()">Рейтинг</button>
+        </div>
+      </div>
+      <div class="flex-1 px-4 py-3">
+        <div class="flex flex-wrap gap-1.5 mb-3">
+          ${ecoChipRows.map(r => {
+            const c2 = aqiColor(r.aqi);
+            const dist = (r.district||'').replace(/ (район|округ)$/i, '');
+            return `<span class="${c2.bg} ${c2.text} px-2 py-0.5 rounded-full text-[10px] font-medium">${dist}: ${r.aqi??'—'}</span>`;
+          }).join('')}
+        </div>
+        ${ix ? `
+          <div class="space-y-1.5">
+            ${['driver','walk','utility'].map(key => {
+              const i = ix[key];
+              const pct = key === 'walk' ? i.score * 10 : (10 - i.score) * 10;
+              const barColor = pct >= 70 ? 'bg-emerald-400' : pct >= 40 ? 'bg-amber-400' : 'bg-red-400';
+              return `<div class="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded-lg px-1 py-0.5 transition-colors"
+                onclick="askNow('качество воздуха в городе')">
+                <span class="text-xs w-4">${i.icon}</span>
+                <span class="text-[10px] text-slate-600 w-20 truncate">${i.name.replace('Индекс ','')}</span>
+                <div class="flex-1 bg-slate-100 rounded-full h-1.5">
+                  <div class="${barColor} h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
+                </div>
+                <span class="text-[10px] font-bold text-slate-600 w-8 text-right">${i.score}/10</span>
+                <span class="text-[10px] text-slate-400 w-16 truncate">${i.label}</span>
+              </div>`;
+            }).join('')}
+          </div>` : ''}
+      </div>
+      ${ecoR ? `
+        <div class="px-4 py-2 border-t border-slate-100 flex items-center gap-2 text-[10px] cursor-pointer hover:bg-slate-50 transition-colors"
+             onclick="${ecoR.onclick}">
+          <span>${ecoR.icon}</span>
+          <span class="text-slate-500">${ecoR.label}:</span>
+          <span class="font-bold ${ecoR.color}">${ecoR.val}</span>
+          <span class="text-slate-400">${ecoR.note}</span>
+        </div>` : ''}
+    </div>`;
+
+  // ─ Фильтр по районам ───────────────────────────────────────────────────
   const distFilterBar = `
     <div class="dist-filter-bar">
       <span class="text-xs text-slate-400 flex-shrink-0">Район:</span>
@@ -1030,31 +1284,20 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
 
   const ts = new Date().toLocaleString('ru-RU', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
   const headTitle = d
-    ? `📊 Панель диспетчера · ${dShort} · ${ts}`
+    ? `📊 ${dShort} · ${ts}`
     : `📊 Панель диспетчера · ${ts}`;
   return `
-    <div class="space-y-4">
+    <div class="space-y-3">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-bold text-slate-700">${headTitle}</h3>
         <button onclick="loadRoleDashboard()" class="text-xs text-blue-600 hover:underline">↻ Обновить</button>
       </div>
       ${distFilterBar}
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${kpiHtml}</div>
-      ${pwrTable}
-      ${ecoChips ? `<div class="flex flex-wrap gap-2 items-center">
-        <span class="text-xs text-slate-400">AQI${d ? ` · ${dShort}` : ' по районам'}:</span>${ecoChips}</div>` : ''}
-      ${(() => {
-        const ix = computeLifeIndices(ecoRows);
-        if (!ix) return '';
-        return `<div class="flex flex-wrap gap-2 items-center">
-          <span class="text-xs text-slate-400 flex-shrink-0">Индексы:</span>
-          ${['driver','walk','utility'].map(key => {
-            const i = ix[key];
-            return '<span class="px-2.5 py-1 rounded-full text-xs font-medium border cursor-pointer hover:opacity-80 transition-opacity ' + i.bg + '"'
-              + ' onclick="askNow(\'качество воздуха в городе\')">' + i.icon + ' ' + i.name.replace('Индекс ','') + ': ' + i.score + '/10 · ' + i.label + '</span>';
-          }).join('')}
-        </div>`;
-      })()}
+      ${signalHtml}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${pwrBlock}
+        ${ecoBlock}
+      </div>
     </div>`;
 }
 
@@ -1070,96 +1313,171 @@ function renderMayorDashboard(power, eco, risks, trafficData) {
   const avgAqi  = aqis.length  ? Math.round(aqis.reduce((a,b)=>a+b,0)/aqis.length) : null;
   const avgPm25 = pm25s.length ? (pm25s.reduce((a,b)=>a+b,0)/pm25s.length).toFixed(1) : '—';
   const ac = _dashAqiClass(avgAqi);
+  const tKpi = _dashTrafficKpi(trafficData);
+  const ecoR = _dashEcoRatingKpi();
+  const indices = computeLifeIndices(ecoRows);
 
-  const bigStats = [
-    { label:'Домов без ЖКХ (аварийно)', val: activeH.toLocaleString('ru-RU'),
-      icon:   activeH === 0 ? '✅' : '🔴',
-      color:  activeH === 0 ? 'text-emerald-700' : activeH <= 200 ? 'text-amber-700' : 'text-red-700',
-      bg:     activeH === 0 ? 'bg-emerald-50'    : activeH <= 200 ? 'bg-amber-50'    : 'bg-red-50',
-      border: activeH === 0 ? 'border-emerald-200': activeH <= 200 ? 'border-amber-200': 'border-red-200',
-      sub: activeH === 0 ? 'аварийных отключений нет' : 'электро · тепло · вода · газ',
-      link:"askNow('аварийные отключения ЖКХ сейчас')" },
-    { label:'Плановых отключений (домов)', val: plannedH.toLocaleString('ru-RU'),
-      icon:   plannedH === 0 ? '✅' : '📋',
-      color:  plannedH === 0 ? 'text-emerald-700' : 'text-amber-700',
-      bg:     plannedH === 0 ? 'bg-emerald-50'    : 'bg-amber-50',
-      border: plannedH === 0 ? 'border-emerald-200': 'border-amber-200',
-      sub: plannedH === 0 ? 'плановых отключений нет' : 'запланировано',
-      link:"askNow('плановые отключения на неделю')" },
-    { label:'Качество воздуха (AQI ср.)',
-      val: avgAqi != null ? String(avgAqi) : (window._ecologyLoading ? '⟳' : '—'),
-      icon:'🍃',
-      color: ac.text, bg: ac.bg, border: ac.border,
-      sub: avgAqi != null ? ac.label + ' · PM2.5 ср. ' + avgPm25 + ' мкг/м³'
-           : window._ecologyLoading ? 'загрузка данных экологии...' : 'нет данных',
-      link:"askNow('качество воздуха в городе')" },
-    { label:'Активных угроз городу', val: String(riskCount), icon:'⚠️',
-      color: riskCount > 0 ? 'text-amber-700' : 'text-emerald-600',
-      bg:    riskCount > 0 ? 'bg-amber-50'    : 'bg-emerald-50',
-      border:riskCount > 0 ? 'border-amber-200' : 'border-emerald-200',
-      sub: riskCount > 0 ? riskItems.map(r=>r.scenario).join(' · ') : 'рисков не обнаружено',
-      link:"askNow('риски для жизни в городе')" },
+  // ── Общий фон страницы: полутон по худшему показателю ──────────────────
+  // Мэру важно мгновенно считать «всё ОК» или «есть проблема»
+  const _severity = (() => {
+    if (activeH > 200 || riskCount >= 3 || (avgAqi != null && avgAqi > 60)) return 'red';
+    if (activeH > 0 || riskCount > 0 || (avgAqi != null && avgAqi > 40)) return 'amber';
+    return 'green';
+  })();
+  const _pageBg = { green: 'from-emerald-50/60 to-white', amber: 'from-amber-50/40 to-white', red: 'from-red-50/30 to-white' }[_severity];
+  const _accentDot = { green: 'bg-emerald-500', amber: 'bg-amber-400', red: 'bg-red-500' }[_severity];
+  const _statusText = { green: 'Город: норма', amber: 'Требует внимания', red: 'Критическая ситуация' }[_severity];
+  const _statusColor = { green: 'text-emerald-700', amber: 'text-amber-700', red: 'text-red-700' }[_severity];
+
+  // ── Сигнальная строка — 4 ключевых метрики ─────────────────────────────
+  const _sig = (ok, warn) => ok ? 'bg-emerald-500' : warn ? 'bg-amber-400' : 'bg-red-500';
+  const aqiOk = avgAqi != null && avgAqi <= 40;
+  const signals = [
+    { dot: _sig(activeH === 0, activeH <= 200), val: activeH === 0 ? '✅' : activeH.toLocaleString('ru-RU'),
+      lbl: 'Аварии ЖКХ', sub: activeH === 0 ? 'нет' : `${activeH} домов`, click: "askNow('аварийные отключения ЖКХ сейчас')" },
+    { dot: _sig(aqiOk, avgAqi != null && avgAqi <= 60), val: avgAqi != null ? String(avgAqi) : '—',
+      lbl: 'AQI', sub: avgAqi != null ? ac.label : '—', click: "askNow('качество воздуха в городе')" },
+    { dot: _sig(riskCount === 0, riskCount <= 1), val: riskCount === 0 ? '✅' : String(riskCount),
+      lbl: 'Угрозы', sub: riskCount === 0 ? 'нет' : riskItems[0]?.scenario || '', click: "askNow('риски для жизни в городе')" },
+    { dot: tKpi ? _sig(parseFloat(tKpi.val) < 4, parseFloat(tKpi.val) < 7) : 'bg-slate-300',
+      val: tKpi?.val || '—', lbl: 'Дороги', sub: tKpi?.note || '—', click: tKpi?.onclick || '' },
   ];
 
-  // Добавляем трафик (если данные есть)
-  const tKpi = _dashTrafficKpi(trafficData);
-  if (tKpi) bigStats.push(tKpi);
-
-  // Добавляем экорейтинг города (если город есть в базе)
-  const ecoR = _dashEcoRatingKpi();
-  if (ecoR) bigStats.push(ecoR);
-
-  const statsHtml = bigStats.map(s => `
-    <div class="dash-kpi ${s.bg} border ${s.border} rounded-2xl p-5 flex flex-col gap-2 shadow-sm cursor-pointer"
-         onclick="${s.link}">
-      <div class="flex items-center gap-2">
-        <span class="text-2xl">${s.icon}</span>
-        <span class="text-xs text-slate-500 font-medium leading-snug">${s.label}</span>
-      </div>
-      <div class="text-4xl font-black ${s.color} leading-none tracking-tight">${s.val}</div>
-      <div class="text-xs text-slate-400 leading-snug">${esc(s.sub)}</div>
-    </div>`).join('');
-
-  const risksHtml = riskItems.length ? `
-    <div class="space-y-2">
-      <div class="text-xs font-semibold uppercase tracking-widest text-slate-400">Активные угрозы</div>
-      ${riskItems.slice(0,3).map(r => {
-        const isCrit = r.severity === 'critical';
-        return `<div class="flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer hover:opacity-80 transition-opacity
-          ${isCrit ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}"
-          onclick="askNow('риски для жизни в городе')">
-          <span class="text-xl flex-shrink-0">${r.icon||'⚠️'}</span>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-semibold ${isCrit ? 'text-red-700' : 'text-amber-700'} leading-tight">${esc(r.title)}</div>
-            <div class="text-xs text-slate-500 mt-0.5">${esc(r.metrics||'')}</div>
+  const signalHtml = `
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div class="grid grid-cols-4 divide-x divide-slate-100">
+        ${signals.map(s => `
+          <div class="py-3 px-3 text-center cursor-pointer hover:bg-slate-50 transition-colors" onclick="${s.click}">
+            <div class="flex items-center justify-center gap-1.5 mb-1">
+              <span class="w-2 h-2 rounded-full ${s.dot} flex-shrink-0"></span>
+              <span class="text-[10px] text-slate-500 font-medium uppercase tracking-wide">${s.lbl}</span>
+            </div>
+            <div class="text-xl font-bold text-slate-800 leading-none">${s.val}</div>
+            <div class="text-[10px] text-slate-400 mt-1 truncate">${s.sub}</div>
           </div>
-          <div class="text-xs font-semibold whitespace-nowrap ${isCrit ? 'text-red-600' : 'text-amber-600'}">${isCrit ? '🔴 Критично' : '🟡 Внимание'}</div>
-        </div>`;
-      }).join('')}
-    </div>` : '';
+        `).join('')}
+      </div>
+    </div>`;
 
-  // ─ Индексы жизни (из данных экологии) ────────────────────────────────────
-  const indices = computeLifeIndices(ecoRows);
-  const indicesHtml = indices ? `
-    <div class="flex flex-wrap gap-2 items-center">
-      <span class="text-xs text-slate-400 flex-shrink-0">Индексы:</span>
-      ${['driver','walk','utility'].map(key => {
-        const ix = indices[key];
-        return `<span class="px-2.5 py-1 rounded-full text-xs font-medium border cursor-pointer hover:opacity-80 transition-opacity ${ix.bg}"
-          onclick="askNow('качество воздуха в городе')">${ix.icon} ${ix.name.replace('Индекс ','')}: ${ix.score}/10 · ${ix.label}</span>`;
-      }).join('')}
-    </div>` : '';
+  // ── Три блока: ЖКХ | Экология | Риски ─────────────────────────────────
+  // Каждый с тонированным фоном по состоянию
+
+  // ▸ ЖКХ
+  const pwrBg = activeH === 0 ? 'bg-emerald-50/50' : activeH <= 200 ? 'bg-amber-50/40' : 'bg-red-50/30';
+  const pwrBorder = activeH === 0 ? 'border-emerald-200' : activeH <= 200 ? 'border-amber-200' : 'border-red-200';
+  const allPwrRows = (power?.rows || []).filter(r => r.district !== 'all');
+  const topPwr = allPwrRows
+    .filter(r => r.group_type === 'active' && Number(r.houses||0) > 0)
+    .sort((a,b) => Number(b.houses||0) - Number(a.houses||0))
+    .slice(0, 4);
+
+  const pwrBlock = `
+    <div class="${pwrBg} rounded-2xl border ${pwrBorder} overflow-hidden">
+      <div class="px-4 py-2.5 flex justify-between items-center border-b border-white/60">
+        <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">🔧 ЖКХ</span>
+        <div class="flex gap-1.5 text-[10px]">
+          <button class="text-blue-600 hover:underline" onclick="_showPowerHistory()">Отчёт</button>
+          <span class="text-slate-300">·</span>
+          <button class="text-blue-600 hover:underline" onclick="_showPowerRating()">Рейтинг</button>
+        </div>
+      </div>
+      <div class="px-4 py-3">
+        <div class="flex items-baseline gap-3 mb-2">
+          <div class="text-3xl font-black ${activeH === 0 ? 'text-emerald-600' : 'text-red-600'} leading-none">${activeH === 0 ? '✅' : activeH.toLocaleString('ru-RU')}</div>
+          <div class="text-xs text-slate-500">${activeH === 0 ? 'аварий нет' : 'аварийных домов'}</div>
+        </div>
+        ${topPwr.length ? `<div class="space-y-1 mb-2">${topPwr.map(r =>
+          `<div class="flex items-center text-xs gap-1">
+            <span class="font-bold text-red-600 w-8 text-right">${r.houses}</span>
+            <span class="text-slate-500 truncate">${esc(r.district||'')}</span>
+          </div>`).join('')}</div>` : ''}
+        <div class="text-[10px] text-slate-400">Плановых: <strong class="text-amber-600">${plannedH.toLocaleString('ru-RU')}</strong></div>
+      </div>
+    </div>`;
+
+  // ▸ Экология
+  const ecoBg = aqiOk ? 'bg-emerald-50/50' : (avgAqi != null && avgAqi <= 60) ? 'bg-amber-50/40' : avgAqi != null ? 'bg-red-50/30' : 'bg-slate-50';
+  const ecoBorder = aqiOk ? 'border-emerald-200' : (avgAqi != null && avgAqi <= 60) ? 'border-amber-200' : avgAqi != null ? 'border-red-200' : 'border-slate-200';
+
+  const ecoBlock = `
+    <div class="${ecoBg} rounded-2xl border ${ecoBorder} overflow-hidden">
+      <div class="px-4 py-2.5 flex justify-between items-center border-b border-white/60">
+        <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">🍃 Экология</span>
+        <div class="flex gap-1.5 text-[10px]">
+          <button class="text-blue-600 hover:underline" onclick="_showEcoReport()">Отчёт</button>
+          <span class="text-slate-300">·</span>
+          <button class="text-blue-600 hover:underline" onclick="showEcoIndex()">Рейтинг</button>
+        </div>
+      </div>
+      <div class="px-4 py-3">
+        <div class="flex items-baseline gap-3 mb-2">
+          <div class="text-3xl font-black ${ac.text} leading-none">${avgAqi != null ? avgAqi : '—'}</div>
+          <div class="text-xs text-slate-500">${avgAqi != null ? `AQI · ${ac.label}` : 'нет данных'}</div>
+        </div>
+        ${avgPm25 !== '—' ? `<div class="text-[10px] text-slate-400 mb-2">PM2.5 ср.: <strong>${avgPm25}</strong> мкг/м³</div>` : ''}
+        ${indices ? `<div class="space-y-1">
+          ${['driver','walk','utility'].map(key => {
+            const ix = indices[key];
+            const pct = key === 'walk' ? ix.score * 10 : (10 - ix.score) * 10;
+            const bc = pct >= 70 ? 'bg-emerald-400' : pct >= 40 ? 'bg-amber-400' : 'bg-red-400';
+            return `<div class="flex items-center gap-1.5">
+              <span class="text-[10px] w-3">${ix.icon}</span>
+              <div class="flex-1 bg-white/60 rounded-full h-1.5"><div class="${bc} h-1.5 rounded-full" style="width:${pct}%"></div></div>
+              <span class="text-[10px] font-bold text-slate-600 w-6 text-right">${ix.score}</span>
+            </div>`;
+          }).join('')}
+        </div>` : ''}
+        ${ecoR ? `<div class="mt-2 text-[10px] text-slate-400 cursor-pointer hover:text-blue-600" onclick="${ecoR.onclick}">${ecoR.icon} Экорейтинг: <strong class="${ecoR.color}">${ecoR.val}</strong> ${ecoR.note}</div>` : ''}
+      </div>
+    </div>`;
+
+  // ▸ Риски
+  const riskBg = riskCount === 0 ? 'bg-emerald-50/50' : riskCount <= 1 ? 'bg-amber-50/40' : 'bg-red-50/30';
+  const riskBorder = riskCount === 0 ? 'border-emerald-200' : riskCount <= 1 ? 'border-amber-200' : 'border-red-200';
+
+  const riskBlock = `
+    <div class="${riskBg} rounded-2xl border ${riskBorder} overflow-hidden">
+      <div class="px-4 py-2.5 border-b border-white/60">
+        <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">⚠️ Риски и угрозы</span>
+      </div>
+      <div class="px-4 py-3">
+        ${riskCount === 0
+          ? `<div class="text-center py-2">
+              <div class="text-2xl mb-1">✅</div>
+              <div class="text-xs text-emerald-600 font-medium">Угроз не обнаружено</div>
+            </div>`
+          : `<div class="space-y-2">
+              ${riskItems.slice(0, 3).map(r => {
+                const isCrit = r.severity === 'critical';
+                return `<div class="flex items-start gap-2 cursor-pointer hover:opacity-80" onclick="askNow('риски для жизни в городе')">
+                  <span class="text-sm flex-shrink-0 mt-0.5">${r.icon||'⚠️'}</span>
+                  <div class="min-w-0">
+                    <div class="text-xs font-semibold ${isCrit ? 'text-red-700' : 'text-amber-700'} leading-tight">${esc(r.title)}</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">${esc(r.metrics||'')}</div>
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>`}
+      </div>
+    </div>`;
 
   const ts = new Date().toLocaleString('ru-RU', {day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit'});
   return `
-    <div class="space-y-4">
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <h3 class="text-sm font-bold text-slate-700">🏛️ Сводка по городу · ${ts}</h3>
+    <div class="space-y-3 bg-gradient-to-b ${_pageBg} rounded-3xl p-4 -mx-1">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full ${_accentDot}"></span>
+          <h3 class="text-sm font-bold text-slate-700">🏛️ Сводка · ${ts}</h3>
+          <span class="text-[10px] font-medium ${_statusColor}">${_statusText}</span>
+        </div>
         <button onclick="loadRoleDashboard()" class="text-xs text-blue-600 hover:underline">↻ Обновить</button>
       </div>
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${statsHtml}</div>
-      ${indicesHtml}
-      ${risksHtml}
+      ${signalHtml}
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        ${pwrBlock}
+        ${ecoBlock}
+        ${riskBlock}
+      </div>
     </div>`;
 }
 

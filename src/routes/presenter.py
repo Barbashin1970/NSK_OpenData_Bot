@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Presenter"])
+router = APIRouter(tags=["Презентация"])
 
 _STATIC = Path(__file__).parent.parent / "static"
 
@@ -74,7 +74,7 @@ def get_mobile():
 
 @router.post(
     "/session/create",
-    tags=["Presenter"],
+    tags=["Презентация"],
     summary="Создать сессию презентации",
 )
 def create_session():
@@ -87,7 +87,7 @@ def create_session():
 
 @router.get(
     "/session/{sid}/info",
-    tags=["Presenter"],
+    tags=["Презентация"],
     summary="Проверить существование сессии",
 )
 def session_info(sid: str):
@@ -103,7 +103,7 @@ def session_info(sid: str):
 
 @router.get(
     "/session/{sid}/stream",
-    tags=["Presenter"],
+    tags=["Презентация"],
     summary="SSE-поток для display (long-lived)",
 )
 async def session_stream(sid: str):
@@ -146,7 +146,7 @@ async def session_stream(sid: str):
 
 @router.post(
     "/session/{sid}/ask",
-    tags=["Presenter"],
+    tags=["Презентация"],
     summary="Отправить запрос из mobile → display",
 )
 async def session_ask(sid: str, request: Request):
@@ -170,7 +170,7 @@ async def session_ask(sid: str, request: Request):
 
 @router.post(
     "/session/{sid}/set-city",
-    tags=["Presenter"],
+    tags=["Презентация"],
     summary="Сменить город из mobile → display",
 )
 async def session_set_city(sid: str, request: Request):
@@ -205,7 +205,7 @@ async def session_set_city(sid: str, request: Request):
 
 @router.post(
     "/session/{sid}/set-role",
-    tags=["Presenter"],
+    tags=["Презентация"],
     summary="Сменить роль из mobile → display",
 )
 async def session_set_role(sid: str, request: Request):
@@ -227,7 +227,7 @@ async def session_set_role(sid: str, request: Request):
 
 @router.post(
     "/session/{sid}/end",
-    tags=["Presenter"],
+    tags=["Презентация"],
     summary="Завершить сессию презентации",
 )
 async def session_end(sid: str):

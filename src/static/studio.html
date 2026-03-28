@@ -254,6 +254,9 @@ async function _studioAuth() {
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="vocabulary">
       Словарь<span id="vocab-count-badge" class="ml-1.5 bg-violet-100 text-violet-600 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"></span>
     </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="feedback">
+      💬 Баги/Фичи<span id="feedback-count-badge" class="ml-1.5 bg-amber-100 text-amber-600 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"></span>
+    </button>
   </nav>
 </div>
 
@@ -1516,6 +1519,38 @@ async function _studioAuth() {
     </div>
   </div>
 
+  <!-- ── Вкладка: Баги/Фичи ────────────────────────────────────────────── -->
+  <div id="tab-feedback" class="tab-pane">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-slate-800">💬 Обратная связь</h2>
+      <div class="flex gap-2">
+        <select id="fb-filter-status" onchange="loadFeedbackList()" class="text-xs border border-slate-200 rounded-lg px-2 py-1">
+          <option value="">Все статусы</option>
+          <option value="new">🆕 Новые</option>
+          <option value="in_progress">🔧 В работе</option>
+          <option value="resolved">✅ Решено</option>
+          <option value="rejected">❌ Отклонено</option>
+        </select>
+        <select id="fb-filter-cat" onchange="loadFeedbackList()" class="text-xs border border-slate-200 rounded-lg px-2 py-1">
+          <option value="">Все типы</option>
+          <option value="bug">🐛 Баги</option>
+          <option value="suggestion">💡 Идеи</option>
+          <option value="question">❓ Вопросы</option>
+        </select>
+        <button onclick="loadFeedbackList()" class="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-100">↻ Обновить</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div id="fb-stats" class="grid grid-cols-4 gap-3 mb-4">
+    </div>
+
+    <!-- List -->
+    <div id="fb-list" class="space-y-2">
+      <div class="text-center text-slate-400 py-8">Загрузка...</div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ─────────────────────────── СКРИПТ ──────────────────────────────────── -->
@@ -1547,6 +1582,7 @@ function switchTab(tab) {
   if (tab === 'rules')     initRulesTab();
   if (tab === 'history')   loadHistory();
   if (tab === 'vocabulary') loadVocabulary();
+  if (tab === 'feedback')  loadFeedbackList();
 
   // Update URL hash
   history.replaceState(null, '', '#' + tab);
@@ -4613,6 +4649,96 @@ async function _reloadVocabulary() {
     _pcInit();
   }
 })();
+
+// ── Feedback tab ────────────────────────────────────────────────────────
+const _FB_CAT_ICONS  = { bug: '🐛', suggestion: '💡', question: '❓' };
+const _FB_CAT_LABELS = { bug: 'Баг', suggestion: 'Идея', question: 'Вопрос' };
+const _FB_STATUS_CFG = {
+  new:         { icon: '🆕', label: 'Новый',     bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200' },
+  in_progress: { icon: '🔧', label: 'В работе',  bg: 'bg-amber-50',  text: 'text-amber-700',  border: 'border-amber-200' },
+  resolved:    { icon: '✅', label: 'Решено',     bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  rejected:    { icon: '❌', label: 'Отклонено',  bg: 'bg-slate-50',   text: 'text-slate-500',  border: 'border-slate-200' },
+};
+
+async function loadFeedbackList() {
+  const listEl = document.getElementById('fb-list');
+  const statsEl = document.getElementById('fb-stats');
+  try {
+    const r = await fetch('/feedback');
+    if (!r.ok) throw new Error(r.statusText);
+    const data = await r.json();
+    let items = data.items || [];
+
+    // Filters
+    const fStatus = document.getElementById('fb-filter-status').value;
+    const fCat = document.getElementById('fb-filter-cat').value;
+    if (fStatus) items = items.filter(i => i.status === fStatus);
+    if (fCat) items = items.filter(i => i.category === fCat);
+
+    // Badge
+    const newCount = (data.items || []).filter(i => i.status === 'new').length;
+    const badge = document.getElementById('feedback-count-badge');
+    if (badge) badge.textContent = newCount > 0 ? newCount : '';
+
+    // Stats
+    const all = data.items || [];
+    const stats = { new: 0, in_progress: 0, resolved: 0, rejected: 0, bug: 0, suggestion: 0, question: 0 };
+    all.forEach(i => { stats[i.status] = (stats[i.status]||0) + 1; stats[i.category] = (stats[i.category]||0) + 1; });
+    statsEl.innerHTML = [
+      { label: 'Всего', val: all.length, color: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200' },
+      { label: 'Новых', val: stats.new, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
+      { label: 'В работе', val: stats.in_progress, color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+      { label: 'Решено', val: stats.resolved, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+    ].map(s => `<div class="${s.bg} border ${s.border} rounded-xl px-4 py-3 text-center">
+      <div class="text-2xl font-bold ${s.color}">${s.val}</div>
+      <div class="text-[10px] text-slate-500 uppercase font-semibold">${s.label}</div>
+    </div>`).join('');
+
+    if (!items.length) {
+      listEl.innerHTML = '<div class="text-center text-slate-400 py-8">📭 Нет записей</div>';
+      return;
+    }
+
+    listEl.innerHTML = items.map(i => {
+      const sc = _FB_STATUS_CFG[i.status] || _FB_STATUS_CFG.new;
+      const catIcon = _FB_CAT_ICONS[i.category] || '💬';
+      const ts = i.created_at ? new Date(i.created_at).toLocaleString('ru-RU', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+      return `<div class="${sc.bg} border ${sc.border} rounded-xl px-4 py-3">
+        <div class="flex items-start gap-3">
+          <span class="text-lg flex-shrink-0 mt-0.5">${catIcon}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm text-slate-700 leading-snug">${esc(i.text)}</div>
+            <div class="flex items-center gap-2 mt-2 text-[10px] text-slate-400">
+              <span>#${i.id}</span>
+              <span>${ts}</span>
+              <span>${i.source === 'voice' ? '🎙️ голос' : '⌨️ текст'}</span>
+              <span class="${sc.text} font-medium">${sc.icon} ${sc.label}</span>
+            </div>
+          </div>
+          <div class="flex-shrink-0">
+            <select onchange="_changeFbStatus(${i.id}, this.value)" class="text-[10px] border border-slate-200 rounded-lg px-1.5 py-1 bg-white">
+              ${Object.entries(_FB_STATUS_CFG).map(([k,v]) =>
+                `<option value="${k}" ${k === i.status ? 'selected' : ''}>${v.icon} ${v.label}</option>`
+              ).join('')}
+            </select>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    listEl.innerHTML = `<div class="text-center text-red-400 py-8">Ошибка: ${esc(String(e))}</div>`;
+  }
+}
+
+async function _changeFbStatus(id, status) {
+  try {
+    const r = await fetch(`/feedback/${id}?status=${status}`, { method: 'PATCH' });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    loadFeedbackList();
+  } catch(e) {
+    alert('Ошибка: ' + e.message);
+  }
+}
 
 // ── Инициализация: загружаем по хэшу или обзор ──────────────────────────
 _loadCityLabel();

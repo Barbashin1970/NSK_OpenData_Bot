@@ -898,6 +898,7 @@ from .routes.admin import router as admin_router
 from .routes.presenter import router as presenter_router
 from .routes.history import router as history_router
 from .routes.vocabulary_routes import router as vocabulary_router
+from .routes.feedback import router as feedback_router
 
 app.include_router(data_router)
 app.include_router(ecology_router)
@@ -911,6 +912,7 @@ app.include_router(admin_router)
 app.include_router(presenter_router)
 app.include_router(history_router)
 app.include_router(vocabulary_router)
+app.include_router(feedback_router)
 
 
 # ── Статические файлы (tailwind.css, иконки и т.д.) ─────────────────────────
