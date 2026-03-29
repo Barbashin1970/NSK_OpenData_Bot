@@ -170,6 +170,69 @@ async def periodic_refresh_loop(interval_hours: float = _REFRESH_INTERVAL_HOURS)
         log.info("periodic_refresh_loop: завершено, обновлено %d тем", refreshed)
 
 
+# ── Проактивное обновление экологии и ЖКХ для активного города ─────────────
+# Без этого цикла данные обновляются ТОЛЬКО при запросе пользователя.
+# multi_city_refresh_loop пропускает активный город → экология/ЖКХ устаревают.
+# Этот цикл запускается каждые 25 мин (опережая TTL=30 мин) и гарантирует,
+# что чипы статуса всегда зелёные, а в data копятся снимки для аналитики.
+
+_CRITICAL_REFRESH_MINUTES = 25  # опережаем TTL (30 мин) на 5 мин
+
+
+async def critical_data_refresh_loop(
+    interval_minutes: float = _CRITICAL_REFRESH_MINUTES,
+    initial_delay: float = 60.0,
+) -> None:
+    """Фоновый цикл: обновляет экологию и ЖКХ для АКТИВНОГО города.
+
+    Запускается через 60 сек после старта, повторяется каждые 25 мин.
+    Данные копятся в DuckDB (fact_measurements, power_outages, daily archives)
+    для последующей предиктивной аналитики.
+    """
+    await asyncio.sleep(initial_delay)
+    interval_sec = interval_minutes * 60
+    log.info("critical_data_refresh_loop: старт (интервал %d мин)", interval_minutes)
+
+    while True:
+        # ── Экология ──────────────────────────────────────────────────────
+        try:
+            from .ecology_cache import (
+                is_ecology_stale, upsert_stations, upsert_measurements,
+                is_forecast_stale, upsert_forecast,
+            )
+            from .ecology_fetcher import fetch_all_ecology, fetch_all_forecast
+
+            if is_ecology_stale():
+                upsert_stations()
+                data = await asyncio.to_thread(fetch_all_ecology)
+                upsert_measurements(data)
+                log.info("critical_refresh: экология обновлена (%d записей)", len(data))
+
+            if is_forecast_stale():
+                fc = await asyncio.to_thread(fetch_all_forecast)
+                upsert_forecast(fc)
+                log.info("critical_refresh: прогноз обновлён")
+        except Exception as e:
+            log.warning("critical_refresh: ошибка экологии — %s", e)
+
+        # ── ЖКХ отключения ────────────────────────────────────────────────
+        try:
+            from .power_cache import is_power_stale, upsert_outages
+            from .city_config import get_feature
+
+            power_url = get_feature("power_outages_url")
+            if power_url and is_power_stale():
+                from .power_scraper import fetch_all_outages
+                outages = await asyncio.to_thread(fetch_all_outages)
+                if outages:
+                    upsert_outages(outages)
+                    log.info("critical_refresh: ЖКХ обновлено (%d записей)", len(outages))
+        except Exception as e:
+            log.warning("critical_refresh: ошибка ЖКХ — %s", e)
+
+        await asyncio.sleep(interval_sec)
+
+
 # ── Мульти-город: изолированное обновление всех городов ────────────────────
 #
 # ВАЖНО: НЕ меняет глобальный CITY_PROFILE!

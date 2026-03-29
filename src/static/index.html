@@ -624,6 +624,7 @@ const ROLE_CHIPS_TPL = {
     {q: "качество воздуха в городе"},
     {q: "погода в {SUBURB}"},
     {q: "как проехать из {D3_SHORT} в {D1_SHORT}"},
+    {q: "прогноз погоды на неделю"},
     {q: "пробки сейчас"},
     {q: "риски для жизни в городе"},
     {q: "детские спортивные организации", geo: true, requires: "opendata"},
@@ -5203,6 +5204,10 @@ function renderEcology(data) {
           <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
             <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🍃 Качество воздуха по районам</span>
             <div class="flex items-center gap-3">
+              <button onclick="document.getElementById('questionInput').value='прогноз погоды на неделю';submitQuestion()"
+                class="text-xs px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-colors whitespace-nowrap font-medium">
+                📅 Прогноз
+              </button>
               <button onclick="_showEcoReport()"
                 class="text-xs px-3 py-1.5 bg-sky-50 border border-sky-200 rounded-xl text-sky-700 hover:bg-sky-100 hover:border-sky-300 transition-colors whitespace-nowrap font-medium">
                 📊 Отчёт за 30 дней

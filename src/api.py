@@ -340,9 +340,14 @@ async def _preload_medical() -> None:
 async def _start_background_preloader() -> None:
     """Фоновая загрузка всех тем opendata после старта сервера."""
     import asyncio
-    from .updater import preload_all_async, periodic_refresh_loop, multi_city_refresh_loop
+    from .updater import (
+        preload_all_async, periodic_refresh_loop,
+        multi_city_refresh_loop, critical_data_refresh_loop,
+    )
     asyncio.create_task(preload_all_async(delay_start=15.0))
     asyncio.create_task(periodic_refresh_loop())
+    # Проактивный сбор экологии + ЖКХ для активного города (каждые 25 мин)
+    asyncio.create_task(critical_data_refresh_loop(interval_minutes=25, initial_delay=60.0))
     # Мульти-город: обновляет экологию/медицину/камеры для ВСЕХ городов
     # Стартует через 2 мин (после основных preloader'ов), повторяется каждые 6 ч
     asyncio.create_task(multi_city_refresh_loop(interval_hours=6, initial_delay=120.0))

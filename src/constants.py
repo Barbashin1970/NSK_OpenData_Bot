@@ -33,7 +33,7 @@ POWER_FUTURE_DAYS  = 7
 # Используйте city_config.get_feature("power_outages_url") в power_scraper.py
 
 # ── Кэш — экология и метеорология ────────────────────────────────────────────
-ECOLOGY_TTL_MINUTES   = 15   # Open-Meteo обновляется ~каждые 15 мин
+ECOLOGY_TTL_MINUTES   = 30   # Open-Meteo: забираем раз в 30 мин
 ECOLOGY_HISTORY_DAYS  = 30   # хранить историю измерений 30 дней
 ECOLOGY_LOG_MAX_BYTES = 10 * 1024 * 1024  # 10 МБ — ротация лога
 
