@@ -9,7 +9,7 @@ city:
   name: "Екатеринбург"
   name_genitive: "Екатеринбурга"
   name_prepositional: "Екатеринбурге"
-  slug: "yekaterinburg"
+  slug: "ekaterinburg"
   yandex_region_id: 54              # Яндекс.Пробки region ID
   timezone: "Asia/Yekaterinburg"
   utc_offset: 5

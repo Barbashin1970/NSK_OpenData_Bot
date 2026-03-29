@@ -9,7 +9,7 @@ city:
   name: "Санкт-Петербург"
   name_genitive: "Санкт-Петербурга"
   name_prepositional: "Санкт-Петербурге"
-  slug: "saint-petersburg"
+  slug: "spb"
   yandex_region_id: 2               # Яндекс.Пробки region ID
   timezone: "Europe/Moscow"
   utc_offset: 3

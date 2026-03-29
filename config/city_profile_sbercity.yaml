@@ -11,7 +11,7 @@ city:
   name: "Сбер-Сити"
   name_genitive: "Сбер-Сити"
   name_prepositional: "Сбер-Сити"
-  slug: "moscow_oblast"
+  slug: "moscow"
   yandex_region_id: 213             # Москва и область
   timezone: "Europe/Moscow"
   utc_offset: 3
