@@ -1,13 +1,34 @@
 """Transport endpoints: transit routes, traffic index, Yandex traffic."""
 
+import json
 import logging
 import re as _re
+from functools import lru_cache
+from pathlib import Path
 
 from fastapi import APIRouter, Query
 
 from ..city_config import get_city_name, get_city_slug, get_opendata_base_url
 
 log = logging.getLogger(__name__)
+
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cities"
+
+
+@lru_cache(maxsize=1)
+def _load_static_stops() -> list[dict] | None:
+    """Load stops from static JSON (fallback when DuckDB has no CSV data)."""
+    slug = get_city_slug()
+    p = _DATA_DIR / slug / "stops_routes.json"
+    if not p.exists():
+        return None
+    try:
+        data = json.loads(p.read_text("utf-8"))
+        log.info("Loaded %d static stops from %s", data.get("count", 0), p.name)
+        return data.get("stops", [])
+    except Exception as e:
+        log.warning("Failed to load static stops: %s", e)
+        return None
 
 router = APIRouter()
 
@@ -56,35 +77,45 @@ def get_transit(
         use_csv = _tbl_exists("topic_stops")
         use_osm = _tbl_exists("topic_osm_stops")
 
+        # Fallback: static JSON when no DuckDB table
+        static_stops = None
         if not use_csv and not use_osm:
-            return {
-                "error": "Данные об остановках не загружены",
-                "hint": "POST /update?topic=stops",
-                "connections": [],
-            }
-
-        if use_csv:
-            _tbl = "topic_stops"
-            _name_col, _dist_col, _route_col = "OstName", "AdrDistr", "Marshryt"
-        else:
-            _tbl = "topic_osm_stops"
-            _name_col, _dist_col, _route_col = "name", "district", "routes"
+            static_stops = _load_static_stops()
+            if not static_stops:
+                return {
+                    "error": "Данные об остановках не загружены",
+                    "hint": "POST /update?topic=stops",
+                    "connections": [],
+                }
 
         def split_routes(marshryt: str) -> list[str]:
             if not marshryt:
                 return []
             return _re.findall(r"\b\d+[а-яёa-z]?\b", marshryt)
 
-        from_kw = from_district.split()[0]
-        to_kw = to_district.split()[0]
+        from_kw = from_district.split()[0].lower()
+        to_kw = to_district.split()[0].lower()
 
         def get_route_stops(kw: str) -> dict[str, list[str]]:
-            rows = conn.execute(
-                f"SELECT {_name_col}, {_route_col} FROM {_tbl} "
-                f"WHERE {_dist_col} ILIKE ? AND {_route_col} IS NOT NULL AND {_route_col} != ''",
-                [f"%{kw}%"],
-            ).fetchall()
             result: dict[str, list[str]] = {}
+            if static_stops:
+                rows = [
+                    (s["OstName"], s["Marshryt"])
+                    for s in static_stops
+                    if kw in (s.get("AdrDistr") or "").lower()
+                ]
+            elif use_csv:
+                rows = conn.execute(
+                    "SELECT OstName, Marshryt FROM topic_stops "
+                    "WHERE AdrDistr ILIKE ? AND Marshryt IS NOT NULL AND Marshryt != ''",
+                    [f"%{kw}%"],
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT name, routes FROM topic_osm_stops "
+                    "WHERE district ILIKE ? AND routes IS NOT NULL AND routes != ''",
+                    [f"%{kw}%"],
+                ).fetchall()
             for stop_name, marshryt in rows:
                 for route in split_routes(marshryt or ""):
                     if route not in result:
@@ -116,7 +147,7 @@ def get_transit(
                 f"from/{from_coords[0]},{from_coords[1]}/to/{to_coords[0]},{to_coords[1]}"
             )
 
-        _src = "OSM · Overpass API" if not use_csv else (get_opendata_base_url() or "opendata")
+        _src = "статические данные" if static_stops else ("OSM · Overpass API" if not use_csv else (get_opendata_base_url() or "opendata"))
         return {
             "from": from_district,
             "to": to_district,
@@ -163,33 +194,45 @@ def get_transit_districts() -> dict:
         use_csv = _tbl_exists("topic_stops")
         use_osm = _tbl_exists("topic_osm_stops")
 
+        static_stops = None
         if not use_csv and not use_osm:
-            return {
-                "error": "Данные об остановках не загружены",
-                "hint": "POST /update?topic=stops",
-                "rows": [],
-                "total_stops": 0,
-                "count": 0,
-            }
+            static_stops = _load_static_stops()
+            if not static_stops:
+                return {
+                    "error": "Данные об остановках не загружены",
+                    "hint": "POST /update?topic=stops",
+                    "rows": [],
+                    "total_stops": 0,
+                    "count": 0,
+                }
 
-        if use_csv:
+        if static_stops:
+            from collections import Counter
+            dist_counts = Counter(s.get("AdrDistr", "") for s in static_stops if s.get("AdrDistr"))
+            rows = [{"district": d, "stops_count": c} for d, c in dist_counts.most_common()]
+            cols = ["district", "stops_count"]
+        elif use_csv:
             _tbl, _dist_col = "topic_stops", "AdrDistr"
+            cursor = conn.execute(f"""
+                SELECT {_dist_col} AS district, COUNT(*) AS stops_count
+                FROM {_tbl}
+                WHERE {_dist_col} IS NOT NULL AND {_dist_col} != ''
+                GROUP BY {_dist_col} ORDER BY stops_count DESC
+            """)
+            cols = [d[0] for d in cursor.description]
+            rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
         else:
-            _tbl, _dist_col = "topic_osm_stops", "district"
+            cursor = conn.execute("""
+                SELECT district, COUNT(*) AS stops_count
+                FROM topic_osm_stops
+                WHERE district IS NOT NULL AND district != ''
+                GROUP BY district ORDER BY stops_count DESC
+            """)
+            cols = [d[0] for d in cursor.description]
+            rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
-        cursor = conn.execute(f"""
-            SELECT
-                {_dist_col} AS district,
-                COUNT(*) AS stops_count
-            FROM {_tbl}
-            WHERE {_dist_col} IS NOT NULL AND {_dist_col} != ''
-            GROUP BY {_dist_col}
-            ORDER BY stops_count DESC
-        """)
-        cols = [d[0] for d in cursor.description]
-        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
         total = sum(r["stops_count"] for r in rows)
-        _src = "OSM · Overpass API" if not use_csv else (get_opendata_base_url() or "opendata")
+        _src = "статические данные" if static_stops else ("OSM · Overpass API" if not use_csv else (get_opendata_base_url() or "opendata"))
         return {
             "operation": "TRANSIT_DISTRICTS",
             "count": len(rows),
