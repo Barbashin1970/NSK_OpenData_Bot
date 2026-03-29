@@ -1780,12 +1780,14 @@ async function loadOverview(force) {
   let _ecoStale = null;
   let _powerMeta = null;  // {stale: bool, last_scraped: str, ...}
   let _osmStatus = {};    // { city_id: {loaded, stale, total} }
+  let _customReports = []; // custom CSV reports (city field)
   try {
-    const [topicsRes, ecoRes, powRes, osmRes] = await Promise.all([
+    const [topicsRes, ecoRes, powRes, osmRes, crRes] = await Promise.all([
       fetch('/topics'),
       fetch('/ecology/status').catch(() => null),
       fetch('/power/meta').catch(() => null),
       fetch('/studio/api/osm-status').catch(() => null),
+      fetch('/custom-reports').catch(() => null),
     ]);
     const td = await topicsRes.json();
     for (const t of (td.topics || [])) { _topicFreshness[t.id] = t; }
@@ -1807,7 +1809,37 @@ async function loadOverview(force) {
       const od = await osmRes.json();
       _osmStatus = od.osm_status || {};
     }
+    if (crRes && crRes.ok) {
+      const crd = await crRes.json();
+      _customReports = crd.reports || [];
+    }
   } catch(_) {}
+
+  // Helper: CSV cell — green if city has any CSV data source
+  function _cellCsv(p, has, hasOpendata, hasConstr, hasReports, active) {
+    if (!has) return `<td class="px-2 py-2 text-center">${_dot('off', 'Нет CSV-данных')}</td>`;
+    const parts = [];
+    if (hasOpendata) parts.push('opendata CSV');
+    if (hasConstr) parts.push('строительство');
+    if (hasReports) {
+      const cnt = _customReports.filter(r => !r.city_id || r.city_id === p.city_id).length;
+      parts.push('отчёты: ' + cnt);
+    }
+    const title = parts.join(' + ');
+    if (!active) return `<td class="px-2 py-2 text-center">${_dot('ok', title)}</td>`;
+    // For active city with opendata: check topic freshness
+    if (hasOpendata) {
+      const topicIds = ['parking','stops','culture','schools','kindergartens','libraries','parks','sport_grounds','pharmacies','sport_orgs'];
+      const matched = topicIds.map(id => _topicFreshness[id]).filter(Boolean);
+      const anyLoaded = matched.some(m => m.rows > 0);
+      if (matched.length === 0 || !anyLoaded) {
+        return `<td class="px-2 py-2 text-center">${_dot('stale', title + ' (не загружены)')}</td>`;
+      }
+      const anyStale = matched.some(m => m.stale);
+      if (anyStale) return `<td class="px-2 py-2 text-center">${_dot('stale', title + ' (устарело)')}</td>`;
+    }
+    return `<td class="px-2 py-2 text-center">${_dot('ok', title)}</td>`;
+  }
 
   // 3. Build matrix rows
   const tbody = document.getElementById('overview-matrix-body');
@@ -1817,7 +1849,10 @@ async function loadOverview(force) {
     (p.static_datasets || []).forEach(d => { ds[d.name] = d; });
     const isActive = p.city_id === activeCityId;
 
-    const hasCsv  = !!f.opendata_csv_enabled;
+    const hasCsvOpendata = !!f.opendata_csv_enabled;
+    const hasConstruction = !!f.has_construction;
+    const hasCustomReports = _customReports.some(r => !r.city_id || r.city_id === p.city_id);
+    const hasCsv  = hasCsvOpendata || hasConstruction || hasCustomReports;
     const hasPow  = !!f.power_outages_url;
     const hasEco  = true;   // Open-Meteo доступен для всех
     const hasCam  = true;   // OSM доступен для всех
@@ -1899,7 +1934,7 @@ async function loadOverview(force) {
         </div>
         <div class="text-[10px] text-slate-400">${p.districts_count || 0} р-нов · ${p.timezone || ''}</div>
       </td>
-      ${cell(hasCsv, undefined, ['parking','stops','culture','schools','kindergartens','libraries','parks','sport_grounds','pharmacies','sport_orgs'])}
+      ${_cellCsv(p, hasCsv, hasCsvOpendata, hasConstruction, hasCustomReports, isActive)}
       ${cellPow()}
       ${cellEco()}
       ${cell(hasCam)}
