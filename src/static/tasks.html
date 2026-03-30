@@ -1184,7 +1184,7 @@ function smtpSettingsForm() {
 
       <label class="form-label">Brevo API-ключ</label>
       <div style="position:relative">
-        <input id="smBrevoKey" class="form-input" type="password" placeholder="xkeysib-..." style="padding-right:44px">
+        <input id="smBrevoKey" class="form-input" type="text" autocomplete="off" placeholder="xkeysib-..." style="padding-right:44px">
         <button type="button" onclick="toggleKeyVis('smBrevoKey','smBrevoToggle')" id="smBrevoToggle"
           style="position:absolute;right:10px;top:8px;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;padding:2px"
           title="Показать/скрыть">&#128065;</button>
@@ -1255,9 +1255,15 @@ async function loadSmtpSettings() {
     const method = cfg.method || 'brevo';
     document.getElementById('smMethod').value = method;
     toggleEmailMethod();
-    // Brevo fields
-    document.getElementById('smBrevoKey').value = '';
-    document.getElementById('smBrevoKey').placeholder = cfg.brevo_api_key ? cfg.brevo_api_key : 'xkeysib-...';
+    // Brevo fields — показываем замаскированный ключ если сохранён
+    const keyField = document.getElementById('smBrevoKey');
+    if (cfg.brevo_api_key && cfg.brevo_api_key.includes('••')) {
+      keyField.value = '';
+      keyField.placeholder = cfg.brevo_api_key + ' (сохранён, оставьте пустым)';
+    } else {
+      keyField.value = '';
+      keyField.placeholder = 'xkeysib-...';
+    }
     document.getElementById('smFrom').value = cfg.from_email || '';
     document.getElementById('smName').value = cfg.from_name || '';
     // SMTP fields
