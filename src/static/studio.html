@@ -1261,6 +1261,65 @@ async function _studioAuth() {
               </select>
             </div>
           </div>
+          <!-- Фреймворк мышления -->
+          <div class="grid grid-cols-2 gap-3 mt-3">
+            <div>
+              <label class="text-[11px] text-slate-500 mb-1 block">Фреймворк мышления</label>
+              <select id="pc-framework" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                <option value="">Без фреймворка</option>
+                <optgroup label="Стратегический анализ">
+                  <option value="FOREST">FOREST</option>
+                  <option value="SWOT">SWOT</option>
+                  <option value="PESTLE">PESTLE</option>
+                  <option value="McKinsey7S">McKinsey 7-S</option>
+                </optgroup>
+                <optgroup label="Принятие решений">
+                  <option value="OODA">OODA</option>
+                  <option value="Eisenhower">Матрица Эйзенхауэра</option>
+                  <option value="Cynefin">Cynefin</option>
+                  <option value="SecondOrder">Мышление второго порядка</option>
+                </optgroup>
+                <optgroup label="Приоритизация">
+                  <option value="ICE">ICE</option>
+                  <option value="RICE">RICE</option>
+                  <option value="MECE">MECE</option>
+                </optgroup>
+                <optgroup label="Креативность и решение проблем">
+                  <option value="SCAMPER">SCAMPER</option>
+                  <option value="SixHats">Шесть шляп мышления</option>
+                  <option value="FiveWhys">5 Почему</option>
+                  <option value="DesignThinking">Design Thinking</option>
+                  <option value="FirstPrinciples">First Principles</option>
+                </optgroup>
+                <optgroup label="Развитие и коучинг">
+                  <option value="GROW">GROW</option>
+                </optgroup>
+                <optgroup label="Мета-подходы">
+                  <option value="CriticalThinking">Critical Thinking</option>
+                  <option value="MentalModels">Mental Models</option>
+                </optgroup>
+              </select>
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-500 mb-1 block">Структура ответа из документов</label>
+              <select id="pc-doctemplate" class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                <option value="">Без шаблона</option>
+                <optgroup label="Регламенты проекта">
+                  <option value="traffic_rules">Индекс пробок (traffic_rules)</option>
+                  <option value="ecology_rules">Экология (ecology_rules)</option>
+                  <option value="life_indices_rules">Индексы жизни (life_indices)</option>
+                  <option value="mobile_index_rules">Транспортный индекс (mobile_index)</option>
+                  <option value="power_rating_rules">Рейтинг ЖКХ (power_rating)</option>
+                  <option value="holiday_calendar">Производственный календарь</option>
+                </optgroup>
+                <optgroup label="Структуры данных">
+                  <option value="city_profile">Структура нового города (city_profile)</option>
+                  <option value="datasets_yaml">Структура датасета (datasets.yaml)</option>
+                </optgroup>
+              </select>
+            </div>
+          </div>
+
           <label class="text-[11px] text-slate-500 mt-3 mb-1 block">Ограничения</label>
           <textarea id="pc-constraints" rows="2" placeholder="Например: Только проверенные открытые данные; не придумывай факты; указывай единицы."
             class="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"></textarea>
@@ -4418,6 +4477,7 @@ async function _reloadVocabulary() {
 
   const _pcIds = ['pc-role','pc-taskTemplate','pc-task','pc-topic','pc-audience',
                   'pc-source','pc-format','pc-constraints','pc-schema',
+                  'pc-framework','pc-doctemplate',
                   'pc-detail','pc-structure','pc-formality','pc-creativity','pc-depth','pc-style'];
 
   function _pcGetLength() {
@@ -4461,6 +4521,43 @@ async function _reloadVocabulary() {
     });
   }
 
+  // ── Frameworks dictionary ───────────────────────────────────────────
+  const _FRAMEWORKS = {
+    FOREST: 'FOREST (Facts, Opportunities, Risks, Examples, Solutions, Trends)\nСтруктурированный анализ темы. Последовательно рассмотри:\n1. Facts — собери и проверь ключевые факты\n2. Opportunities — определи возможности и потенциал\n3. Risks — выяви риски и угрозы\n4. Examples — приведи конкретные примеры и прецеденты\n5. Solutions — предложи решения на основе анализа\n6. Trends — опиши тренды и прогнозы развития',
+    SWOT: 'SWOT (Strengths, Weaknesses, Opportunities, Threats)\nАнализ сильных и слабых сторон, возможностей и угроз. Заполни 4 квадранта:\n1. Strengths — сильные стороны (внутренние преимущества)\n2. Weaknesses — слабые стороны (внутренние недостатки)\n3. Opportunities — возможности (внешние благоприятные факторы)\n4. Threats — угрозы (внешние неблагоприятные факторы)\nДля каждого квадранта укажи 3-5 пунктов с обоснованием.',
+    OODA: 'OODA (Observe, Orient, Decide, Act)\nЦикл быстрого принятия решений:\n1. Observe — собери данные и наблюдения о текущей ситуации\n2. Orient — проанализируй контекст, сопоставь с опытом и моделями\n3. Decide — выбери оптимальный курс действий из альтернатив\n4. Act — опиши конкретные шаги реализации\nДля каждого этапа укажи ключевые выводы.',
+    PESTLE: 'PESTLE (Political, Economic, Social, Technological, Legal, Environmental)\nАнализ макросреды по 6 факторам:\n1. Political — политические факторы и регулирование\n2. Economic — экономические условия и тренды\n3. Social — социальные и демографические факторы\n4. Technological — технологические возможности и угрозы\n5. Legal — правовые требования и ограничения\n6. Environmental — экологические факторы и устойчивое развитие\nДля каждого фактора: текущее состояние + влияние на задачу.',
+    McKinsey7S: 'McKinsey 7-S (Strategy, Structure, Systems, Skills, Style, Staff, Shared Values)\nОрганизационный анализ по 7 взаимосвязанным элементам:\n1. Strategy — стратегия и направление развития\n2. Structure — организационная структура\n3. Systems — процессы и системы управления\n4. Skills — ключевые компетенции и навыки\n5. Style — стиль руководства и культура\n6. Staff — кадры и человеческие ресурсы\n7. Shared Values — общие ценности и миссия\nОцени согласованность элементов между собой.',
+    MECE: 'MECE (Mutually Exclusive, Collectively Exhaustive)\nПринцип структурирования: категории не пересекаются и полностью покрывают тему.\nИнструкция:\n1. Разбей проблему на взаимоисключающие категории (без пересечений)\n2. Убедись что категории совместно исчерпывающие (нет пробелов)\n3. Для каждой категории проведи анализ\n4. Синтезируй выводы по всем категориям\nЕсли элемент попадает в 2+ категории — пересмотри структуру.',
+    SCAMPER: 'SCAMPER — метод креативной трансформации идей через 7 подходов:\n1. Substitute — что можно заменить? (материалы, людей, процессы)\n2. Combine — что можно объединить? (функции, идеи, ресурсы)\n3. Adapt — что можно адаптировать? (из других отраслей, контекстов)\n4. Modify — что можно изменить? (размер, форму, параметры)\n5. Put to another use — как использовать иначе? (новый контекст)\n6. Eliminate — что можно убрать? (упростить, сократить)\n7. Reverse — что можно перевернуть? (порядок, перспективу)\nДля каждого подхода предложи минимум 1 конкретную идею.',
+    ICE: 'ICE (Impact, Confidence, Ease)\nБыстрая приоритизация идей/проектов по 3 критериям (шкала 1-10):\n1. Impact — насколько велико потенциальное влияние?\n2. Confidence — насколько мы уверены в успехе?\n3. Ease — насколько легко реализовать?\nИтоговый балл = Impact × Confidence × Ease.\nРанжируй варианты по убыванию балла, поясни оценки.',
+    RICE: 'RICE (Reach, Impact, Confidence, Effort)\nПриоритизация в продуктовом менеджменте:\n1. Reach — сколько пользователей/объектов затронет за период?\n2. Impact — степень влияния на каждого (0.25/0.5/1/2/3)\n3. Confidence — уверенность в оценках (50%/80%/100%)\n4. Effort — трудозатраты в человеко-месяцах\nRICE Score = (Reach × Impact × Confidence) / Effort\nРанжируй по убыванию Score с обоснованием каждого параметра.',
+    GROW: 'GROW (Goal, Reality, Options, Will)\nКоучинговая модель для достижения целей:\n1. Goal — чётко сформулируй цель (SMART-критерии)\n2. Reality — опиши текущую ситуацию, ресурсы, ограничения\n3. Options — перечисли все возможные варианты действий (мин. 3)\n4. Will — выбери оптимальный вариант, составь план с дедлайнами\nДля каждого этапа задай уточняющие вопросы.',
+    SixHats: 'Шесть шляп мышления (Эдвард де Боно) — рассмотри проблему с 6 перспектив:\n🔵 Синяя шляпа — управление процессом: определи повестку и порядок анализа\n⚪ Белая шляпа — факты и данные: только объективная информация, без оценок\n🔴 Красная шляпа — эмоции и интуиция: какие чувства вызывает ситуация?\n⚫ Чёрная шляпа — критика и риски: что может пойти не так?\n🟡 Жёлтая шляпа — оптимизм и выгоды: какие преимущества и возможности?\n🟢 Зелёная шляпа — креативность: нестандартные идеи и альтернативы\nИтог: синтез всех перспектив в рекомендацию.',
+    FiveWhys: '5 Почему (Root Cause Analysis)\nМетод поиска первопричины через цепочку вопросов «Почему?»:\n1. Опиши проблему/симптом\n2. Почему это произошло? → Ответ 1\n3. Почему [Ответ 1]? → Ответ 2\n4. Почему [Ответ 2]? → Ответ 3\n5. Почему [Ответ 3]? → Ответ 4\n6. Почему [Ответ 4]? → Корневая причина\nДля каждого уровня приведи доказательства. Предложи меры устранения корневой причины.',
+    Eisenhower: 'Матрица Эйзенхауэра (Urgent/Important)\nРаспредели задачи/факторы по 4 квадрантам:\n1. Срочно + Важно → ДЕЛАТЬ НЕМЕДЛЕННО (кризисы, дедлайны)\n2. Не срочно + Важно → ЗАПЛАНИРОВАТЬ (стратегия, развитие)\n3. Срочно + Не важно → ДЕЛЕГИРОВАТЬ (рутина, запросы)\n4. Не срочно + Не важно → ИСКЛЮЧИТЬ (отвлечения)\nДля каждого элемента обоснуй попадание в квадрант.',
+    Cynefin: 'Cynefin Framework — категоризация проблем по сложности:\n1. Clear (Очевидное) — причинно-следственные связи ясны → применяй лучшие практики\n2. Complicated (Сложное) — нужен экспертный анализ → исследуй-анализируй-действуй\n3. Complex (Запутанное) — непредсказуемые связи → пробуй-наблюдай-адаптируй\n4. Chaotic (Хаотичное) — нет связей → действуй-наблюдай-стабилизируй\n5. Confused (Неопределённое) — неясно какой домен → собери данные для классификации\nОпредели домен задачи и подбери стратегию.',
+    DesignThinking: 'Design Thinking — человеко-ориентированный подход:\n1. Empathize (Эмпатия) — пойми потребности пользователей, собери инсайты\n2. Define (Определение) — сформулируй проблему на основе собранных данных\n3. Ideate (Генерация идей) — предложи максимум вариантов решения\n4. Prototype (Прототипирование) — опиши минимально жизнеспособное решение\n5. Test (Тестирование) — как проверить решение? критерии успеха?\nДля каждого этапа: действия + результат + переход к следующему.',
+    FirstPrinciples: 'First Principles Thinking — мышление от первых принципов:\n1. Определи проблему и текущие допущения\n2. Разложи проблему на базовые, неделимые компоненты (аксиомы)\n3. Для каждого допущения спроси: «Это точно истина или привычка?»\n4. Отбрось все небазовые допущения\n5. Построй решение заново, опираясь ТОЛЬКО на подтверждённые принципы\nЦель: не «как принято», а «как следует из базовых фактов».',
+    CriticalThinking: 'Critical Thinking — объективный анализ и защита от когнитивных искажений:\n1. Определи утверждения и их источники\n2. Оцени достоверность: факт vs мнение vs допущение\n3. Проверь логику аргументации (нет ли логических ошибок)\n4. Выяви когнитивные искажения (confirmation bias, anchoring, survivorship bias)\n5. Рассмотри альтернативные объяснения\n6. Сделай взвешенный вывод с указанием степени уверенности\nДля каждого утверждения: источник + проверка + вердикт.',
+    SecondOrder: 'Second-Order Thinking — учёт долгосрочных последствий:\n1. Определи предлагаемое решение/действие\n2. Последствия 1-го порядка: что произойдёт сразу? (очевидные результаты)\n3. Последствия 2-го порядка: что произойдёт из-за последствий 1-го порядка?\n4. Последствия 3-го порядка: каскадные эффекты и долгосрочные тренды\n5. Для каждого уровня: кто выиграет? кто проиграет? какие риски?\n6. Итоговая оценка: стоит ли действовать с учётом всех порядков последствий?',
+    MentalModels: 'Mental Models — коллекция моделей мышления:\nПримени к задаче наиболее релевантные модели:\n• Бритва Оккама — из равных объяснений выбирай простейшее\n• Инверсионное мышление — вместо «как достичь?» спроси «как провалить?» и избегай этого\n• Карта ≠ территория — модель всегда упрощение, учитывай ограничения\n• Круг компетенций — что мы знаем точно vs где нужен эксперт?\n• Принцип Парето — 20% причин дают 80% результата, найди их\n• Точка невозврата — есть ли обратимость у предлагаемых решений?\nДля каждой применённой модели: вывод + рекомендация.'
+  };
+
+  // ── Document template cache ───────────────────────────────────────────
+  const _docTemplateCache = {};
+  async function _pcFetchDocTemplate(key) {
+    if (_docTemplateCache[key]) return _docTemplateCache[key];
+    const name = key === 'datasets_yaml' ? 'datasets' : key;
+    try {
+      const r = await fetch(`/admin/doc-template/${name}`);
+      if (!r.ok) return null;
+      const t = await r.text();
+      _docTemplateCache[key] = t;
+      return t;
+    } catch(e) { return null; }
+  }
+
   // ── Prompt builders ──────────────────────────────────────────────────
   function _pcBuildMeta(s) {
     return `Детализация ${s['pc-detail']}/10 · Структура ${s['pc-structure']}/10 · Формальность ${s['pc-formality']}/10 · Креативность ${s['pc-creativity']}/10 · Глубина ${s['pc-depth']}/10 · ~${s.length} симв.`;
@@ -4480,8 +4577,11 @@ async function _reloadVocabulary() {
     if (s['pc-audience']) p.push(`::: Контекст/Аудитория: ${s['pc-audience']}`);
     if (s['pc-source']) p.push(`::: Источник данных: ${s['pc-source']}`);
     if (s['pc-format']) p.push(`::: Формат вывода: ${s['pc-format']}`);
+    const fw = s['pc-framework'];
+    if (fw && _FRAMEWORKS[fw]) { p.push('::: Инструкция по методу анализа:'); p.push(_FRAMEWORKS[fw]); }
     const schema = (s['pc-schema'] || '').trim();
     if (schema) { p.push('::: Контекст базы данных / схемы:'); p.push(schema); }
+    if (s._docTemplateText) { p.push('::: Структура ответа (образец из документа):'); p.push(s._docTemplateText); }
     p.push(`::: Параметры качества: [Детализация: ${s['pc-detail']}/10], [Структура: ${s['pc-structure']}/10], [Формальность: ${s['pc-formality']}/10], [Креативность: ${s['pc-creativity']}/10], [Глубина: ${s['pc-depth']}/10], [Объём: ~${s.length} символов]`);
     const constraints = (s['pc-constraints'] || '').trim();
     if (constraints) p.push(`::: Ограничения: ${constraints}`);
@@ -4495,11 +4595,14 @@ async function _reloadVocabulary() {
     sys.push(`  <role>${s['pc-role']}</role>`);
     if (s['pc-source']) sys.push(`  <dataSource>${s['pc-source']}</dataSource>`);
     if (s['pc-format']) sys.push(`  <outputFormat>${s['pc-format']}</outputFormat>`);
+    const fw = s['pc-framework'];
+    if (fw && _FRAMEWORKS[fw]) sys.push(`  <framework><![CDATA[\n${_FRAMEWORKS[fw]}\n  ]]></framework>`);
     const constraints = (s['pc-constraints'] || '').trim();
     if (constraints) sys.push(`  <constraints>${constraints}</constraints>`);
     sys.push(`  <quality detail="${s['pc-detail']}" structure="${s['pc-structure']}" formality="${s['pc-formality']}" creativity="${s['pc-creativity']}" depth="${s['pc-depth']}" length="${s.length}" />`);
     const schema = (s['pc-schema'] || '').trim();
     if (schema) { sys.push('  <schema><![CDATA['); sys.push(schema); sys.push('  ]]></schema>'); }
+    if (s._docTemplateText) { sys.push('  <responseTemplate><![CDATA['); sys.push(s._docTemplateText); sys.push('  ]]></responseTemplate>'); }
     sys.push('</SYSTEM>');
     const usr = ['<USER>'];
     const task = _pcTaskText(s);
@@ -4522,6 +4625,8 @@ async function _reloadVocabulary() {
     if (s['pc-source']) l.push(`Источник данных: ${s['pc-source']}`);
     if (s['pc-format']) l.push(`Формат вывода: ${s['pc-format']}`);
     l.push('');
+    const fw = s['pc-framework'];
+    if (fw && _FRAMEWORKS[fw]) { l.push('## Инструкция по методу анализа'); l.push(_FRAMEWORKS[fw]); l.push(''); }
     l.push('## Ограничения');
     const c = (s['pc-constraints'] || '').trim();
     l.push(c || '—');
@@ -4530,6 +4635,7 @@ async function _reloadVocabulary() {
     const schema = (s['pc-schema'] || '').trim();
     if (schema) { l.push('```'); l.push(schema); l.push('```'); } else l.push('—');
     l.push('');
+    if (s._docTemplateText) { l.push('## Структура ответа (образец из документа)'); l.push('```yaml'); l.push(s._docTemplateText); l.push('```'); l.push(''); }
     l.push('## Параметры качества');
     l.push(`- Детализация: ${s['pc-detail']}/10`);
     l.push(`- Структура: ${s['pc-structure']}/10`);
@@ -4571,11 +4677,24 @@ async function _reloadVocabulary() {
 
   function _pcUpdatePrompt() {
     const s = _pcReadState();
-    const { full } = _pcBuildPrompts(s);
-    const out = document.getElementById('pc-output');
-    if (out) out.value = full;
-    const cap = document.getElementById('pc-metaCaption');
-    if (cap) cap.textContent = _pcBuildMeta(s);
+    const docKey = s['pc-doctemplate'];
+    if (docKey) {
+      _pcFetchDocTemplate(docKey).then(text => {
+        s._docTemplateText = text || '';
+        const { full } = _pcBuildPrompts(s);
+        const out = document.getElementById('pc-output');
+        if (out) out.value = full;
+        const cap = document.getElementById('pc-metaCaption');
+        if (cap) cap.textContent = _pcBuildMeta(s);
+      });
+    } else {
+      s._docTemplateText = '';
+      const { full } = _pcBuildPrompts(s);
+      const out = document.getElementById('pc-output');
+      if (out) out.value = full;
+      const cap = document.getElementById('pc-metaCaption');
+      if (cap) cap.textContent = _pcBuildMeta(s);
+    }
     _pcSaveState();
   }
 
@@ -4596,6 +4715,9 @@ async function _reloadVocabulary() {
 
   window._promptCopy = async function(part) {
     const s = _pcReadState();
+    const docKey = s['pc-doctemplate'];
+    if (docKey) { s._docTemplateText = await _pcFetchDocTemplate(docKey) || ''; }
+    else { s._docTemplateText = ''; }
     const { full, system, user } = _pcBuildPrompts(s);
     const map = { full, system, user };
     const text = map[part] || full;

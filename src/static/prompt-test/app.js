@@ -732,7 +732,7 @@ function renderMatching(question) {
     html += `
       <div class="matching-item">
         <div class="matching-item-number">${item.number}.</div>
-        <div>${item.text}</div>
+        <div style="font-size:12px;line-height:1.3">${item.text}</div>
         <select class="matching-select" onchange="selectMatch(${question.id}, '${item.number}', this.value)">
           <option value="">Выберите соответствие...</option>
     `;
@@ -743,17 +743,6 @@ function renderMatching(question) {
     });
     
     html += `</select></div>`;
-  });
-  
-  html += `</div><div class="matching-column"><div class="column-title">Определения</div>`;
-  
-  question.rightOptions.forEach(opt => {
-    html += `
-      <div class="right-option">
-        <div class="right-option-letter">${opt.letter}.</div>
-        <div>${opt.text}</div>
-      </div>
-    `;
   });
   
   html += `</div></div></div>`;
@@ -1143,12 +1132,12 @@ function showResults() {
     const statusColor = isFullyCorrect ? 'var(--color-success)' : 'var(--color-error)';
     
     html += `
-      <div style="background-color: ${bgColor}; padding: var(--space-20); border-radius: var(--radius-md); margin-bottom: var(--space-16); border: 2px solid ${statusColor}33;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-12);">
-          <div style="font-weight: var(--font-weight-semibold); color: var(--color-text);">Вопрос ${index + 1}</div>
-          <div style="color: ${statusColor}; font-weight: var(--font-weight-bold);">${questionScore}/${maxPoints} баллов</div>
+      <div style="background-color: ${bgColor}; padding: var(--space-10); border-radius: var(--radius-sm); margin-bottom: var(--space-8); border: 1px solid ${statusColor}33;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-6);">
+          <div style="font-weight: var(--font-weight-semibold); font-size:12px; color: var(--color-text);">Вопрос ${index + 1}</div>
+          <div style="color: ${statusColor}; font-weight: var(--font-weight-bold); font-size:12px;">${questionScore}/${maxPoints}</div>
         </div>
-        <div style="font-size: var(--font-size-base); color: var(--color-text); margin-bottom: var(--space-16);">
+        <div style="font-size:12px; color: var(--color-text); margin-bottom: var(--space-8); line-height:1.3;">
           ${question.text}
         </div>
     `;
@@ -1163,9 +1152,9 @@ function showResults() {
   });
   
   html += `
-      <div style="margin-top: var(--space-32); padding-top: var(--space-24); border-top: 2px solid var(--color-border); display: flex; gap: var(--space-16); justify-content: center; flex-wrap: wrap;">
-        <button class="btn btn-secondary" onclick="returnToDashboard()" style="flex: 1; max-width: 300px; min-width: 200px;">Вернуться на главную</button>
-        <button class="btn btn-primary" onclick="retakeTest()" style="flex: 1; max-width: 300px; min-width: 200px;">Пройти тест заново</button>
+      <div style="margin-top: var(--space-16); padding-top: var(--space-12); border-top: 1px solid var(--color-border); display: flex; gap: var(--space-8); justify-content: center; flex-wrap: wrap;">
+        <button class="btn btn-secondary" onclick="returnToDashboard()" style="flex: 1; max-width: 200px; min-width: 140px;">На главную</button>
+        <button class="btn btn-primary" onclick="retakeTest()" style="flex: 1; max-width: 200px; min-width: 140px;">Заново</button>
       </div>
     </div>
   `;
@@ -1267,8 +1256,8 @@ function renderMatchingResults(question) {
     }
     
     html += `
-      <div style="background-color: ${bgColor}; border: 2px solid ${borderColor}; padding: var(--space-16); margin-bottom: var(--space-12); border-radius: var(--radius-sm);">
-        <div style="font-weight: var(--font-weight-semibold); margin-bottom: var(--space-8);">
+      <div style="background-color: ${bgColor}; border: 1px solid ${borderColor}; padding: var(--space-8); margin-bottom: var(--space-6); border-radius: var(--radius-sm); font-size:12px;">
+        <div style="font-weight: var(--font-weight-semibold); margin-bottom: var(--space-4);">
           ${item.number}. ${item.text}
         </div>
     `;

@@ -77,6 +77,37 @@ def admin_reload_rules() -> dict:
     return {"status": "ok", "reloaded": reloaded}
 
 
+_CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
+
+_ALLOWED_DOC_TEMPLATES = {
+    "traffic_rules", "ecology_rules", "life_indices_rules",
+    "mobile_index_rules", "power_rating_rules", "holiday_calendar",
+    "city_profile", "datasets",
+}
+
+
+@router.get(
+    "/admin/doc-template/{name}",
+    tags=["Администрирование"],
+    summary="Получить YAML-документ как сырой текст для шаблона промпта",
+)
+def admin_get_doc_template(name: str):
+    """Возвращает сырой YAML-текст документа для вставки в промпт-конструктор."""
+    from fastapi.responses import PlainTextResponse
+    if name not in _ALLOWED_DOC_TEMPLATES:
+        raise HTTPException(status_code=404, detail=f"Шаблон '{name}' недоступен")
+    # Try config/rules/ first, then config/ root for city_profile/datasets
+    candidates = [
+        _RULES_DIR / f"{name}.yaml",
+        _RULES_DIR_SEED / f"{name}.yaml",
+        _CONFIG_DIR / f"{name}.yaml",
+    ]
+    for path in candidates:
+        if path.exists():
+            return PlainTextResponse(path.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail=f"Файл для '{name}' не найден")
+
+
 @router.get(
     "/admin/rules-status",
     tags=["Администрирование"],

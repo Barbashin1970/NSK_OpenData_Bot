@@ -267,7 +267,12 @@
   </section>
 
   <!-- Footer -->
-  <footer class="text-center text-xs text-slate-400 pb-4 space-y-1">
+  <footer class="text-center text-xs text-slate-400 pb-4 space-y-3">
+    <!-- QR code -->
+    <div class="flex flex-col items-center gap-1 pt-2">
+      <canvas id="footerQR" width="140" height="140" style="image-rendering:pixelated"></canvas>
+      <p class="text-[10px] text-slate-400">Откройте на смартфоне</p>
+    </div>
     <p class="font-medium text-slate-500">Сигма — Студия Интеграции Междугородней Аналитики</p>
     <p>
       <a href="/studio" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Studio ↗</a> ·
@@ -1745,7 +1750,7 @@ function _tryDrillDown(raw) {
   }
   } // end if (!isFullQuery)
 
-  // 2. «На карте» / «покажи на карте» — программно нажимаем кнопку карты
+  // 2. «На карте» / «покажи на карте» — программно нажимаем кнопку карты + скролл
   if (/(?:на\s+карт|покажи.*карт|отобра.*карт|карту)/i.test(ql)) {
     const btns = document.querySelectorAll('#resultArea button, #resultArea [onclick]');
     for (const btn of btns) {
@@ -1753,6 +1758,11 @@ function _tryDrillDown(raw) {
       const tx = btn.textContent || '';
       if (/loadMap|карт/i.test(oc) || /на\s*карт|📍.*карт/i.test(tx)) {
         btn.click();
+        // Плавный скролл к карте после открытия
+        setTimeout(() => {
+          const mapEl = document.getElementById('mapPanelWrap') || document.getElementById('map2gis');
+          if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 400);
         return true;
       }
     }
@@ -6582,6 +6592,9 @@ async function loadMap() {
   if (_currentMapRows) {
     panel.classList.toggle('hidden');
     btn.textContent = panel.classList.contains('hidden') ? '📍 Показать на карте' : '🗺 Скрыть карту';
+    if (!panel.classList.contains('hidden')) {
+      setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    }
     return;
   }
 
@@ -6643,6 +6656,7 @@ async function loadMap() {
       </div>` : '';
     panel.innerHTML = emitLegend + '<div id="map2gis" style="height:420px;border-radius:1rem;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 1px 8px rgba(0,0,0,.08)"></div>';
     panel.classList.remove('hidden');
+    setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
 
     if (!window.mapgl) {
       const s = document.createElement('script');
@@ -7875,6 +7889,66 @@ if (currentRole !== 'citizen') {
     });
   }
   setTimeout(updateTime, 30000);
+})();
+
+// ── Footer QR Code ───────────────────────────────────────────────────
+// Pre-computed QR matrix for "https://nsk-opendata-bot.up.railway.app/"
+// QR version 3, ECC-M, 33×33 modules (including quiet zone)
+(function drawFooterQR() {
+  const canvas = document.getElementById('footerQR');
+  if (!canvas) return;
+  const M = [
+    "000000000000000000000000000000000",
+    "000000000000000000000000000000000",
+    "001111111001011011011100111111100",
+    "001000001011011101001100100000100",
+    "001011101001000001000110101110100",
+    "001011101001111010001100101110100",
+    "001011101011101001100100101110100",
+    "001000001001011101111110100000100",
+    "001111111010101010101010111111100",
+    "000000000000100101010110000000000",
+    "001010101001101101011110001001000",
+    "001000010110001110100001100100100",
+    "000010011001100010010001011011100",
+    "001110110001011101010100101001000",
+    "001011101111100110110011100101100",
+    "000000010000011000111010110100100",
+    "001001101001101100000010110101100",
+    "001001000011110110111111011101000",
+    "001010101000111010010001100101100",
+    "000110000100111000111011100110100",
+    "001010101101000100101001110001100",
+    "000101010011101001110100010101000",
+    "001000011100001001111011111000000",
+    "000000000010001100100110001011100",
+    "001111111001100010010110101101100",
+    "001000001001010111010010001101000",
+    "001011101011011011110011111000000",
+    "001011101000010110111100001011100",
+    "001011101011111110011110011100100",
+    "001000001000011101010110111001000",
+    "001111111010110010110110010001100",
+    "000000000000000000000000000000000",
+    "000000000000000000000000000000000",
+  ];
+  const n = M.length;        // 33
+  const size = 140;
+  const cell = Math.floor(size / n); // ~4px per module
+  const off = Math.floor((size - cell * n) / 2);
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#1e293b'; // slate-800
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < M[r].length; c++) {
+      if (M[r][c] === '1') {
+        ctx.fillRect(off + c * cell, off + r * cell, cell, cell);
+      }
+    }
+  }
 })();
 
 // ── API Docs — password modal ─────────────────────────────────────────────
