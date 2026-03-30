@@ -1,6 +1,6 @@
 {
   "host": "smtp.gmail.com",
-  "port": 465,
+  "port": 587,
   "username": "banksnab@gmail.com",
   "password": "Gmailbank-2016",
   "from_name": "Пространство задач — Сигма",
