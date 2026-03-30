@@ -273,7 +273,7 @@
       <canvas id="footerQR" width="140" height="140" style="image-rendering:pixelated"></canvas>
       <p class="text-[10px] text-slate-400">Откройте на смартфоне</p>
     </div>
-    <p class="font-medium text-slate-500">Сигма — Студия Интеграции Междугородней Аналитики</p>
+    <p class="font-medium text-slate-500">Сигма — Студия Интеграции Междугородней Аналитики <span id="footerVer" class="inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] text-slate-400 font-mono ml-1"></span></p>
     <p>
       <a href="/studio" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Studio ↗</a> ·
       <a href="/display" target="_blank" class="hover:text-blue-500 transition-colors">Презентация ↗</a> ·
@@ -5814,19 +5814,23 @@ function renderInfo(_data) {
         { icon: '🚔', name: 'ГИБДД (камеры)',            q: '', onclick: "window.open('https://гибдд.рф','_blank')" },
       ],
     },
-    {
-      id: 'nocode',
-      label: 'No-Code аналитика',
-      color: 'indigo',
-      items: [
-        { icon: '📤', name: 'Загрузить CSV-отчёт',       q: '', onclick: "window.open('/studio#data','_blank')" },
-        { icon: '🏆', name: 'Рейтинг ЖКХ по районам',    q: 'рейтинг качества жкх по районам' },
-        { icon: '📐', name: 'Регламенты и пороги',        q: '', onclick: "window.open('/studio#rules','_blank')" },
-        { icon: '💬', name: 'Жалобы и предложения',       q: '', onclick: '_openFeedback()' },
-        { icon: '🔧', name: 'Студия (admin-панель)',      q: '', onclick: "window.open('/studio','_blank')" },
-      ],
-    },
   ];
+
+  // Вставляем «Моделирование и прогнозирование» первым чипом
+  sections.unshift({
+    id: 'modeling',
+    label: 'Моделирование и прогнозирование',
+    color: 'indigo',
+    items: [
+      { icon: '🌨️', name: 'Прогноз: гололёд, снегопад',  q: 'прогноз погоды на 3 дня' },
+      { icon: '🏭', name: 'Что-если: метро и выбросы',    q: '', onclick: "window.open('/studio#cities','_blank')" },
+      { icon: '🏆', name: 'Рейтинг ЖКХ по районам',      q: 'рейтинг качества жкх по районам' },
+      { icon: '📐', name: 'Регламенты и пороги',          q: '', onclick: "window.open('/studio#rules','_blank')" },
+      { icon: '📤', name: 'No-Code: загрузить CSV',       q: '', onclick: "window.open('/studio#data','_blank')" },
+      { icon: '💬', name: 'Жалобы и предложения',         q: '', onclick: '_openFeedback()' },
+      { icon: '🔧', name: 'Студия (admin-панель)',        q: '', onclick: "window.open('/studio','_blank')" },
+    ],
+  });
 
   const colorMap = {
     amber:   { bg: 'bg-amber-50',   border: 'border-amber-200',   text: 'text-amber-700',   hover: 'hover:bg-amber-100' },
@@ -5871,7 +5875,7 @@ function renderInfo(_data) {
           <div class="min-w-0">
             <p class="font-semibold text-base leading-snug">Привет! Я — Сима</p>
             <p class="text-blue-100 text-xs mt-0.5 leading-relaxed">Голосовой помощник и аналитическая платформа открытых данных городской среды.</p>
-            <p class="text-blue-200/70 text-[10px] mt-1 leading-relaxed">Для жителей — голосовые запросы · Для руководителей — дашборды и рейтинги · Для аналитиков — no-code конструктор отчётов</p>
+            <p class="text-blue-200/70 text-[10px] mt-1 leading-relaxed">Для жителей — голосовые запросы · Для руководителей — дашборды и рейтинги · Моделирование — «что-если» сценарии и прогнозная аналитика</p>
           </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">${voiceHint}</div>
@@ -5880,7 +5884,7 @@ function renderInfo(_data) {
       <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">${sectionsHtml}</div>
       <!-- Подпись -->
       <div class="px-4 pb-3 text-center text-[10px] text-slate-400">
-        Фреймворк Сигма · ЦИИ НГУ · rule-based, без AI в runtime
+        Фреймворк Сигма · ЦИИ НГУ · rule-based, без AI в runtime · моделирование и прогнозирование
       </div>
     </div>
   `;
@@ -7890,6 +7894,12 @@ if (currentRole !== 'citizen') {
   }
   setTimeout(updateTime, 30000);
 })();
+
+// Footer version
+fetch('/api/version').then(r=>r.json()).then(d=>{
+  const el=document.getElementById('footerVer');
+  if(el&&d.version) el.textContent='v'+d.version;
+}).catch(()=>{});
 
 // ── Footer QR Code ───────────────────────────────────────────────────
 // Pre-computed QR matrix for "https://nsk-opendata-bot.up.railway.app/"

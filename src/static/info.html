@@ -92,7 +92,8 @@
   <span class="sep">|</span>
   <span class="title">NSK OpenData Bot</span>
   <span class="sub">О проекте и архитектуре</span>
-  <span class="badge">v1.0.0</span>
+  <span class="badge" id="infoBadge">v...</span>
+<script>fetch('/api/version').then(r=>r.json()).then(d=>{document.getElementById('infoBadge').textContent='v'+d.version}).catch(()=>{})</script>
 </div>
 
 <!-- ══════════════════════════════════════════════════════ HERO -->

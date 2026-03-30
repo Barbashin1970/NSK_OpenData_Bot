@@ -4,6 +4,7 @@
 и роутеры. Бизнес-логика эндпоинтов живёт в src/routes/*.py.
 """
 
+import importlib.metadata
 import json
 import logging
 import os
@@ -13,6 +14,11 @@ import sys
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+try:
+    __version__ = importlib.metadata.version("nsk-opendata-bot")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "1.4.0"
 
 try:
     from fastapi import FastAPI, Request
@@ -162,7 +168,7 @@ _TAGS_METADATA = [
 app = FastAPI(
     title="NSK OpenData Bot",
     description=_API_DESCRIPTION,
-    version="1.2.0",
+    version=__version__,
     openapi_tags=_TAGS_METADATA,
     contact={"name": "ЦИИ НГУ"},
     docs_url=None,   # кастомный /docs ниже
@@ -399,7 +405,7 @@ _NAV_BAR_HTML = """
   <span class="sep">|</span>
   <span class="title">NSK OpenData Bot</span>
   <span class="sub">API Документация</span>
-  <span class="badge">v1.2.0</span>
+  <span class="badge">v{__version__}</span>
 </div>
 
 <script>
@@ -875,8 +881,15 @@ def custom_swagger_ui() -> HTMLResponse:
         },
     )
     html = html_resp.body.decode("utf-8")
-    html = html.replace("<body>", f"<body>{_NAV_BAR_HTML}", 1)
+    nav = _NAV_BAR_HTML.replace("{__version__}", __version__)
+    html = html.replace("<body>", f"<body>{nav}", 1)
     return HTMLResponse(html)
+
+
+@app.get("/api/version", include_in_schema=False)
+def api_version():
+    """Текущая версия приложения (единый источник — pyproject.toml)."""
+    return {"version": __version__}
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
