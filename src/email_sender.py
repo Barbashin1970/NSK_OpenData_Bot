@@ -2,6 +2,11 @@
 
 SMTP-конфиг хранится в data/smtp_config.json.
 Поддерживает вложения (multipart/mixed).
+
+Стратегия подключения к Gmail:
+  1. Порт 465 — SMTP_SSL (прямое SSL-соединение, работает почти везде)
+  2. Порт 587 — STARTTLS (иногда блокируется провайдерами)
+  3. Автоопределение: пробуем 465, если таймаут — пробуем 587
 """
 
 import json
@@ -13,17 +18,15 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email import encoders
 from pathlib import Path
-from typing import Any
 
 log = logging.getLogger(__name__)
 
 _CONFIG_PATH = Path(__file__).parent.parent / "data" / "smtp_config.json"
+_TIMEOUT = 12
 
-# Значения по умолчанию
 _DEFAULTS = {
     "host": "smtp.gmail.com",
-    "port": 587,
-    "use_tls": True,
+    "port": 465,
     "username": "",
     "password": "",
     "from_name": "Пространство задач — Сигма",
@@ -42,16 +45,63 @@ def get_smtp_config() -> dict:
 
 
 def save_smtp_config(data: dict) -> dict:
-    """Сохраняет SMTP-конфиг. Пароль обновляется только если передан непустой."""
+    """Сохраняет SMTP-конфиг."""
     cfg = _load_config()
-    for key in ("host", "port", "use_tls", "username", "from_name", "from_email"):
+    for key in ("host", "port", "username", "from_name", "from_email"):
         if key in data:
             cfg[key] = data[key]
-    # Пароль обновляем только если передано реальное значение (не маска)
     if data.get("password") and "••" not in data["password"]:
         cfg["password"] = data["password"]
+    # Убираем устаревшее поле
+    cfg.pop("use_tls", None)
     _save_config(cfg)
     return get_smtp_config()
+
+
+def _connect_smtp(host: str, port: int, username: str, password: str):
+    """Подключается к SMTP и авторизуется. Возвращает server объект.
+
+    Порт 465 → SMTP_SSL (прямой SSL).
+    Порт 587 → SMTP + STARTTLS.
+    Другие   → SMTP без шифрования.
+    """
+    ctx = ssl.create_default_context()
+    port = int(port)
+
+    if port == 465:
+        server = smtplib.SMTP_SSL(host, port, timeout=_TIMEOUT, context=ctx)
+    elif port == 587:
+        server = smtplib.SMTP(host, port, timeout=_TIMEOUT)
+        server.ehlo()
+        server.starttls(context=ctx)
+        server.ehlo()
+    else:
+        server = smtplib.SMTP(host, port, timeout=_TIMEOUT)
+        server.ehlo()
+
+    server.login(username, password)
+    return server
+
+
+def _connect_with_fallback(cfg: dict):
+    """Пробует подключиться. Если таймаут на заданном порту — пробует другой."""
+    host = cfg["host"]
+    port = int(cfg.get("port", 465))
+    user = cfg["username"]
+    pwd = cfg["password"]
+
+    # Основная попытка
+    try:
+        return _connect_smtp(host, port, user, pwd), port
+    except (TimeoutError, OSError) as first_err:
+        # Fallback: если был 587, пробуем 465 и наоборот
+        alt_port = 465 if port == 587 else 587
+        log.info("SMTP: порт %d таймаут, пробую %d...", port, alt_port)
+        try:
+            return _connect_smtp(host, alt_port, user, pwd), alt_port
+        except Exception:
+            # Оба порта не работают — поднимаем оригинальную ошибку
+            raise first_err
 
 
 def test_smtp_connection() -> dict:
@@ -61,25 +111,40 @@ def test_smtp_connection() -> dict:
         return {"ok": False, "error": "Логин или пароль не заполнены."}
 
     try:
-        ctx = ssl.create_default_context()
-        server = smtplib.SMTP(cfg["host"], int(cfg.get("port", 587)), timeout=10)
+        server, used_port = _connect_with_fallback(cfg)
         try:
-            server.ehlo()
-            if cfg.get("use_tls", True):
-                server.starttls(context=ctx)
-                server.ehlo()
-            server.login(cfg["username"], cfg["password"])
-            return {"ok": True, "message": f"Подключение к {cfg['host']}:{cfg['port']} успешно. Авторизация пройдена."}
+            server.noop()
         finally:
             try:
                 server.quit()
             except Exception:
                 pass
+
+        # Если подключились через fallback порт — сохраняем его
+        configured_port = int(cfg.get("port", 465))
+        note = ""
+        if used_port != configured_port:
+            cfg["port"] = used_port
+            _save_config(cfg)
+            note = f" (порт изменён с {configured_port} на {used_port})"
+
+        return {
+            "ok": True,
+            "message": f"Подключение к {cfg['host']}:{used_port} успешно. Авторизация пройдена.{note}",
+        }
     except smtplib.SMTPAuthenticationError as e:
-        code = getattr(e, 'smtp_code', '')
-        return {"ok": False, "error": f"Ошибка авторизации ({code}). Для Gmail нужен App Password, а не обычный пароль."}
+        code = getattr(e, "smtp_code", "")
+        return {
+            "ok": False,
+            "error": f"Ошибка авторизации ({code}). Для Gmail нужен App Password — "
+                     f"обычный пароль не подойдёт. Создайте на myaccount.google.com/apppasswords",
+        }
     except TimeoutError:
-        return {"ok": False, "error": f"Таймаут подключения к {cfg['host']}:{cfg['port']}. Проверьте сервер и порт."}
+        return {
+            "ok": False,
+            "error": f"Таймаут подключения к {cfg['host']} (порты 465 и 587). "
+                     f"Возможно, SMTP заблокирован в вашей сети.",
+        }
     except OSError as e:
         return {"ok": False, "error": f"Сетевая ошибка: {e}"}
     except Exception as e:
@@ -93,10 +158,7 @@ def send_email(
     attachments: list[tuple[str, bytes]] | None = None,
     cc: str = "",
 ) -> dict:
-    """Отправляет email. attachments — список (filename, content_bytes).
-
-    Возвращает {"sent": True} или {"sent": False, "error": "..."}.
-    """
+    """Отправляет email. attachments — список (filename, content_bytes)."""
     cfg = _load_config()
     if not cfg.get("username") or not cfg.get("password"):
         return {"sent": False, "error": "SMTP не настроен. Откройте настройки почты."}
@@ -110,7 +172,6 @@ def send_email(
     if cc:
         msg["Cc"] = cc
     msg["Subject"] = subject
-
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
     for fname, fdata in (attachments or []):
@@ -124,38 +185,37 @@ def send_email(
     if cc:
         recipients.extend([a.strip() for a in cc.split(",") if a.strip()])
 
-    _TIMEOUT = 15  # секунд на подключение
-
     try:
-        if cfg.get("use_tls", True):
-            ctx = ssl.create_default_context()
-            server = smtplib.SMTP(cfg["host"], int(cfg.get("port", 587)), timeout=_TIMEOUT)
+        server, used_port = _connect_with_fallback(cfg)
+        try:
+            server.sendmail(from_email, recipients, msg.as_string())
+        finally:
             try:
-                server.ehlo()
-                server.starttls(context=ctx)
-                server.ehlo()
-                server.login(cfg["username"], cfg["password"])
-                server.sendmail(from_email, recipients, msg.as_string())
-            finally:
                 server.quit()
-        else:
-            server = smtplib.SMTP(cfg["host"], int(cfg.get("port", 25)), timeout=_TIMEOUT)
-            try:
-                server.ehlo()
-                server.login(cfg["username"], cfg["password"])
-                server.sendmail(from_email, recipients, msg.as_string())
-            finally:
-                server.quit()
-        log.info("Email sent to %s: %s", to, subject)
+            except Exception:
+                pass
+
+        # Запоминаем рабочий порт
+        if used_port != int(cfg.get("port", 465)):
+            cfg["port"] = used_port
+            _save_config(cfg)
+
+        log.info("Email sent to %s via :%d — %s", to, used_port, subject)
         return {"sent": True}
-    except smtplib.SMTPAuthenticationError as e:
-        log.warning("SMTP auth failed: %s", e)
-        return {"sent": False, "error": "Ошибка авторизации SMTP. Проверьте логин/пароль (для Gmail нужен App Password)."}
+
+    except smtplib.SMTPAuthenticationError:
+        return {
+            "sent": False,
+            "error": "Ошибка авторизации. Для Gmail нужен App Password (myaccount.google.com/apppasswords).",
+        }
     except smtplib.SMTPException as e:
         log.warning("SMTP error: %s", e)
         return {"sent": False, "error": f"SMTP ошибка: {e}"}
     except TimeoutError:
-        return {"sent": False, "error": "Таймаут подключения к SMTP-серверу (15 сек). Проверьте host/port."}
+        return {
+            "sent": False,
+            "error": "Таймаут подключения (порты 465 и 587). SMTP может быть заблокирован в сети.",
+        }
     except OSError as e:
         return {"sent": False, "error": f"Сетевая ошибка: {e}"}
     except Exception as e:

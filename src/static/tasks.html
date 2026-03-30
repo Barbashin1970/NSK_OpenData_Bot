@@ -1166,7 +1166,12 @@ function openSmtpSettings() {
 function smtpSettingsForm() {
   return `
     <h2>Настройки SMTP</h2>
-    <p class="text-xs text-gray-500 mb-3">Для Gmail: включите двухфакторную аутентификацию и создайте <a href="https://myaccount.google.com/apppasswords" target="_blank" class="text-blue-500 underline">App Password</a></p>
+    <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 mb-3 space-y-1">
+      <div><strong>Для Gmail</strong> (3 шага):</div>
+      <div>1. Включите <a href="https://myaccount.google.com/security" target="_blank" class="underline font-medium">двухфакторную аутентификацию</a></div>
+      <div>2. Создайте <a href="https://myaccount.google.com/apppasswords" target="_blank" class="underline font-medium">App Password</a> (16 символов)</div>
+      <div>3. Вставьте App Password в поле «Пароль» ниже</div>
+    </div>
 
     <div class="grid grid-cols-2 gap-3">
       <div>
@@ -1175,7 +1180,10 @@ function smtpSettingsForm() {
       </div>
       <div>
         <label class="form-label">Порт</label>
-        <input id="smPort" class="form-input" type="number" value="587">
+        <select id="smPort" class="form-input">
+          <option value="465" selected>465 (SSL) — рекомендуемый</option>
+          <option value="587">587 (STARTTLS)</option>
+        </select>
       </div>
     </div>
 
@@ -1183,7 +1191,7 @@ function smtpSettingsForm() {
     <input id="smUser" class="form-input" type="email" placeholder="your@gmail.com">
 
     <label class="form-label">Пароль / App Password</label>
-    <input id="smPass" class="form-input" type="password" placeholder="••••••••">
+    <input id="smPass" class="form-input" type="password" placeholder="Вставьте 16-символьный App Password">
 
     <label class="form-label">Имя отправителя</label>
     <input id="smName" class="form-input" value="Пространство задач — Сигма">
@@ -1208,7 +1216,7 @@ async function loadSmtpSettings() {
     const cfg = await api('/api/email/config');
     if (document.getElementById('smHost')) {
       document.getElementById('smHost').value = cfg.host || 'smtp.gmail.com';
-      document.getElementById('smPort').value = cfg.port || 587;
+      document.getElementById('smPort').value = String(cfg.port || 465);
       document.getElementById('smUser').value = cfg.username || '';
       document.getElementById('smPass').value = '';
       document.getElementById('smPass').placeholder = cfg.configured ? '••••••••  (сохранён)' : 'Введите пароль';
@@ -1221,8 +1229,7 @@ async function loadSmtpSettings() {
 async function saveSmtpSettings() {
   const data = {
     host: document.getElementById('smHost').value.trim(),
-    port: parseInt(document.getElementById('smPort').value) || 587,
-    use_tls: true,
+    port: parseInt(document.getElementById('smPort').value) || 465,
     username: document.getElementById('smUser').value.trim(),
     password: document.getElementById('smPass').value,
     from_name: document.getElementById('smName').value.trim(),
@@ -1248,8 +1255,7 @@ async function testSmtpConnection() {
   // Сначала сохраняем текущие значения (чтобы тест был актуальным)
   const data = {
     host: document.getElementById('smHost').value.trim(),
-    port: parseInt(document.getElementById('smPort').value) || 587,
-    use_tls: true,
+    port: parseInt(document.getElementById('smPort').value) || 465,
     username: document.getElementById('smUser').value.trim(),
     password: document.getElementById('smPass').value,
     from_name: document.getElementById('smName').value.trim(),
