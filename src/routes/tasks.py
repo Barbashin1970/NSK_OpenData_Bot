@@ -15,7 +15,7 @@ from ..task_store import (
     create_initiative, get_initiatives, update_initiative, delete_initiative,
     create_task, get_tasks, get_task, update_task, delete_task,
     add_comment, get_comments,
-    get_contractors,
+    get_contractors, get_contractor, create_contractor, update_contractor,
     get_task_stats,
     TASK_STATUSES, TASK_PRIORITIES, DIRECTIONS,
 )
@@ -67,6 +67,15 @@ def api_tasks_meta():
             "P3": "P3 — Средний",
             "P4": "P4 — Низкий",
         },
+        "acceptance_criteria_options": [
+            "Акт выполненных работ подписан",
+            "Фотофиксация до/после выполнена",
+            "Проверка на месте комиссией проведена",
+            "Отчёт подрядчика принят",
+            "Обращения жителей прекратились",
+            "Контрольный замер показателей в норме",
+            "Объект введён в эксплуатацию",
+        ],
     }
 
 
@@ -89,7 +98,44 @@ def api_tasks_stats():
     summary="Справочник контрагентов (аварийные службы, МУПы)",
 )
 def api_contractors():
-    return get_contractors()
+    return get_contractors(with_task_count=True)
+
+
+@router.post(
+    "/api/contractors",
+    tags=["Пространство задач"],
+    summary="Создать контрагента",
+)
+async def api_contractors_create(request: Request):
+    data = await request.json()
+    if not data.get("org_name"):
+        raise HTTPException(400, "Поле org_name обязательно")
+    return create_contractor(data)
+
+
+@router.get(
+    "/api/contractors/{contractor_id}",
+    tags=["Пространство задач"],
+    summary="Получить контрагента по ID",
+)
+def api_contractor_get(contractor_id: str):
+    c = get_contractor(contractor_id)
+    if not c:
+        raise HTTPException(404, "Контрагент не найден")
+    return c
+
+
+@router.put(
+    "/api/contractors/{contractor_id}",
+    tags=["Пространство задач"],
+    summary="Обновить контрагента",
+)
+async def api_contractor_update(contractor_id: str, request: Request):
+    data = await request.json()
+    result = update_contractor(contractor_id, data)
+    if not result:
+        raise HTTPException(400, "Нет полей для обновления")
+    return result
 
 
 # ── Инициативы ───────────────────────────────────────────────────────────────

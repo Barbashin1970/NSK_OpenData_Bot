@@ -355,9 +355,13 @@ async def _seed_task_space() -> None:
     """Инициализация Пространства задач: таблицы + импорт контрагентов."""
     try:
         from .contractors_loader import seed_contractors
+        from .task_store import seed_initiatives
         count = seed_contractors()
         if count:
             logging.getLogger(__name__).info("Task Space: загружено %d контрагентов", count)
+        init_count = seed_initiatives()
+        if init_count:
+            logging.getLogger(__name__).info("Task Space: создано %d типовых инициатив", init_count)
     except Exception as e:
         logging.getLogger(__name__).warning("Task Space seed: %s", e)
 

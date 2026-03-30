@@ -156,7 +156,7 @@
 </div>
 
 <!-- View: List -->
-<div id="viewList" class="px-6 py-4 hidden">
+<div id="viewList" class="px-6 py-4 hidden" style="overflow-x:auto">
   <table class="task-table" id="taskTable">
     <thead>
       <tr>
@@ -164,6 +164,9 @@
         <th>Задача</th>
         <th>Статус</th>
         <th>Приоритет</th>
+        <th>Ответственный</th>
+        <th>Контрагент</th>
+        <th>Инициатива</th>
         <th>Срок</th>
         <th>Направление</th>
       </tr>
@@ -179,14 +182,16 @@
 
 <!-- View: Contractors -->
 <div id="viewContractors" class="px-6 py-4 hidden">
+  <div class="flex items-center justify-between mb-3">
+    <span class="text-sm text-gray-500">Справочник контрагентов</span>
+    <button onclick="openModal('contractor')" class="btn btn-primary text-sm">+ Контрагент</button>
+  </div>
   <table class="task-table" id="contractorsTable">
     <thead>
       <tr>
-        <th>Категория</th>
         <th>Организация</th>
-        <th>Дежурный телефон</th>
-        <th>Руководитель</th>
-        <th>Телефон</th>
+        <th>Руководитель / E-mail</th>
+        <th style="width:100px;text-align:center">Задач</th>
       </tr>
     </thead>
     <tbody id="contractorsBody"></tbody>
@@ -230,6 +235,7 @@ let allInitiatives = [];
 let allContractors = [];
 let meta = {};
 let currentView = 'kanban';
+let ACCEPTANCE_OPTIONS = [];
 
 // ── API helpers ──────────────────────────────────────────────────────────
 async function api(url, opts) {
@@ -249,9 +255,11 @@ async function reload() {
   if (prio) url += `priority=${prio}&`;
   if (init) url += `initiative_id=${init}&`;
 
-  [allTasks, allInitiatives, allContractors, meta] = await Promise.all([
-    api(url), api('/api/initiatives'), api('/api/contractors'), api('/api/tasks/stats'),
+  const [tasks, inits, contrs, stats, metaData] = await Promise.all([
+    api(url), api('/api/initiatives'), api('/api/contractors'), api('/api/tasks/stats'), api('/api/tasks/meta'),
   ]);
+  allTasks = tasks; allInitiatives = inits; allContractors = contrs; meta = stats;
+  ACCEPTANCE_OPTIONS = metaData.acceptance_criteria_options || [];
   renderStats();
   renderCurrentView();
   populateInitiativeFilter();
@@ -358,15 +366,17 @@ function renderList() {
   tbody.innerHTML = allTasks.map(t => {
     const due = t.due_date ? formatDate(t.due_date) : '';
     const overdue = isOverdue(t) ? 'overdue' : '';
+    const contr = allContractors.find(c => c.contractor_id === t.contractor_id);
+    const init = allInitiatives.find(i => i.initiative_id === t.initiative_id);
     return `
       <tr onclick="openDetail('${t.task_id}')">
         <td><span class="priority-badge priority-${t.priority}">${t.priority}</span></td>
-        <td>
-          <div class="font-medium">${esc(t.title)}</div>
-          ${t.assignee ? `<div class="text-xs text-gray-400">${esc(t.assignee)}</div>` : ''}
-        </td>
+        <td><div class="font-medium">${esc(t.title)}</div></td>
         <td><span class="status-dot status-${t.status}"></span>${STATUS_LABELS[t.status]||t.status}</td>
         <td>${t.priority}</td>
+        <td class="text-sm">${esc(t.assignee||'—')}</td>
+        <td class="text-sm text-gray-500">${contr ? esc(contr.org_name) : '—'}</td>
+        <td class="text-sm text-gray-500">${init ? esc(init.title) : '—'}</td>
         <td class="${overdue}">${due}</td>
         <td class="text-sm text-gray-500">${esc(t.department||'')}</td>
       </tr>
@@ -411,15 +421,23 @@ function renderInitiatives() {
 // ── Contractors view ─────────────────────────────────────────────────────
 function renderContractors() {
   const tbody = document.getElementById('contractorsBody');
-  tbody.innerHTML = allContractors.map(c => `
-    <tr>
-      <td class="text-sm">${esc(c.category||'')}</td>
-      <td class="font-medium text-sm">${esc(c.org_name||'')}</td>
-      <td class="text-sm">${esc(c.duty_phone||'')}</td>
-      <td class="text-sm">${esc(c.head_name||'')}</td>
-      <td class="text-sm">${esc(c.head_phone||'')}</td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = allContractors.map(c => {
+    const tc = c.task_count || 0;
+    const badge = tc > 0
+      ? `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">${tc}</span>`
+      : `<span class="text-gray-300 text-xs">0</span>`;
+    const contact = [c.head_name, c.email].filter(Boolean).join(' · ') || '—';
+    return `
+      <tr onclick="openContractorDetail('${c.contractor_id}')" style="cursor:pointer">
+        <td>
+          <div class="font-medium text-sm">${esc(c.org_name||'')}</div>
+          <div class="text-xs text-gray-400">${esc(c.category||'')}</div>
+        </td>
+        <td class="text-sm">${esc(contact)}</td>
+        <td class="text-center">${badge}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // ── Detail panel ─────────────────────────────────────────────────────────
@@ -447,6 +465,13 @@ async function openDetail(taskId) {
       <div><span class="text-gray-400">Инициатива:</span><br>${init ? esc(init.title) : '—'}</div>
       ${contr ? `<div class="col-span-2"><span class="text-gray-400">Контрагент:</span><br>${esc(contr.org_name)} (${esc(contr.duty_phone||'')})</div>` : ''}
     </div>
+
+    ${task.acceptance_criteria ? `
+    <div class="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+      <span class="text-xs font-semibold text-emerald-700 uppercase">Критерий решённости</span>
+      <div class="text-sm text-emerald-900 mt-1">${esc(task.acceptance_criteria)}</div>
+    </div>
+    ` : ''}
 
     <!-- Status change -->
     <div class="mb-4">
@@ -538,6 +563,11 @@ async function openModal(type, editId) {
       init = allInitiatives.find(i => i.initiative_id === editId);
     }
     box.innerHTML = initiativeForm(init);
+  } else if (type === 'contractor') {
+    box.innerHTML = contractorForm();
+  } else if (type === 'contractor_edit') {
+    const c = allContractors.find(x => x.contractor_id === editId);
+    box.innerHTML = contractorForm(c);
   }
   document.getElementById('modalOverlay').style.display = 'flex';
 }
@@ -598,6 +628,15 @@ function taskForm(task) {
     <label class="form-label">Исполнитель</label>
     <input id="fAssignee" class="form-input" value="${esc(t.assignee||'')}" placeholder="ФИО или подразделение">
 
+    <label class="form-label">Критерий решённости</label>
+    <select id="fAcceptSel" class="form-input" onchange="if(this.value==='__custom__'){document.getElementById('fAcceptCustom').style.display='block'}else{document.getElementById('fAcceptCustom').style.display='none'}">
+      <option value="">— Не указан —</option>
+      ${(ACCEPTANCE_OPTIONS||[]).map(o => `<option value="${o}" ${t.acceptance_criteria===o?'selected':''}>${o}</option>`).join('')}
+      <option value="__custom__" ${t.acceptance_criteria && !(ACCEPTANCE_OPTIONS||[]).includes(t.acceptance_criteria) ? 'selected' : ''}>Свой вариант...</option>
+    </select>
+    <textarea id="fAcceptCustom" class="form-input" placeholder="Опишите критерий решённости..."
+      style="display:${t.acceptance_criteria && !(ACCEPTANCE_OPTIONS||[]).includes(t.acceptance_criteria) ? 'block' : 'none'}">${esc(t.acceptance_criteria && !(ACCEPTANCE_OPTIONS||[]).includes(t.acceptance_criteria) ? t.acceptance_criteria : '')}</textarea>
+
     <label class="form-label">Теги</label>
     <input id="fTags" class="form-input" value="${esc(t.tags||'')}" placeholder="через запятую">
 
@@ -609,17 +648,22 @@ function taskForm(task) {
 }
 
 async function saveTask(editId) {
+  const selVal = document.getElementById('fAcceptSel').value;
+  const acceptance = selVal === '__custom__'
+    ? document.getElementById('fAcceptCustom').value.trim()
+    : selVal;
   const data = {
-    title:         document.getElementById('fTitle').value.trim(),
-    description:   document.getElementById('fDesc').value.trim(),
-    priority:      document.getElementById('fPriority').value,
-    status:        document.getElementById('fStatus').value,
-    department:    document.getElementById('fDept').value,
-    due_date:      document.getElementById('fDue').value,
-    initiative_id: document.getElementById('fInit').value,
-    contractor_id: document.getElementById('fContr').value,
-    assignee:      document.getElementById('fAssignee').value.trim(),
-    tags:          document.getElementById('fTags').value.trim(),
+    title:               document.getElementById('fTitle').value.trim(),
+    description:         document.getElementById('fDesc').value.trim(),
+    priority:            document.getElementById('fPriority').value,
+    status:              document.getElementById('fStatus').value,
+    department:          document.getElementById('fDept').value,
+    due_date:            document.getElementById('fDue').value,
+    initiative_id:       document.getElementById('fInit').value,
+    contractor_id:       document.getElementById('fContr').value,
+    assignee:            document.getElementById('fAssignee').value.trim(),
+    tags:                document.getElementById('fTags').value.trim(),
+    acceptance_criteria: acceptance,
   };
   if (!data.title) { alert('Заголовок обязателен'); return; }
   try {
@@ -717,6 +761,127 @@ async function deleteInitiativeConfirm(id) {
   await api(`/api/initiatives/${id}`, { method:'DELETE' });
   closeModal();
   await reload();
+}
+
+// ── Contractor detail (slide-in panel) ───────────────────────────────────
+async function openContractorDetail(cid) {
+  const c = allContractors.find(x => x.contractor_id === cid);
+  if (!c) return;
+  const tc = c.task_count || 0;
+  // Найти задачи этого контрагента
+  const cTasks = allTasks.filter(t => t.contractor_id === cid);
+
+  document.getElementById('detailTitle').textContent = c.org_name || 'Контрагент';
+  document.getElementById('detailBody').innerHTML = `
+    <div class="text-xs text-gray-400 mb-3">${esc(c.category||'Без категории')}</div>
+
+    <div class="grid grid-cols-2 gap-3 text-sm mb-4">
+      <div><span class="text-gray-400">Руководитель:</span><br>${esc(c.head_name||'—')}</div>
+      <div><span class="text-gray-400">Тел. руководителя:</span><br>${esc(c.head_phone||'—')}</div>
+      <div><span class="text-gray-400">Дежурный телефон:</span><br>${esc(c.duty_phone||'—')}</div>
+      <div><span class="text-gray-400">E-mail:</span><br>${esc(c.email||'—')}</div>
+      <div><span class="text-gray-400">Режим работы:</span><br>${esc(c.work_hours||'—')}</div>
+      <div><span class="text-gray-400">Задач назначено:</span><br><span class="font-bold text-blue-600">${tc}</span></div>
+    </div>
+
+    ${c.comment ? `
+    <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+      <span class="text-xs font-semibold text-amber-700 uppercase">Комментарий</span>
+      <div class="text-sm text-amber-900 mt-1 whitespace-pre-wrap">${esc(c.comment)}</div>
+    </div>
+    ` : ''}
+
+    ${cTasks.length ? `
+    <div class="border-t border-gray-100 pt-3 mb-4">
+      <h3 class="font-semibold text-sm mb-2">Задачи контрагента</h3>
+      ${cTasks.map(t => `
+        <div class="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-gray-50 cursor-pointer text-sm"
+             onclick="event.stopPropagation(); openDetail('${t.task_id}')">
+          <span class="priority-badge priority-${t.priority}" style="font-size:10px;padding:1px 6px">${t.priority}</span>
+          <span class="status-dot status-${t.status}"></span>
+          <span class="flex-1 truncate">${esc(t.title)}</span>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
+    <div class="border-t border-gray-100 pt-4 flex gap-2">
+      <button onclick="openModal('contractor_edit','${c.contractor_id}')" class="btn btn-ghost text-sm">Редактировать</button>
+    </div>
+
+    <div class="text-xs text-gray-300 mt-4">
+      ID: ${c.contractor_id}<br>
+      Создан: ${formatDateTime(c.created_at)}
+    </div>
+  `;
+  document.getElementById('detailPanel').classList.add('open');
+}
+
+// ── Contractor form ──────────────────────────────────────────────────────
+function contractorForm(c) {
+  const isEdit = !!(c && c.contractor_id);
+  const d = c || {};
+  return `
+    <h2>${isEdit ? 'Редактировать контрагента' : 'Новый контрагент'}</h2>
+    <label class="form-label">Организация *</label>
+    <input id="cOrgName" class="form-input" value="${esc(d.org_name||'')}" placeholder="Наименование организации">
+
+    <label class="form-label">Категория</label>
+    <input id="cCategory" class="form-input" value="${esc(d.category||'')}" placeholder="Например: ЖКХ, транспорт, связь">
+
+    <label class="form-label">Руководитель</label>
+    <input id="cHead" class="form-input" value="${esc(d.head_name||'')}" placeholder="ФИО руководителя">
+
+    <label class="form-label">Тел. руководителя</label>
+    <input id="cHeadPhone" class="form-input" value="${esc(d.head_phone||'')}" placeholder="+7 (383) ...">
+
+    <label class="form-label">E-mail</label>
+    <input id="cEmail" class="form-input" type="email" value="${esc(d.email||'')}" placeholder="email@example.com">
+
+    <label class="form-label">Телефон дежурной службы</label>
+    <input id="cPhone" class="form-input" value="${esc(d.duty_phone||'')}" placeholder="+7 (383) ...">
+
+    <label class="form-label">Режим работы</label>
+    <input id="cWorkHours" class="form-input" value="${esc(d.work_hours||'')}" placeholder="Круглосуточно / Пн-Пт 9:00-18:00">
+
+    <label class="form-label">Комментарий</label>
+    <textarea id="cComment" class="form-input" placeholder="Заметки, особенности взаимодействия...">${esc(d.comment||'')}</textarea>
+
+    <div class="flex justify-end gap-2 mt-2">
+      <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
+      <button onclick="saveContractor('${d.contractor_id||''}')" class="btn btn-primary">${isEdit ? 'Сохранить' : 'Создать'}</button>
+    </div>
+  `;
+}
+
+async function saveContractor(editId) {
+  const data = {
+    org_name:    document.getElementById('cOrgName').value.trim(),
+    category:    document.getElementById('cCategory').value.trim(),
+    head_name:   document.getElementById('cHead').value.trim(),
+    head_phone:  document.getElementById('cHeadPhone').value.trim(),
+    email:       document.getElementById('cEmail').value.trim(),
+    duty_phone:  document.getElementById('cPhone').value.trim(),
+    work_hours:  document.getElementById('cWorkHours').value.trim(),
+    comment:     document.getElementById('cComment').value.trim(),
+  };
+  if (!data.org_name) { alert('Название организации обязательно'); return; }
+  try {
+    if (editId) {
+      await api(`/api/contractors/${editId}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+      });
+    } else {
+      await api('/api/contractors', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+      });
+    }
+    closeModal();
+    closeDetail();
+    await reload();
+  } catch(err) { alert('Ошибка: ' + err.message); }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

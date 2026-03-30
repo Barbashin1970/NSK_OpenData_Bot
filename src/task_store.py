@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS ts_contractors (
     head_phone      VARCHAR,
     email           VARCHAR,
     channel_type    VARCHAR DEFAULT 'email_only',
+    comment         VARCHAR DEFAULT '',
     created_at      VARCHAR
 )
 """
@@ -51,20 +52,21 @@ CREATE TABLE IF NOT EXISTS ts_initiatives (
 
 _TASKS_DDL = """
 CREATE TABLE IF NOT EXISTS ts_tasks (
-    task_id         VARCHAR PRIMARY KEY,
-    title           VARCHAR NOT NULL,
-    description     VARCHAR,
-    initiative_id   VARCHAR,
-    department      VARCHAR,
-    contractor_id   VARCHAR,
-    assignee        VARCHAR,
-    priority        VARCHAR DEFAULT 'P3',
-    status          VARCHAR DEFAULT 'todo',
-    due_date        VARCHAR,
-    parent_task_id  VARCHAR,
-    tags            VARCHAR,
-    created_at      VARCHAR,
-    updated_at      VARCHAR
+    task_id              VARCHAR PRIMARY KEY,
+    title                VARCHAR NOT NULL,
+    description          VARCHAR,
+    initiative_id        VARCHAR,
+    department           VARCHAR,
+    contractor_id        VARCHAR,
+    assignee             VARCHAR,
+    priority             VARCHAR DEFAULT 'P3',
+    status               VARCHAR DEFAULT 'todo',
+    due_date             VARCHAR,
+    parent_task_id       VARCHAR,
+    tags                 VARCHAR,
+    acceptance_criteria  VARCHAR DEFAULT '',
+    created_at           VARCHAR,
+    updated_at           VARCHAR
 )
 """
 
@@ -89,6 +91,15 @@ def init_task_tables() -> None:
         conn.execute(_INITIATIVES_DDL)
         conn.execute(_TASKS_DDL)
         conn.execute(_COMMENTS_DDL)
+        # Миграции: добавляем новые колонки если таблицы уже существовали
+        for stmt in [
+            "ALTER TABLE ts_tasks ADD COLUMN acceptance_criteria VARCHAR DEFAULT ''",
+            "ALTER TABLE ts_contractors ADD COLUMN comment VARCHAR DEFAULT ''",
+        ]:
+            try:
+                conn.execute(stmt)
+            except Exception:
+                pass  # уже есть
     finally:
         conn.close()
     log.info("Task Space: таблицы инициализированы")
@@ -113,8 +124,8 @@ def upsert_contractor(row: dict) -> str:
         conn.execute("""
             INSERT OR REPLACE INTO ts_contractors
             (contractor_id, category, org_name, duty_phone, work_hours,
-             head_name, head_phone, email, channel_type, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             head_name, head_phone, email, channel_type, comment, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             cid,
             row.get("category", ""),
@@ -125,6 +136,7 @@ def upsert_contractor(row: dict) -> str:
             row.get("head_phone", ""),
             row.get("email", ""),
             row.get("channel_type", "email_only"),
+            row.get("comment", ""),
             now,
         ])
         return cid
@@ -132,17 +144,101 @@ def upsert_contractor(row: dict) -> str:
         conn.close()
 
 
-def get_contractors() -> list[dict]:
-    """Возвращает всех контрагентов."""
+def get_contractors(with_task_count: bool = False) -> list[dict]:
+    """Возвращает всех контрагентов. with_task_count=True добавляет поле task_count."""
     conn = _get_conn()
     try:
-        rows = conn.execute(
-            "SELECT * FROM ts_contractors ORDER BY category, org_name"
-        ).fetchall()
+        if with_task_count:
+            rows = conn.execute("""
+                SELECT c.*, COALESCE(tc.cnt, 0) AS task_count
+                FROM ts_contractors c
+                LEFT JOIN (
+                    SELECT contractor_id, COUNT(*) AS cnt
+                    FROM ts_tasks WHERE contractor_id != ''
+                    GROUP BY contractor_id
+                ) tc ON c.contractor_id = tc.contractor_id
+                ORDER BY c.category, c.org_name
+            """).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM ts_contractors ORDER BY category, org_name"
+            ).fetchall()
         cols = [d[0] for d in conn.description]
         return [dict(zip(cols, r)) for r in rows]
     except Exception:
         return []
+    finally:
+        conn.close()
+
+
+def create_contractor(data: dict) -> dict:
+    """Создаёт нового контрагента вручную."""
+    cid = _new_id()
+    now = _now_iso()
+    conn = _get_conn()
+    try:
+        conn.execute("""
+            INSERT INTO ts_contractors
+            (contractor_id, category, org_name, duty_phone, work_hours,
+             head_name, head_phone, email, channel_type, comment, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            cid,
+            data.get("category", ""),
+            data.get("org_name", ""),
+            data.get("duty_phone", ""),
+            data.get("work_hours", ""),
+            data.get("head_name", ""),
+            data.get("head_phone", ""),
+            data.get("email", ""),
+            data.get("channel_type", "email_only"),
+            data.get("comment", ""),
+            now,
+        ])
+        return {"contractor_id": cid, "org_name": data.get("org_name", "")}
+    finally:
+        conn.close()
+
+
+def get_contractor(contractor_id: str) -> dict | None:
+    """Возвращает одного контрагента по ID."""
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM ts_contractors WHERE contractor_id = ?", [contractor_id]
+        ).fetchall()
+        if not rows:
+            return None
+        cols = [d[0] for d in conn.description]
+        return dict(zip(cols, rows[0]))
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
+def update_contractor(contractor_id: str, data: dict) -> dict | None:
+    """Обновляет контрагента. Возвращает dict или None если нечего обновлять."""
+    conn = _get_conn()
+    try:
+        allowed = (
+            "category", "org_name", "duty_phone", "work_hours",
+            "head_name", "head_phone", "email", "channel_type", "comment",
+        )
+        fields = []
+        vals: list = []
+        for key in allowed:
+            if key in data:
+                fields.append(f"{key} = ?")
+                vals.append(data[key])
+        if not fields:
+            return None
+        vals.append(contractor_id)
+        conn.execute(
+            f"UPDATE ts_contractors SET {', '.join(fields)} WHERE contractor_id = ?",
+            vals,
+        )
+        return {"contractor_id": contractor_id, "updated": True}
     finally:
         conn.close()
 
@@ -262,8 +358,8 @@ def create_task(data: dict) -> dict:
             INSERT INTO ts_tasks
             (task_id, title, description, initiative_id, department,
              contractor_id, assignee, priority, status, due_date,
-             parent_task_id, tags, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             parent_task_id, tags, acceptance_criteria, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             tid,
             data.get("title", "Без названия"),
@@ -276,6 +372,7 @@ def create_task(data: dict) -> dict:
             data.get("due_date", ""),
             data.get("parent_task_id", ""),
             data.get("tags", ""),
+            data.get("acceptance_criteria", ""),
             now, now,
         ])
         return {
@@ -345,7 +442,7 @@ def update_task(task_id: str, data: dict) -> dict | None:
         allowed = (
             "title", "description", "initiative_id", "department",
             "contractor_id", "assignee", "priority", "status",
-            "due_date", "parent_task_id", "tags",
+            "due_date", "parent_task_id", "tags", "acceptance_criteria",
         )
         fields = []
         vals: list = []
@@ -451,6 +548,67 @@ def get_task_stats() -> dict:
         return {"total": 0, "by_status": {}, "by_priority": {}, "overdue": 0, "initiatives": 0, "contractors": 0}
     finally:
         conn.close()
+
+
+# ── Сидирование инициатив ─────────────────────────────────────────────────
+
+_SEED_INITIATIVES = [
+    {
+        "title": "Уборка снега и наледи — весна 2026",
+        "direction": "ЖКХ",
+        "description": "Завершение зимней уборки: вывоз снежных куч, очистка ливнёвок, обработка тротуаров. Контроль подрядчиков по районам.",
+        "status": "active",
+        "period": "2026-04",
+    },
+    {
+        "title": "Ямочный ремонт дорог — весна 2026",
+        "direction": "Транспорт",
+        "description": "Выявление и ремонт дефектов дорожного покрытия после зимы. Горячая линия 051, фотофиксация, контроль сроков.",
+        "status": "active",
+        "period": "2026-04 — 2026-05",
+    },
+    {
+        "title": "Нанесение дорожной разметки — май 2026",
+        "direction": "Транспорт",
+        "description": "Обновление разметки на магистралях, пешеходных переходах и парковках. Координация с ГИБДД.",
+        "status": "draft",
+        "period": "2026-05",
+    },
+    {
+        "title": "Озеленение и велодорожки — лето 2026",
+        "direction": "Благоустройство",
+        "description": "Высадка деревьев и кустарников, обустройство клумб, строительство и ремонт велодорожек в парковых зонах.",
+        "status": "draft",
+        "period": "2026-06",
+    },
+    {
+        "title": "Готовность школ и ремонты к 1 сентября",
+        "direction": "Образование",
+        "description": "Капитальный и текущий ремонт школ, проверка систем отопления, пожарной безопасности, благоустройство территорий.",
+        "status": "draft",
+        "period": "2026-07 — 2026-08",
+    },
+]
+
+
+def seed_initiatives() -> int:
+    """Создаёт типовые инициативы, если таблица пуста. Возвращает кол-во созданных."""
+    conn = _get_conn()
+    try:
+        cnt = conn.execute("SELECT COUNT(*) FROM ts_initiatives").fetchone()[0]
+        if cnt > 0:
+            return 0
+    except Exception:
+        return 0
+    finally:
+        conn.close()
+
+    created = 0
+    for data in _SEED_INITIATIVES:
+        create_initiative(data)
+        created += 1
+    log.info("Task Space: создано %d типовых инициатив", created)
+    return created
 
 
 # Экспорт списков для UI
