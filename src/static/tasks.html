@@ -103,6 +103,41 @@
   }
   .comment-date { font-size:11px; color:#94a3b8; }
   .overdue { color:#ef4444; font-weight:500; }
+
+  /* Email compose */
+  .email-overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:110;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .email-box {
+    background:#fff; border-radius:16px; width:94%; max-width:640px;
+    max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.25);
+    display:flex; flex-direction:column;
+  }
+  .email-header {
+    padding:16px 20px; border-bottom:1px solid #e2e8f0;
+    display:flex; align-items:center; justify-content:space-between;
+    background:linear-gradient(135deg,#3b82f6,#1d4ed8); border-radius:16px 16px 0 0; color:#fff;
+  }
+  .email-body { padding:20px; flex:1; overflow-y:auto; }
+  .email-footer { padding:12px 20px; border-top:1px solid #e2e8f0; display:flex; align-items:center; gap:8px; }
+  .email-field { margin-bottom:12px; }
+  .email-field label { display:block; font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px; }
+  .email-field input, .email-field textarea {
+    width:100%; padding:10px 14px; border:1px solid #e2e8f0; border-radius:8px;
+    font-size:14px; outline:none; font-family:inherit;
+  }
+  .email-field input:focus, .email-field textarea:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.1); }
+  .email-field textarea { min-height:180px; resize:vertical; line-height:1.6; }
+  .file-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .file-chip {
+    display:inline-flex; align-items:center; gap:4px; padding:4px 10px;
+    background:#f1f5f9; border-radius:6px; font-size:12px; color:#475569;
+  }
+  .file-chip button { background:none; border:none; cursor:pointer; color:#94a3b8; font-size:14px; line-height:1; }
+  .file-chip button:hover { color:#ef4444; }
+  .email-link { color:#3b82f6; cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+  .email-link:hover { color:#1d4ed8; }
 </style>
 </head>
 <body class="min-h-screen">
@@ -216,6 +251,61 @@
 <div id="modalOverlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
   <div class="modal-box" id="modalBox">
     <!-- Filled by JS -->
+  </div>
+</div>
+
+<!-- Email compose overlay -->
+<div id="emailOverlay" class="email-overlay" style="display:none" onclick="if(event.target===this)closeEmail()">
+  <div class="email-box">
+    <div class="email-header">
+      <div class="flex items-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        <span class="font-semibold">Новое письмо</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="openSmtpSettings()" class="text-white/70 hover:text-white text-xs underline">SMTP</button>
+        <button onclick="closeEmail()" class="text-white/70 hover:text-white text-xl leading-none">&times;</button>
+      </div>
+    </div>
+    <div class="email-body" id="emailBody">
+      <div class="email-field">
+        <label>Кому</label>
+        <input id="emTo" type="email" placeholder="email@example.com">
+      </div>
+      <div class="email-field">
+        <label>Копия</label>
+        <input id="emCc" type="text" placeholder="через запятую (необязательно)">
+      </div>
+      <div class="email-field">
+        <label>Тема</label>
+        <input id="emSubject" placeholder="Тема письма">
+      </div>
+      <div class="email-field">
+        <label>Сообщение</label>
+        <textarea id="emBody" placeholder="Текст письма...&#10;&#10;Можно вставить текст из редактора (Ctrl+V)"></textarea>
+      </div>
+      <div class="email-field">
+        <label>Вложения</label>
+        <div class="flex items-center gap-2">
+          <label class="btn btn-ghost text-sm cursor-pointer" style="border:1px dashed #cbd5e1;border-radius:8px;padding:8px 16px">
+            <input type="file" id="emFiles" multiple style="display:none" onchange="updateFileList()">
+            Выбрать файлы...
+          </label>
+          <span class="text-xs text-gray-400" id="emFileHint">Макс. 10 МБ на файл</span>
+        </div>
+        <div class="file-list" id="emFileList"></div>
+      </div>
+    </div>
+    <div class="email-footer">
+      <button onclick="sendEmail()" class="btn btn-primary flex items-center gap-2" id="emSendBtn">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+        Отправить
+      </button>
+      <span class="text-xs text-gray-400 ml-2" id="emStatus"></span>
+      <div class="ml-auto">
+        <span id="emSmtpStatus" class="text-xs"></span>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -599,6 +689,11 @@ async function openModal(type, editId) {
   } else if (type === 'contractor_edit') {
     const c = allContractors.find(x => x.contractor_id === editId);
     box.innerHTML = contractorForm(c);
+  } else if (type === 'smtp_settings') {
+    box.innerHTML = smtpSettingsForm();
+    document.getElementById('modalOverlay').style.display = 'flex';
+    loadSmtpSettings();
+    return;
   }
   document.getElementById('modalOverlay').style.display = 'flex';
 }
@@ -824,7 +919,7 @@ async function openContractorDetail(cid) {
       ${c.email ? `
       <div class="flex items-start gap-3">
         <svg class="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-        <div><div class="text-xs text-gray-400">E-mail</div><div class="text-sm font-medium">${esc(c.email)}</div></div>
+        <div><div class="text-xs text-gray-400">E-mail</div><div class="text-sm font-medium"><span class="email-link" onclick="event.stopPropagation(); emailContractor('${c.contractor_id}')">${esc(c.email)}</span></div></div>
       </div>` : ''}
       ${c.work_hours ? `
       <div class="flex items-start gap-3">
@@ -862,8 +957,9 @@ async function openContractorDetail(cid) {
 
     <!-- Действия -->
     <div class="border-t border-gray-100 pt-4 flex gap-2">
-      <button onclick="createTaskForContractor('${c.contractor_id}')" class="btn btn-primary text-sm flex-1">+ Создать задачу</button>
-      <button onclick="openModal('contractor_edit','${c.contractor_id}')" class="btn btn-ghost text-sm">Редактировать</button>
+      <button onclick="createTaskForContractor('${c.contractor_id}')" class="btn btn-primary text-sm flex-1">+ Задача</button>
+      ${c.email ? `<button onclick="emailContractor('${c.contractor_id}')" class="btn text-sm flex-1" style="background:#0ea5e9;color:#fff">✉ Написать</button>` : ''}
+      <button onclick="openModal('contractor_edit','${c.contractor_id}')" class="btn btn-ghost text-sm">Ред.</button>
     </div>
 
     <div class="text-xs text-gray-300 mt-4">ID: ${c.contractor_id} · ${formatDateTime(c.created_at)}</div>
@@ -949,6 +1045,195 @@ async function saveContractor(editId) {
   } catch(err) { alert('Ошибка: ' + err.message); }
 }
 
+// ── Email ────────────────────────────────────────────────────────────────
+function emailContractor(cid) {
+  const c = allContractors.find(x => x.contractor_id === cid);
+  if (!c || !c.email) return;
+  openEmailCompose(c.email, 'Задача от мэрии Новосибирска — ' + (c.org_name || ''), '');
+}
+
+// ── Email compose ────────────────────────────────────────────────────────
+let _emailFiles = [];
+
+function openEmailCompose(to, subject, body) {
+  document.getElementById('emTo').value = to || '';
+  document.getElementById('emCc').value = '';
+  document.getElementById('emSubject').value = subject || '';
+  document.getElementById('emBody').value = body || '';
+  document.getElementById('emFiles').value = '';
+  _emailFiles = [];
+  renderFileList();
+  document.getElementById('emStatus').textContent = '';
+  document.getElementById('emSendBtn').disabled = false;
+  // Проверяем SMTP статус
+  checkSmtpStatus();
+  document.getElementById('emailOverlay').style.display = 'flex';
+}
+
+function closeEmail() {
+  document.getElementById('emailOverlay').style.display = 'none';
+}
+
+async function checkSmtpStatus() {
+  try {
+    const cfg = await api('/api/email/config');
+    const el = document.getElementById('emSmtpStatus');
+    if (cfg.configured) {
+      el.innerHTML = '<span class="text-emerald-500">SMTP настроен</span>';
+    } else {
+      el.innerHTML = '<span class="text-amber-500">SMTP не настроен — <a href="#" onclick="openSmtpSettings();return false" class="underline">настроить</a></span>';
+    }
+  } catch(e) {}
+}
+
+function updateFileList() {
+  const input = document.getElementById('emFiles');
+  for (const f of input.files) {
+    if (f.size > 10 * 1024 * 1024) {
+      alert(`Файл "${f.name}" превышает 10 МБ`);
+      continue;
+    }
+    // Не дублируем
+    if (!_emailFiles.find(x => x.name === f.name && x.size === f.size)) {
+      _emailFiles.push(f);
+    }
+  }
+  input.value = '';
+  renderFileList();
+}
+
+function removeEmailFile(idx) {
+  _emailFiles.splice(idx, 1);
+  renderFileList();
+}
+
+function renderFileList() {
+  const el = document.getElementById('emFileList');
+  if (!_emailFiles.length) { el.innerHTML = ''; return; }
+  el.innerHTML = _emailFiles.map((f, i) => {
+    const size = f.size < 1024 ? f.size + ' Б' : (f.size / 1024).toFixed(0) + ' КБ';
+    return `<div class="file-chip">${esc(f.name)} <span class="text-gray-400">(${size})</span> <button onclick="removeEmailFile(${i})">&times;</button></div>`;
+  }).join('');
+}
+
+async function sendEmail() {
+  const to = document.getElementById('emTo').value.trim();
+  const subject = document.getElementById('emSubject').value.trim();
+  const body = document.getElementById('emBody').value;
+  const cc = document.getElementById('emCc').value.trim();
+
+  if (!to) { alert('Укажите адрес получателя'); return; }
+  if (!subject) { alert('Укажите тему письма'); return; }
+
+  const btn = document.getElementById('emSendBtn');
+  const status = document.getElementById('emStatus');
+  btn.disabled = true;
+  status.textContent = 'Отправка...';
+  status.className = 'text-xs text-blue-500 ml-2';
+
+  try {
+    const fd = new FormData();
+    fd.append('to', to);
+    fd.append('subject', subject);
+    fd.append('body', body);
+    if (cc) fd.append('cc', cc);
+    _emailFiles.forEach(f => fd.append('files', f));
+
+    const r = await fetch('/api/email/send', { method: 'POST', body: fd });
+    const res = await r.json();
+
+    if (res.sent) {
+      status.textContent = 'Отправлено!';
+      status.className = 'text-xs text-emerald-600 ml-2 font-semibold';
+      setTimeout(() => closeEmail(), 1500);
+    } else {
+      status.textContent = res.error || 'Ошибка отправки';
+      status.className = 'text-xs text-red-500 ml-2';
+      btn.disabled = false;
+    }
+  } catch(err) {
+    status.textContent = 'Ошибка: ' + err.message;
+    status.className = 'text-xs text-red-500 ml-2';
+    btn.disabled = false;
+  }
+}
+
+function openSmtpSettings() {
+  closeEmail();
+  openModal('smtp_settings');
+}
+
+function smtpSettingsForm() {
+  return `
+    <h2>Настройки SMTP</h2>
+    <p class="text-xs text-gray-500 mb-3">Для Gmail: включите двухфакторную аутентификацию и создайте <a href="https://myaccount.google.com/apppasswords" target="_blank" class="text-blue-500 underline">App Password</a></p>
+
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="form-label">SMTP-сервер</label>
+        <input id="smHost" class="form-input" value="smtp.gmail.com">
+      </div>
+      <div>
+        <label class="form-label">Порт</label>
+        <input id="smPort" class="form-input" type="number" value="587">
+      </div>
+    </div>
+
+    <label class="form-label">Логин (email)</label>
+    <input id="smUser" class="form-input" type="email" placeholder="your@gmail.com">
+
+    <label class="form-label">Пароль / App Password</label>
+    <input id="smPass" class="form-input" type="password" placeholder="••••••••">
+
+    <label class="form-label">Имя отправителя</label>
+    <input id="smName" class="form-input" value="Пространство задач — Сигма">
+
+    <label class="form-label">Email отправителя (если отличается от логина)</label>
+    <input id="smFrom" class="form-input" type="email" placeholder="Оставьте пустым для логина">
+
+    <div class="flex justify-end gap-2 mt-3">
+      <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
+      <button onclick="saveSmtpSettings()" class="btn btn-primary">Сохранить</button>
+    </div>
+  `;
+}
+
+async function loadSmtpSettings() {
+  try {
+    const cfg = await api('/api/email/config');
+    if (document.getElementById('smHost')) {
+      document.getElementById('smHost').value = cfg.host || 'smtp.gmail.com';
+      document.getElementById('smPort').value = cfg.port || 587;
+      document.getElementById('smUser').value = cfg.username || '';
+      document.getElementById('smPass').value = '';
+      document.getElementById('smPass').placeholder = cfg.configured ? '••••••••  (сохранён)' : 'Введите пароль';
+      document.getElementById('smName').value = cfg.from_name || '';
+      document.getElementById('smFrom').value = cfg.from_email || '';
+    }
+  } catch(e) {}
+}
+
+async function saveSmtpSettings() {
+  const data = {
+    host: document.getElementById('smHost').value.trim(),
+    port: parseInt(document.getElementById('smPort').value) || 587,
+    use_tls: true,
+    username: document.getElementById('smUser').value.trim(),
+    password: document.getElementById('smPass').value,
+    from_name: document.getElementById('smName').value.trim(),
+    from_email: document.getElementById('smFrom').value.trim(),
+  };
+  if (!data.username) { alert('Укажите логин'); return; }
+  try {
+    await api('/api/email/config', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    alert('SMTP-настройки сохранены');
+    closeModal();
+  } catch(err) { alert('Ошибка: ' + err.message); }
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 function esc(s) {
   if (!s) return '';
@@ -979,7 +1264,8 @@ function isOverdue(t) {
 // ── Keyboard shortcuts ──────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (document.getElementById('modalOverlay').style.display === 'flex') closeModal();
+    if (document.getElementById('emailOverlay').style.display === 'flex') closeEmail();
+    else if (document.getElementById('modalOverlay').style.display === 'flex') closeModal();
     else closeDetail();
   }
 });
