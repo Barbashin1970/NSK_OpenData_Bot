@@ -92,27 +92,42 @@ def send_email(
     if cc:
         recipients.extend([a.strip() for a in cc.split(",") if a.strip()])
 
+    _TIMEOUT = 15  # секунд на подключение
+
     try:
         if cfg.get("use_tls", True):
             ctx = ssl.create_default_context()
-            with smtplib.SMTP(cfg["host"], int(cfg.get("port", 587))) as server:
+            server = smtplib.SMTP(cfg["host"], int(cfg.get("port", 587)), timeout=_TIMEOUT)
+            try:
                 server.ehlo()
                 server.starttls(context=ctx)
                 server.ehlo()
                 server.login(cfg["username"], cfg["password"])
                 server.sendmail(from_email, recipients, msg.as_string())
+            finally:
+                server.quit()
         else:
-            with smtplib.SMTP(cfg["host"], int(cfg.get("port", 25))) as server:
+            server = smtplib.SMTP(cfg["host"], int(cfg.get("port", 25)), timeout=_TIMEOUT)
+            try:
                 server.ehlo()
                 server.login(cfg["username"], cfg["password"])
                 server.sendmail(from_email, recipients, msg.as_string())
+            finally:
+                server.quit()
         log.info("Email sent to %s: %s", to, subject)
         return {"sent": True}
-    except smtplib.SMTPAuthenticationError:
+    except smtplib.SMTPAuthenticationError as e:
+        log.warning("SMTP auth failed: %s", e)
         return {"sent": False, "error": "Ошибка авторизации SMTP. Проверьте логин/пароль (для Gmail нужен App Password)."}
     except smtplib.SMTPException as e:
+        log.warning("SMTP error: %s", e)
         return {"sent": False, "error": f"SMTP ошибка: {e}"}
+    except TimeoutError:
+        return {"sent": False, "error": "Таймаут подключения к SMTP-серверу (15 сек). Проверьте host/port."}
+    except OSError as e:
+        return {"sent": False, "error": f"Сетевая ошибка: {e}"}
     except Exception as e:
+        log.warning("Email send error: %s", e)
         return {"sent": False, "error": f"Ошибка: {e}"}
 
 

@@ -336,6 +336,7 @@ async def api_email_config_save(request: Request):
 )
 async def api_email_send(request: Request):
     """Принимает multipart/form-data: to, subject, body, cc, files[]."""
+    import asyncio
     from ..email_sender import send_email
 
     content_type = request.headers.get("content-type", "")
@@ -348,7 +349,6 @@ async def api_email_send(request: Request):
         cc = form.get("cc", "")
 
         attachments = []
-        # Собираем все файлы из формы
         for key in form:
             item = form[key]
             if hasattr(item, "read"):  # UploadFile
@@ -357,15 +357,15 @@ async def api_email_send(request: Request):
 
         if not to:
             raise HTTPException(400, "Поле to обязательно")
-        return send_email(to, subject, body, attachments=attachments or None, cc=cc)
+        # smtplib блокирующий — запускаем в thread pool чтобы не блокировать event loop
+        return await asyncio.to_thread(
+            send_email, to, subject, body, attachments or None, cc
+        )
     else:
-        # JSON-запрос (без вложений)
         data = await request.json()
         if not data.get("to"):
             raise HTTPException(400, "Поле to обязательно")
-        return send_email(
-            data["to"],
-            data.get("subject", ""),
-            data.get("body", ""),
-            cc=data.get("cc", ""),
+        return await asyncio.to_thread(
+            send_email, data["to"], data.get("subject", ""), data.get("body", ""),
+            None, data.get("cc", ""),
         )
