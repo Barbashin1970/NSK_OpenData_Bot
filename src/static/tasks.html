@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Пространство задач — Фреймворк Сигма</title>
-<link rel="icon" href="/static/img/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/static/img/favicon-tasks.svg">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   :root {
@@ -242,6 +242,7 @@ let meta = {};
 let currentView = 'kanban';
 let ACCEPTANCE_OPTIONS = [];
 let allCategories = [];
+let _openPanelId = null;
 
 // ── API helpers ──────────────────────────────────────────────────────────
 async function api(url, opts) {
@@ -467,6 +468,9 @@ function renderContractors() {
 
 // ── Detail panel ─────────────────────────────────────────────────────────
 async function openDetail(taskId) {
+  if (_openPanelId === 'task:'+taskId && document.getElementById('detailPanel').classList.contains('open')) {
+    closeDetail(); return;
+  }
   const task = await api(`/api/tasks/${taskId}`);
   document.getElementById('detailTitle').textContent = task.title;
   const init = allInitiatives.find(i => i.initiative_id === task.initiative_id);
@@ -538,11 +542,13 @@ async function openDetail(taskId) {
       ID: ${task.task_id}
     </div>
   `;
+  _openPanelId = 'task:'+task.task_id;
   document.getElementById('detailPanel').classList.add('open');
 }
 
 function closeDetail() {
   document.getElementById('detailPanel').classList.remove('open');
+  _openPanelId = null;
 }
 
 async function changeStatus(taskId, status) {
@@ -790,6 +796,9 @@ async function deleteInitiativeConfirm(id) {
 
 // ── Contractor detail (slide-in panel) ───────────────────────────────────
 async function openContractorDetail(cid) {
+  if (_openPanelId === 'contr:'+cid && document.getElementById('detailPanel').classList.contains('open')) {
+    closeDetail(); return;
+  }
   const c = allContractors.find(x => x.contractor_id === cid);
   if (!c) return;
   const tc = c.task_count || 0;
@@ -859,6 +868,7 @@ async function openContractorDetail(cid) {
 
     <div class="text-xs text-gray-300 mt-4">ID: ${c.contractor_id} · ${formatDateTime(c.created_at)}</div>
   `;
+  _openPanelId = 'contr:'+cid;
   document.getElementById('detailPanel').classList.add('open');
 }
 

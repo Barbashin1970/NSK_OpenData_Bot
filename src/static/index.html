@@ -275,7 +275,7 @@
     </div>
     <p class="font-medium text-slate-500">Фреймворк Сигма — Платформа интеграции данных городского управления <span id="footerVer" class="inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] text-slate-400 font-mono ml-1"></span></p>
     <p>
-      <a href="/studio" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Studio ↗</a> ·
+      <a href="/studio" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Данные ↗</a> ·
       <a href="/tasks" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Задачи ↗</a> ·
       <a href="/display" target="_blank" class="hover:text-blue-500 transition-colors">Презентация ↗</a> ·
       <a href="https://safety-builder.streamlit.app/" target="_blank" class="hover:text-blue-500 transition-colors">Демо «ИИ-помощник строителя» ↗</a> ·
@@ -1566,6 +1566,53 @@ async function renderMayorDashboard(power, eco, risks, trafficData) {
       </div>`;
   }
 
+  // ── Блок задач ───────────────────────────────────────────────────────────
+  let taskBlock = '';
+  try {
+    const tStats = await fetch('/api/tasks/stats').then(r=>r.json()).catch(()=>null);
+    const tTasks = await fetch('/api/tasks').then(r=>r.json()).catch(()=>[]);
+    if (tStats) {
+      const total = tStats.total || 0;
+      const inProgress = (tStats.by_status||{}).in_progress || 0;
+      const todo = (tStats.by_status||{}).todo || 0;
+      const review = (tStats.by_status||{}).review || 0;
+      const overdue = tStats.overdue || 0;
+      const unassigned = tTasks.filter(t => !t.assignee && t.status !== 'done' && t.status !== 'cancelled').length;
+      const needAttention = todo + review + unassigned;
+      const tBg = needAttention > 5 ? 'bg-amber-50/40' : needAttention > 0 ? 'bg-blue-50/40' : 'bg-emerald-50/50';
+      const tBorder = needAttention > 5 ? 'border-amber-200' : needAttention > 0 ? 'border-blue-200' : 'border-emerald-200';
+      taskBlock = `
+        <div class="${tBg} rounded-2xl border ${tBorder} overflow-hidden">
+          <div class="px-4 py-2.5 flex justify-between items-center border-b border-white/60">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">✅ Задачи</span>
+            <a href="/tasks" target="_blank" class="text-[10px] text-blue-600 hover:underline">Открыть ↗</a>
+          </div>
+          <div class="px-4 py-3">
+            <div class="grid grid-cols-3 gap-2 text-center mb-2">
+              <div>
+                <div class="text-lg font-bold text-slate-700">${total}</div>
+                <div class="text-[10px] text-slate-400">Всего</div>
+              </div>
+              <div>
+                <div class="text-lg font-bold text-blue-600">${inProgress}</div>
+                <div class="text-[10px] text-slate-400">В работе</div>
+              </div>
+              <div>
+                <div class="text-lg font-bold ${overdue > 0 ? 'text-red-500' : 'text-emerald-500'}">${overdue}</div>
+                <div class="text-[10px] text-slate-400">Просрочено</div>
+              </div>
+            </div>
+            ${needAttention > 0 ? `
+            <div class="border-t border-white/60 pt-2 space-y-1">
+              ${todo > 0 ? `<div class="flex justify-between text-xs"><span class="text-slate-500">Не разобрано</span><span class="font-semibold text-amber-600">${todo}</span></div>` : ''}
+              ${review > 0 ? `<div class="flex justify-between text-xs"><span class="text-slate-500">На проверке</span><span class="font-semibold text-amber-600">${review}</span></div>` : ''}
+              ${unassigned > 0 ? `<div class="flex justify-between text-xs"><span class="text-slate-500">Без исполнителя</span><span class="font-semibold text-red-500">${unassigned}</span></div>` : ''}
+            </div>` : '<div class="text-xs text-emerald-600 text-center pt-1">Все задачи распределены</div>'}
+          </div>
+        </div>`;
+    }
+  } catch(e) {}
+
   const ts = new Date().toLocaleString('ru-RU', {day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit'});
   return `
     <div class="space-y-3 bg-gradient-to-b ${_pageBg} rounded-3xl p-4 -mx-1">
@@ -1583,6 +1630,7 @@ async function renderMayorDashboard(power, eco, risks, trafficData) {
         ${ecoBlock}
         ${budgetBlock}
       </div>
+      ${taskBlock}
     </div>`;
 }
 
