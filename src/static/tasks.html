@@ -1191,7 +1191,12 @@ function smtpSettingsForm() {
     <input id="smUser" class="form-input" type="email" placeholder="your@gmail.com">
 
     <label class="form-label">Пароль / App Password</label>
-    <input id="smPass" class="form-input" type="password" placeholder="Вставьте 16-символьный App Password">
+    <div style="position:relative">
+      <input id="smPass" class="form-input" type="password" placeholder="Вставьте 16-символьный App Password" style="padding-right:44px">
+      <button type="button" onclick="togglePassVis()" id="smPassToggle"
+        style="position:absolute;right:10px;top:8px;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;padding:2px"
+        title="Показать/скрыть пароль">&#128065;</button>
+    </div>
 
     <label class="form-label">Имя отправителя</label>
     <input id="smName" class="form-input" value="Пространство задач — Сигма">
@@ -1244,6 +1249,16 @@ async function saveSmtpSettings() {
     alert('SMTP-настройки сохранены');
     closeModal();
   } catch(err) { alert('Ошибка: ' + err.message); }
+}
+
+function togglePassVis() {
+  const inp = document.getElementById('smPass');
+  const btn = document.getElementById('smPassToggle');
+  if (inp.type === 'password') {
+    inp.type = 'text'; btn.style.color = '#3b82f6';
+  } else {
+    inp.type = 'password'; btn.style.color = '#94a3b8';
+  }
 }
 
 async function testSmtpConnection() {
