@@ -163,6 +163,14 @@ _TAGS_METADATA = [
             "Получить ключ: [platform.2gis.ru](https://platform.2gis.ru)"
         ),
     },
+    {
+        "name": "Пространство задач",
+        "description": (
+            "Управление инициативами, задачами и контрагентами. "
+            "Канбан-доска, список задач, справочник аварийных служб. "
+            "MVP v1 — без авторизации."
+        ),
+    },
 ]
 
 app = FastAPI(
@@ -340,6 +348,18 @@ async def _preload_medical() -> None:
             logging.getLogger(__name__).warning("medical preload startup: %s", e)
 
     asyncio.create_task(_run())
+
+
+@app.on_event("startup")
+async def _seed_task_space() -> None:
+    """Инициализация Пространства задач: таблицы + импорт контрагентов."""
+    try:
+        from .contractors_loader import seed_contractors
+        count = seed_contractors()
+        if count:
+            logging.getLogger(__name__).info("Task Space: загружено %d контрагентов", count)
+    except Exception as e:
+        logging.getLogger(__name__).warning("Task Space seed: %s", e)
 
 
 @app.on_event("startup")
@@ -918,6 +938,7 @@ from .routes.history import router as history_router
 from .routes.vocabulary_routes import router as vocabulary_router
 from .routes.feedback import router as feedback_router
 from .routes.custom_data import router as custom_data_router
+from .routes.tasks import router as tasks_router
 
 app.include_router(data_router)
 app.include_router(ecology_router)
@@ -933,6 +954,7 @@ app.include_router(history_router)
 app.include_router(vocabulary_router)
 app.include_router(feedback_router)
 app.include_router(custom_data_router)
+app.include_router(tasks_router)
 
 
 # ── Статические файлы (tailwind.css, иконки и т.д.) ─────────────────────────

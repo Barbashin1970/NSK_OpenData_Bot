@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Пространство задач — Фреймворк Сигма</title>
+<link rel="icon" href="/static/img/favicon.ico">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --p1: #ef4444; --p2: #f59e0b; --p3: #3b82f6; --p4: #6b7280;
+    --todo: #94a3b8; --in_progress: #3b82f6; --review: #f59e0b; --done: #22c55e; --cancelled: #6b7280;
+  }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f1f5f9; }
+  .priority-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600; color:#fff; }
+  .priority-P1 { background: var(--p1); }
+  .priority-P2 { background: var(--p2); }
+  .priority-P3 { background: var(--p3); }
+  .priority-P4 { background: var(--p4); }
+  .status-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; }
+  .status-todo       { background: var(--todo); }
+  .status-in_progress { background: var(--in_progress); }
+  .status-review      { background: var(--review); }
+  .status-done        { background: var(--done); }
+  .status-cancelled   { background: var(--cancelled); }
+
+  /* Kanban */
+  .kanban-col { min-width:260px; max-width:300px; flex:1; }
+  .kanban-card {
+    background:#fff; border-radius:8px; padding:12px; margin-bottom:8px;
+    box-shadow:0 1px 3px rgba(0,0,0,.08); cursor:pointer; transition:box-shadow .15s;
+    border-left: 3px solid var(--p3);
+  }
+  .kanban-card:hover { box-shadow:0 4px 12px rgba(0,0,0,.12); }
+  .kanban-card.p-P1 { border-left-color: var(--p1); }
+  .kanban-card.p-P2 { border-left-color: var(--p2); }
+  .kanban-card.p-P3 { border-left-color: var(--p3); }
+  .kanban-card.p-P4 { border-left-color: var(--p4); }
+
+  .kanban-col-header {
+    font-weight:600; padding:8px 12px; border-radius:8px 8px 0 0;
+    margin-bottom:8px; display:flex; align-items:center; gap:8px;
+  }
+  .kanban-col-body { min-height:100px; padding:4px; }
+
+  /* Tabs */
+  .view-tab { padding:8px 16px; border-radius:8px 8px 0 0; cursor:pointer; font-weight:500; color:#64748b; }
+  .view-tab.active { background:#fff; color:#1e293b; box-shadow:0 -1px 4px rgba(0,0,0,.06); }
+
+  /* Modal */
+  .modal-overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:100;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .modal-box {
+    background:#fff; border-radius:12px; padding:24px; width:90%; max-width:560px;
+    max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.2);
+  }
+  .modal-box h2 { margin:0 0 16px; font-size:1.25rem; font-weight:600; }
+
+  /* Form */
+  .form-label { display:block; font-size:13px; font-weight:500; color:#475569; margin-bottom:4px; }
+  .form-input {
+    width:100%; padding:8px 12px; border:1px solid #e2e8f0; border-radius:6px;
+    font-size:14px; margin-bottom:12px; outline:none;
+  }
+  .form-input:focus { border-color:#3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.15); }
+  select.form-input { appearance:auto; }
+  textarea.form-input { min-height:80px; resize:vertical; }
+
+  .btn { padding:8px 20px; border-radius:6px; font-weight:500; cursor:pointer; border:none; font-size:14px; }
+  .btn-primary { background:#3b82f6; color:#fff; }
+  .btn-primary:hover { background:#2563eb; }
+  .btn-danger { background:#ef4444; color:#fff; }
+  .btn-danger:hover { background:#dc2626; }
+  .btn-ghost { background:transparent; color:#64748b; }
+  .btn-ghost:hover { background:#f1f5f9; }
+
+  /* Stats cards */
+  .stat-card {
+    background:#fff; border-radius:10px; padding:16px 20px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06); text-align:center;
+  }
+  .stat-num { font-size:2rem; font-weight:700; color:#1e293b; }
+  .stat-label { font-size:13px; color:#64748b; }
+
+  /* Table */
+  .task-table { width:100%; border-collapse:collapse; background:#fff; border-radius:8px; overflow:hidden; }
+  .task-table th { background:#f8fafc; padding:10px 14px; text-align:left; font-size:13px; font-weight:600; color:#475569; border-bottom:1px solid #e2e8f0; }
+  .task-table td { padding:10px 14px; font-size:14px; border-bottom:1px solid #f1f5f9; }
+  .task-table tr:hover { background:#f8fafc; cursor:pointer; }
+
+  /* Detail panel */
+  .detail-panel {
+    position:fixed; right:0; top:0; width:420px; height:100vh; background:#fff;
+    box-shadow:-4px 0 20px rgba(0,0,0,.1); z-index:90; overflow-y:auto; padding:24px;
+    transform:translateX(100%); transition:transform .2s ease;
+  }
+  .detail-panel.open { transform:translateX(0); }
+
+  .comment-bubble {
+    background:#f1f5f9; border-radius:8px; padding:10px 14px; margin-bottom:8px;
+  }
+  .comment-date { font-size:11px; color:#94a3b8; }
+  .overdue { color:#ef4444; font-weight:500; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/" class="text-gray-400 hover:text-gray-600 text-sm">&larr; Главная</a>
+    <h1 class="text-lg font-bold text-gray-800">Пространство задач</h1>
+    <span class="text-xs text-gray-400">MVP v1</span>
+  </div>
+  <div class="flex items-center gap-2">
+    <button onclick="openModal('initiative')" class="btn btn-ghost text-sm">+ Инициатива</button>
+    <button onclick="openModal('task')" class="btn btn-primary text-sm">+ Задача</button>
+  </div>
+</header>
+
+<!-- Stats -->
+<div id="statsBar" class="px-6 py-4 flex gap-4 overflow-x-auto">
+  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num" id="stTotal">0</div><div class="stat-label">Всего задач</div></div>
+  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-blue-500" id="stProgress">0</div><div class="stat-label">В работе</div></div>
+  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-green-500" id="stDone">0</div><div class="stat-label">Готово</div></div>
+  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-red-500" id="stOverdue">0</div><div class="stat-label">Просрочено</div></div>
+  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-purple-500" id="stInitiatives">0</div><div class="stat-label">Инициативы</div></div>
+  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-amber-500" id="stContractors">0</div><div class="stat-label">Контрагенты</div></div>
+</div>
+
+<!-- Tabs & Filters -->
+<div class="px-6 flex items-center gap-2 border-b border-gray-200 bg-gray-50">
+  <div class="view-tab active" data-view="kanban" onclick="switchView('kanban')">Канбан</div>
+  <div class="view-tab" data-view="list" onclick="switchView('list')">Список</div>
+  <div class="view-tab" data-view="initiatives" onclick="switchView('initiatives')">Инициативы</div>
+  <div class="view-tab" data-view="contractors" onclick="switchView('contractors')">Контрагенты</div>
+  <div class="ml-auto flex items-center gap-2 py-2">
+    <select id="filterPriority" class="text-sm border rounded px-2 py-1" onchange="reload()">
+      <option value="">Все приоритеты</option>
+      <option value="P1">P1 — Критично</option>
+      <option value="P2">P2 — Высокий</option>
+      <option value="P3">P3 — Средний</option>
+      <option value="P4">P4 — Низкий</option>
+    </select>
+    <select id="filterInitiative" class="text-sm border rounded px-2 py-1" onchange="reload()">
+      <option value="">Все инициативы</option>
+    </select>
+  </div>
+</div>
+
+<!-- View: Kanban -->
+<div id="viewKanban" class="px-6 py-4 flex gap-4 overflow-x-auto" style="min-height:60vh">
+  <!-- Columns generated by JS -->
+</div>
+
+<!-- View: List -->
+<div id="viewList" class="px-6 py-4 hidden">
+  <table class="task-table" id="taskTable">
+    <thead>
+      <tr>
+        <th style="width:40px"></th>
+        <th>Задача</th>
+        <th>Статус</th>
+        <th>Приоритет</th>
+        <th>Срок</th>
+        <th>Направление</th>
+      </tr>
+    </thead>
+    <tbody id="taskTableBody"></tbody>
+  </table>
+</div>
+
+<!-- View: Initiatives -->
+<div id="viewInitiatives" class="px-6 py-4 hidden">
+  <div id="initiativesList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+</div>
+
+<!-- View: Contractors -->
+<div id="viewContractors" class="px-6 py-4 hidden">
+  <table class="task-table" id="contractorsTable">
+    <thead>
+      <tr>
+        <th>Категория</th>
+        <th>Организация</th>
+        <th>Дежурный телефон</th>
+        <th>Руководитель</th>
+        <th>Телефон</th>
+      </tr>
+    </thead>
+    <tbody id="contractorsBody"></tbody>
+  </table>
+</div>
+
+<!-- Detail Panel (slide-in) -->
+<div id="detailPanel" class="detail-panel">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-lg font-bold" id="detailTitle">Задача</h2>
+    <button onclick="closeDetail()" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+  </div>
+  <div id="detailBody"></div>
+</div>
+
+<!-- Modal overlay (create/edit) -->
+<div id="modalOverlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box" id="modalBox">
+    <!-- Filled by JS -->
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Пространство задач — клиентская логика (MVP v1)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const STATUS_ORDER  = ['todo','in_progress','review','done','cancelled'];
+const STATUS_LABELS = {
+  todo:'К выполнению', in_progress:'В работе', review:'На проверке',
+  done:'Готово', cancelled:'Отменена'
+};
+const STATUS_COLORS = {
+  todo:'#94a3b8', in_progress:'#3b82f6', review:'#f59e0b',
+  done:'#22c55e', cancelled:'#6b7280'
+};
+const PRIORITY_LABELS = { P1:'P1', P2:'P2', P3:'P3', P4:'P4' };
+
+let allTasks = [];
+let allInitiatives = [];
+let allContractors = [];
+let meta = {};
+let currentView = 'kanban';
+
+// ── API helpers ──────────────────────────────────────────────────────────
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.detail || r.statusText);
+  }
+  return r.json();
+}
+
+// ── Load data ────────────────────────────────────────────────────────────
+async function reload() {
+  const prio = document.getElementById('filterPriority').value;
+  const init = document.getElementById('filterInitiative').value;
+  let url = '/api/tasks?';
+  if (prio) url += `priority=${prio}&`;
+  if (init) url += `initiative_id=${init}&`;
+
+  [allTasks, allInitiatives, allContractors, meta] = await Promise.all([
+    api(url), api('/api/initiatives'), api('/api/contractors'), api('/api/tasks/stats'),
+  ]);
+  renderStats();
+  renderCurrentView();
+  populateInitiativeFilter();
+}
+
+function populateInitiativeFilter() {
+  const sel = document.getElementById('filterInitiative');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Все инициативы</option>';
+  allInitiatives.forEach(i => {
+    sel.innerHTML += `<option value="${i.initiative_id}" ${i.initiative_id===cur?'selected':''}>${i.title}</option>`;
+  });
+}
+
+// ── Stats ────────────────────────────────────────────────────────────────
+function renderStats() {
+  document.getElementById('stTotal').textContent = meta.total || 0;
+  document.getElementById('stProgress').textContent = (meta.by_status||{}).in_progress || 0;
+  document.getElementById('stDone').textContent = (meta.by_status||{}).done || 0;
+  document.getElementById('stOverdue').textContent = meta.overdue || 0;
+  document.getElementById('stInitiatives').textContent = meta.initiatives || 0;
+  document.getElementById('stContractors').textContent = meta.contractors || 0;
+}
+
+// ── View switching ───────────────────────────────────────────────────────
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.getElementById('viewKanban').classList.toggle('hidden', view !== 'kanban');
+  document.getElementById('viewList').classList.toggle('hidden', view !== 'list');
+  document.getElementById('viewInitiatives').classList.toggle('hidden', view !== 'initiatives');
+  document.getElementById('viewContractors').classList.toggle('hidden', view !== 'contractors');
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  if (currentView === 'kanban') renderKanban();
+  else if (currentView === 'list') renderList();
+  else if (currentView === 'initiatives') renderInitiatives();
+  else if (currentView === 'contractors') renderContractors();
+}
+
+// ── Kanban ────────────────────────────────────────────────────────────────
+function renderKanban() {
+  const container = document.getElementById('viewKanban');
+  container.innerHTML = '';
+  // Only show active statuses (not cancelled)
+  const cols = ['todo','in_progress','review','done'];
+  cols.forEach(status => {
+    const tasks = allTasks.filter(t => t.status === status);
+    const col = document.createElement('div');
+    col.className = 'kanban-col';
+    col.innerHTML = `
+      <div class="kanban-col-header" style="background:${STATUS_COLORS[status]}20; color:${STATUS_COLORS[status]}">
+        <span class="status-dot status-${status}"></span>
+        ${STATUS_LABELS[status]}
+        <span class="ml-auto text-xs font-normal opacity-60">${tasks.length}</span>
+      </div>
+      <div class="kanban-col-body" data-status="${status}"
+           ondragover="event.preventDefault(); this.style.background='#f0f9ff'"
+           ondragleave="this.style.background=''"
+           ondrop="handleDrop(event,'${status}'); this.style.background=''">
+        ${tasks.map(t => kanbanCard(t)).join('')}
+      </div>
+    `;
+    container.appendChild(col);
+  });
+}
+
+function kanbanCard(t) {
+  const due = t.due_date ? formatDate(t.due_date) : '';
+  const overdue = isOverdue(t) ? 'overdue' : '';
+  return `
+    <div class="kanban-card p-${t.priority}" draggable="true"
+         ondragstart="event.dataTransfer.setData('text/plain','${t.task_id}')"
+         onclick="openDetail('${t.task_id}')">
+      <div class="flex items-center justify-between mb-1">
+        <span class="priority-badge priority-${t.priority}">${t.priority}</span>
+        ${due ? `<span class="text-xs ${overdue}">${due}</span>` : ''}
+      </div>
+      <div class="text-sm font-medium text-gray-800 mt-1">${esc(t.title)}</div>
+      ${t.department ? `<div class="text-xs text-gray-400 mt-1">${esc(t.department)}</div>` : ''}
+      ${t.assignee ? `<div class="text-xs text-blue-400 mt-1">${esc(t.assignee)}</div>` : ''}
+    </div>
+  `;
+}
+
+async function handleDrop(e, newStatus) {
+  e.preventDefault();
+  const taskId = e.dataTransfer.getData('text/plain');
+  if (!taskId) return;
+  try {
+    await api(`/api/tasks/${taskId}/status`, {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({status: newStatus})
+    });
+    await reload();
+  } catch(err) { alert('Ошибка: ' + err.message); }
+}
+
+// ── List view ────────────────────────────────────────────────────────────
+function renderList() {
+  const tbody = document.getElementById('taskTableBody');
+  tbody.innerHTML = allTasks.map(t => {
+    const due = t.due_date ? formatDate(t.due_date) : '';
+    const overdue = isOverdue(t) ? 'overdue' : '';
+    return `
+      <tr onclick="openDetail('${t.task_id}')">
+        <td><span class="priority-badge priority-${t.priority}">${t.priority}</span></td>
+        <td>
+          <div class="font-medium">${esc(t.title)}</div>
+          ${t.assignee ? `<div class="text-xs text-gray-400">${esc(t.assignee)}</div>` : ''}
+        </td>
+        <td><span class="status-dot status-${t.status}"></span>${STATUS_LABELS[t.status]||t.status}</td>
+        <td>${t.priority}</td>
+        <td class="${overdue}">${due}</td>
+        <td class="text-sm text-gray-500">${esc(t.department||'')}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ── Initiatives view ─────────────────────────────────────────────────────
+function renderInitiatives() {
+  const el = document.getElementById('initiativesList');
+  if (!allInitiatives.length) {
+    el.innerHTML = '<div class="text-gray-400 col-span-3 text-center py-12">Нет инициатив. Нажмите «+ Инициатива» для создания.</div>';
+    return;
+  }
+  el.innerHTML = allInitiatives.map(i => {
+    const tasks = allTasks.filter(t => t.initiative_id === i.initiative_id);
+    const done = tasks.filter(t => t.status === 'done').length;
+    const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
+    const statusColors = { draft:'gray', active:'blue', on_hold:'amber', completed:'green', cancelled:'gray' };
+    const sc = statusColors[i.status] || 'gray';
+    return `
+      <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer"
+           onclick="editInitiative('${i.initiative_id}')">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-medium px-2 py-0.5 rounded bg-${sc}-100 text-${sc}-700">${i.status}</span>
+          <span class="text-xs text-gray-400">${i.direction||''}</span>
+        </div>
+        <h3 class="font-semibold text-gray-800 mb-1">${esc(i.title)}</h3>
+        <p class="text-sm text-gray-500 mb-3 line-clamp-2">${esc(i.description||'')}</p>
+        <div class="flex items-center gap-2 text-xs text-gray-400">
+          <span>${tasks.length} задач</span>
+          <div class="flex-1 bg-gray-100 rounded-full h-1.5">
+            <div class="bg-green-500 rounded-full h-1.5" style="width:${pct}%"></div>
+          </div>
+          <span>${pct}%</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Contractors view ─────────────────────────────────────────────────────
+function renderContractors() {
+  const tbody = document.getElementById('contractorsBody');
+  tbody.innerHTML = allContractors.map(c => `
+    <tr>
+      <td class="text-sm">${esc(c.category||'')}</td>
+      <td class="font-medium text-sm">${esc(c.org_name||'')}</td>
+      <td class="text-sm">${esc(c.duty_phone||'')}</td>
+      <td class="text-sm">${esc(c.head_name||'')}</td>
+      <td class="text-sm">${esc(c.head_phone||'')}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Detail panel ─────────────────────────────────────────────────────────
+async function openDetail(taskId) {
+  const task = await api(`/api/tasks/${taskId}`);
+  document.getElementById('detailTitle').textContent = task.title;
+  const init = allInitiatives.find(i => i.initiative_id === task.initiative_id);
+  const contr = allContractors.find(c => c.contractor_id === task.contractor_id);
+  const due = task.due_date ? formatDate(task.due_date) : 'Не указан';
+  const overdue = isOverdue(task);
+
+  document.getElementById('detailBody').innerHTML = `
+    <div class="flex items-center gap-2 mb-4">
+      <span class="priority-badge priority-${task.priority}">${task.priority}</span>
+      <span class="status-dot status-${task.status}"></span>
+      <span class="text-sm font-medium">${STATUS_LABELS[task.status]||task.status}</span>
+    </div>
+
+    ${task.description ? `<div class="text-sm text-gray-600 mb-4 whitespace-pre-wrap">${esc(task.description)}</div>` : ''}
+
+    <div class="grid grid-cols-2 gap-3 text-sm mb-4">
+      <div><span class="text-gray-400">Срок:</span><br><span class="${overdue?'overdue':''}">${due}</span></div>
+      <div><span class="text-gray-400">Направление:</span><br>${esc(task.department||'—')}</div>
+      <div><span class="text-gray-400">Исполнитель:</span><br>${esc(task.assignee||'—')}</div>
+      <div><span class="text-gray-400">Инициатива:</span><br>${init ? esc(init.title) : '—'}</div>
+      ${contr ? `<div class="col-span-2"><span class="text-gray-400">Контрагент:</span><br>${esc(contr.org_name)} (${esc(contr.duty_phone||'')})</div>` : ''}
+    </div>
+
+    <!-- Status change -->
+    <div class="mb-4">
+      <span class="form-label">Изменить статус:</span>
+      <div class="flex gap-1 flex-wrap mt-1">
+        ${STATUS_ORDER.map(s => `
+          <button class="text-xs px-3 py-1 rounded-full border ${task.status===s ? 'bg-blue-500 text-white border-blue-500' : 'border-gray-300 text-gray-500 hover:bg-gray-50'}"
+                  onclick="changeStatus('${task.task_id}','${s}')">${STATUS_LABELS[s]}</button>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- Comments -->
+    <div class="border-t border-gray-100 pt-4 mt-4">
+      <h3 class="font-semibold text-sm mb-2">Комментарии</h3>
+      <div id="commentsList">
+        ${(task.comments||[]).map(c => `
+          <div class="comment-bubble">
+            <div class="text-sm">${esc(c.text)}</div>
+            <div class="comment-date">${c.author ? esc(c.author)+' · ' : ''}${formatDateTime(c.created_at)}</div>
+          </div>
+        `).join('') || '<div class="text-sm text-gray-400">Нет комментариев</div>'}
+      </div>
+      <div class="flex gap-2 mt-3">
+        <input type="text" id="commentInput" class="form-input mb-0 flex-1" placeholder="Написать комментарий...">
+        <button onclick="postComment('${task.task_id}')" class="btn btn-primary text-sm">Отправить</button>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="border-t border-gray-100 pt-4 mt-4 flex gap-2">
+      <button onclick="openModal('task','${task.task_id}')" class="btn btn-ghost text-sm">Редактировать</button>
+      <button onclick="deleteTaskConfirm('${task.task_id}')" class="btn btn-danger text-sm">Удалить</button>
+    </div>
+
+    <div class="text-xs text-gray-300 mt-4">
+      Создано: ${formatDateTime(task.created_at)}<br>
+      Обновлено: ${formatDateTime(task.updated_at)}<br>
+      ID: ${task.task_id}
+    </div>
+  `;
+  document.getElementById('detailPanel').classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.remove('open');
+}
+
+async function changeStatus(taskId, status) {
+  await api(`/api/tasks/${taskId}/status`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({status})
+  });
+  await reload();
+  openDetail(taskId);
+}
+
+async function postComment(taskId) {
+  const input = document.getElementById('commentInput');
+  const text = input.value.trim();
+  if (!text) return;
+  await api(`/api/tasks/${taskId}/comments`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({text})
+  });
+  input.value = '';
+  openDetail(taskId);
+}
+
+async function deleteTaskConfirm(taskId) {
+  if (!confirm('Удалить задачу?')) return;
+  await api(`/api/tasks/${taskId}`, { method:'DELETE' });
+  closeDetail();
+  await reload();
+}
+
+// ── Modals ───────────────────────────────────────────────────────────────
+async function openModal(type, editId) {
+  const box = document.getElementById('modalBox');
+  if (type === 'task') {
+    let task = null;
+    if (editId) {
+      task = await api(`/api/tasks/${editId}`);
+    }
+    box.innerHTML = taskForm(task);
+  } else if (type === 'initiative') {
+    let init = null;
+    if (editId) {
+      init = allInitiatives.find(i => i.initiative_id === editId);
+    }
+    box.innerHTML = initiativeForm(init);
+  }
+  document.getElementById('modalOverlay').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').style.display = 'none';
+}
+
+function taskForm(task) {
+  const t = task || {};
+  const isEdit = !!t.task_id;
+  const dirs = meta.directions || ['Транспорт','ЖКХ','Экология','Безопасность','Цифровизация','Благоустройство','Образование','Здравоохранение','Культура','Другое'];
+
+  return `
+    <h2>${isEdit ? 'Редактировать задачу' : 'Новая задача'}</h2>
+    <label class="form-label">Заголовок *</label>
+    <input id="fTitle" class="form-input" value="${esc(t.title||'')}" placeholder="Краткое описание задачи">
+
+    <label class="form-label">Описание</label>
+    <textarea id="fDesc" class="form-input">${esc(t.description||'')}</textarea>
+
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="form-label">Приоритет</label>
+        <select id="fPriority" class="form-input">
+          ${['P1','P2','P3','P4'].map(p => `<option value="${p}" ${t.priority===p?'selected':''}>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Статус</label>
+        <select id="fStatus" class="form-input">
+          ${STATUS_ORDER.map(s => `<option value="${s}" ${t.status===s?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+
+    <label class="form-label">Направление</label>
+    <select id="fDept" class="form-input">
+      <option value="">— Не указано —</option>
+      ${dirs.map(d => `<option value="${d}" ${t.department===d?'selected':''}>${d}</option>`).join('')}
+    </select>
+
+    <label class="form-label">Срок выполнения</label>
+    <input id="fDue" type="date" class="form-input" value="${t.due_date||''}">
+
+    <label class="form-label">Инициатива</label>
+    <select id="fInit" class="form-input">
+      <option value="">— Не привязана —</option>
+      ${allInitiatives.map(i => `<option value="${i.initiative_id}" ${t.initiative_id===i.initiative_id?'selected':''}>${esc(i.title)}</option>`).join('')}
+    </select>
+
+    <label class="form-label">Контрагент</label>
+    <select id="fContr" class="form-input">
+      <option value="">— Не указан —</option>
+      ${allContractors.map(c => `<option value="${c.contractor_id}" ${t.contractor_id===c.contractor_id?'selected':''}>${esc(c.org_name)}</option>`).join('')}
+    </select>
+
+    <label class="form-label">Исполнитель</label>
+    <input id="fAssignee" class="form-input" value="${esc(t.assignee||'')}" placeholder="ФИО или подразделение">
+
+    <label class="form-label">Теги</label>
+    <input id="fTags" class="form-input" value="${esc(t.tags||'')}" placeholder="через запятую">
+
+    <div class="flex justify-end gap-2 mt-2">
+      <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
+      <button onclick="saveTask('${t.task_id||''}')" class="btn btn-primary">${isEdit?'Сохранить':'Создать'}</button>
+    </div>
+  `;
+}
+
+async function saveTask(editId) {
+  const data = {
+    title:         document.getElementById('fTitle').value.trim(),
+    description:   document.getElementById('fDesc').value.trim(),
+    priority:      document.getElementById('fPriority').value,
+    status:        document.getElementById('fStatus').value,
+    department:    document.getElementById('fDept').value,
+    due_date:      document.getElementById('fDue').value,
+    initiative_id: document.getElementById('fInit').value,
+    contractor_id: document.getElementById('fContr').value,
+    assignee:      document.getElementById('fAssignee').value.trim(),
+    tags:          document.getElementById('fTags').value.trim(),
+  };
+  if (!data.title) { alert('Заголовок обязателен'); return; }
+  try {
+    if (editId) {
+      await api(`/api/tasks/${editId}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+      });
+    } else {
+      await api('/api/tasks', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+      });
+    }
+    closeModal();
+    closeDetail();
+    await reload();
+  } catch(err) { alert('Ошибка: ' + err.message); }
+}
+
+function initiativeForm(init) {
+  const i = init || {};
+  const isEdit = !!i.initiative_id;
+  const dirs = ['Транспорт','ЖКХ','Экология','Безопасность','Цифровизация','Благоустройство','Образование','Здравоохранение','Культура','Другое'];
+  const statuses = ['draft','active','on_hold','completed','cancelled'];
+  const sLabels = {draft:'Черновик',active:'Активная',on_hold:'На паузе',completed:'Завершена',cancelled:'Отменена'};
+
+  return `
+    <h2>${isEdit ? 'Редактировать инициативу' : 'Новая инициатива'}</h2>
+    <label class="form-label">Название *</label>
+    <input id="iTitle" class="form-input" value="${esc(i.title||'')}" placeholder="Например: Безопасные дороги 2026">
+
+    <label class="form-label">Направление</label>
+    <select id="iDir" class="form-input">
+      <option value="">— Не указано —</option>
+      ${dirs.map(d => `<option value="${d}" ${i.direction===d?'selected':''}>${d}</option>`).join('')}
+    </select>
+
+    <label class="form-label">Описание</label>
+    <textarea id="iDesc" class="form-input">${esc(i.description||'')}</textarea>
+
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="form-label">Статус</label>
+        <select id="iStatus" class="form-input">
+          ${statuses.map(s => `<option value="${s}" ${i.status===s?'selected':''}>${sLabels[s]}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Период</label>
+        <input id="iPeriod" class="form-input" value="${esc(i.period||'')}" placeholder="2026 Q2">
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-2 mt-2">
+      <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
+      ${isEdit ? `<button onclick="deleteInitiativeConfirm('${i.initiative_id}')" class="btn btn-danger">Удалить</button>` : ''}
+      <button onclick="saveInitiative('${i.initiative_id||''}')" class="btn btn-primary">${isEdit?'Сохранить':'Создать'}</button>
+    </div>
+  `;
+}
+
+function editInitiative(id) {
+  openModal('initiative', id);
+}
+
+async function saveInitiative(editId) {
+  const data = {
+    title:       document.getElementById('iTitle').value.trim(),
+    direction:   document.getElementById('iDir').value,
+    description: document.getElementById('iDesc').value.trim(),
+    status:      document.getElementById('iStatus').value,
+    period:      document.getElementById('iPeriod').value.trim(),
+  };
+  if (!data.title) { alert('Название обязательно'); return; }
+  try {
+    if (editId) {
+      await api(`/api/initiatives/${editId}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+      });
+    } else {
+      await api('/api/initiatives', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+      });
+    }
+    closeModal();
+    await reload();
+  } catch(err) { alert('Ошибка: ' + err.message); }
+}
+
+async function deleteInitiativeConfirm(id) {
+  if (!confirm('Удалить инициативу?')) return;
+  await api(`/api/initiatives/${id}`, { method:'DELETE' });
+  closeModal();
+  await reload();
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  try {
+    const dt = new Date(d + (d.length <= 10 ? 'T00:00:00' : ''));
+    return dt.toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
+  } catch { return d; }
+}
+
+function formatDateTime(d) {
+  if (!d) return '';
+  try {
+    const dt = new Date(d);
+    return dt.toLocaleDateString('ru-RU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  } catch { return d; }
+}
+
+function isOverdue(t) {
+  if (!t.due_date || t.status === 'done' || t.status === 'cancelled') return false;
+  return t.due_date < new Date().toISOString().slice(0,10);
+}
+
+// ── Keyboard shortcuts ──────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('modalOverlay').style.display === 'flex') closeModal();
+    else closeDetail();
+  }
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────
+reload();
+</script>
+</body>
+</html>
