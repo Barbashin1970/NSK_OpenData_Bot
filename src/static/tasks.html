@@ -183,8 +183,16 @@
 <!-- View: Contractors -->
 <div id="viewContractors" class="px-6 py-4 hidden">
   <div class="flex items-center justify-between mb-3">
-    <span class="text-sm text-gray-500">Справочник контрагентов</span>
-    <button onclick="openModal('contractor')" class="btn btn-primary text-sm">+ Контрагент</button>
+    <div class="flex items-center gap-2">
+      <select id="filterCategory" class="text-sm border rounded px-2 py-1" onchange="filterContractors()">
+        <option value="">Все контрагенты</option>
+      </select>
+      <span id="contractorCount" class="text-xs text-gray-400"></span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="importConstruction()" class="btn btn-ghost text-sm" id="btnImportConstr" title="Импорт строительных компаний из opendata">Импорт строителей</button>
+      <button onclick="openModal('contractor')" class="btn btn-primary text-sm">+ Контрагент</button>
+    </div>
   </div>
   <table class="task-table" id="contractorsTable">
     <thead>
@@ -236,6 +244,7 @@ let allContractors = [];
 let meta = {};
 let currentView = 'kanban';
 let ACCEPTANCE_OPTIONS = [];
+let allCategories = [];
 
 // ── API helpers ──────────────────────────────────────────────────────────
 async function api(url, opts) {
@@ -255,14 +264,16 @@ async function reload() {
   if (prio) url += `priority=${prio}&`;
   if (init) url += `initiative_id=${init}&`;
 
-  const [tasks, inits, contrs, stats, metaData] = await Promise.all([
-    api(url), api('/api/initiatives'), api('/api/contractors'), api('/api/tasks/stats'), api('/api/tasks/meta'),
+  const [tasks, inits, contrs, stats, metaData, cats] = await Promise.all([
+    api(url), api('/api/initiatives'), api('/api/contractors'), api('/api/tasks/stats'), api('/api/tasks/meta'), api('/api/contractors/categories'),
   ]);
   allTasks = tasks; allInitiatives = inits; allContractors = contrs; meta = stats;
   ACCEPTANCE_OPTIONS = metaData.acceptance_criteria_options || [];
+  allCategories = cats || [];
   renderStats();
   renderCurrentView();
   populateInitiativeFilter();
+  populateCategoryFilter();
 }
 
 function populateInitiativeFilter() {
@@ -419,9 +430,41 @@ function renderInitiatives() {
 }
 
 // ── Contractors view ─────────────────────────────────────────────────────
+function populateCategoryFilter() {
+  const sel = document.getElementById('filterCategory');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Все контрагенты</option>';
+  allCategories.forEach(cat => {
+    sel.innerHTML += `<option value="${esc(cat)}" ${cat===cur?'selected':''}>${esc(cat)}</option>`;
+  });
+}
+
+function filterContractors() {
+  renderContractors();
+}
+
+async function importConstruction() {
+  const btn = document.getElementById('btnImportConstr');
+  btn.disabled = true; btn.textContent = 'Импорт...';
+  try {
+    const res = await api('/api/contractors/seed-construction', { method:'POST' });
+    if (res.imported > 0) {
+      alert(`Импортировано ${res.imported} строительных компаний`);
+      await reload();
+    } else {
+      alert('Строительные компании уже загружены или данные недоступны');
+    }
+  } catch(err) { alert('Ошибка: ' + err.message); }
+  finally { btn.disabled = false; btn.textContent = 'Импорт строителей'; }
+}
+
 function renderContractors() {
   const tbody = document.getElementById('contractorsBody');
-  tbody.innerHTML = allContractors.map(c => {
+  const catFilter = (document.getElementById('filterCategory') || {}).value || '';
+  const filtered = catFilter ? allContractors.filter(c => c.category === catFilter) : allContractors;
+  document.getElementById('contractorCount').textContent = `${filtered.length} из ${allContractors.length}`;
+  tbody.innerHTML = filtered.map(c => {
     const tc = c.task_count || 0;
     const badge = tc > 0
       ? `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">${tc}</span>`

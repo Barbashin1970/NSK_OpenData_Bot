@@ -16,6 +16,7 @@ from ..task_store import (
     create_task, get_tasks, get_task, update_task, delete_task,
     add_comment, get_comments,
     get_contractors, get_contractor, create_contractor, update_contractor,
+    get_contractor_categories,
     get_task_stats,
     TASK_STATUSES, TASK_PRIORITIES, DIRECTIONS,
 )
@@ -97,8 +98,17 @@ def api_tasks_stats():
     tags=["Пространство задач"],
     summary="Справочник контрагентов (аварийные службы, МУПы)",
 )
-def api_contractors():
-    return get_contractors(with_task_count=True)
+def api_contractors(category: str | None = Query(None)):
+    return get_contractors(with_task_count=True, category=category or None)
+
+
+@router.get(
+    "/api/contractors/categories",
+    tags=["Пространство задач"],
+    summary="Уникальные категории контрагентов",
+)
+def api_contractor_categories():
+    return get_contractor_categories()
 
 
 @router.post(
@@ -280,3 +290,16 @@ async def api_task_status(task_id: str, request: Request):
     if not result:
         raise HTTPException(404, "Задача не найдена")
     return result
+
+
+# ── Импорт строительных компаний ─────────────────────────────────────────
+
+@router.post(
+    "/api/contractors/seed-construction",
+    tags=["Пространство задач"],
+    summary="Импорт строительных компаний из opendata",
+)
+def api_seed_construction():
+    from ..contractors_loader import seed_construction_contractors
+    count = seed_construction_contractors()
+    return {"imported": count}

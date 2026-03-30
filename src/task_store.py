@@ -144,12 +144,17 @@ def upsert_contractor(row: dict) -> str:
         conn.close()
 
 
-def get_contractors(with_task_count: bool = False) -> list[dict]:
-    """Возвращает всех контрагентов. with_task_count=True добавляет поле task_count."""
+def get_contractors(with_task_count: bool = False, category: str | None = None) -> list[dict]:
+    """Возвращает контрагентов. with_task_count добавляет task_count, category фильтрует."""
     conn = _get_conn()
     try:
+        where = ""
+        params: list = []
+        if category:
+            where = "WHERE c.category = ?"
+            params.append(category)
         if with_task_count:
-            rows = conn.execute("""
+            rows = conn.execute(f"""
                 SELECT c.*, COALESCE(tc.cnt, 0) AS task_count
                 FROM ts_contractors c
                 LEFT JOIN (
@@ -157,14 +162,31 @@ def get_contractors(with_task_count: bool = False) -> list[dict]:
                     FROM ts_tasks WHERE contractor_id != ''
                     GROUP BY contractor_id
                 ) tc ON c.contractor_id = tc.contractor_id
+                {where}
                 ORDER BY c.category, c.org_name
-            """).fetchall()
+            """, params).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT * FROM ts_contractors ORDER BY category, org_name"
-            ).fetchall()
+            sql = "SELECT * FROM ts_contractors"
+            if category:
+                sql += " WHERE category = ?"
+            sql += " ORDER BY category, org_name"
+            rows = conn.execute(sql, params).fetchall()
         cols = [d[0] for d in conn.description]
         return [dict(zip(cols, r)) for r in rows]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
+def get_contractor_categories() -> list[str]:
+    """Возвращает список уникальных категорий контрагентов."""
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT category FROM ts_contractors WHERE category != '' ORDER BY category"
+        ).fetchall()
+        return [r[0] for r in rows]
     except Exception:
         return []
     finally:
