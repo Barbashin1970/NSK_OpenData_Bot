@@ -2,7 +2,8 @@
   "host": "smtp.gmail.com",
   "port": 587,
   "username": "banksnab@gmail.com",
-  "password": "Gmailbank-2016",
+  "password": "G",
   "from_name": "Пространство задач — Сигма",
-  "from_email": ""
+  "from_email": "banksnab@gmail.com",
+  "method": "brevo"
 }

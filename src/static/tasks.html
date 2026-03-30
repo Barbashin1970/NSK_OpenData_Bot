@@ -1165,49 +1165,82 @@ function openSmtpSettings() {
 
 function smtpSettingsForm() {
   return `
-    <h2>Настройки SMTP</h2>
-    <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 mb-3 space-y-1">
-      <div><strong>Для Gmail</strong> (3 шага):</div>
-      <div>1. Включите <a href="https://myaccount.google.com/security" target="_blank" class="underline font-medium">двухфакторную аутентификацию</a></div>
-      <div>2. Создайте <a href="https://myaccount.google.com/apppasswords" target="_blank" class="underline font-medium">App Password</a> (16 символов)</div>
-      <div>3. Вставьте App Password в поле «Пароль» ниже</div>
-    </div>
+    <h2>Настройки почты</h2>
 
-    <div class="grid grid-cols-2 gap-3">
-      <div>
-        <label class="form-label">SMTP-сервер</label>
-        <input id="smHost" class="form-input" value="smtp.gmail.com">
+    <label class="form-label">Метод отправки</label>
+    <select id="smMethod" class="form-input" onchange="toggleEmailMethod()">
+      <option value="brevo">Brevo API (HTTPS) — работает везде</option>
+      <option value="smtp">SMTP — для серверов без ограничений</option>
+    </select>
+
+    <!-- Brevo section -->
+    <div id="secBrevo">
+      <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 mb-3 mt-3 space-y-1">
+        <div><strong>Brevo</strong> — бесплатно 300 писем/день:</div>
+        <div>1. Зарегистрируйтесь на <a href="https://app.brevo.com/account/register" target="_blank" class="underline font-medium">brevo.com</a></div>
+        <div>2. Подтвердите email отправителя: Senders → Add a sender</div>
+        <div>3. Скопируйте API-ключ: Settings → SMTP & API → API Keys</div>
       </div>
-      <div>
-        <label class="form-label">Порт</label>
-        <select id="smPort" class="form-input">
-          <option value="465" selected>465 (SSL) — рекомендуемый</option>
-          <option value="587">587 (STARTTLS)</option>
-        </select>
+
+      <label class="form-label">Brevo API-ключ</label>
+      <div style="position:relative">
+        <input id="smBrevoKey" class="form-input" type="password" placeholder="xkeysib-..." style="padding-right:44px">
+        <button type="button" onclick="toggleKeyVis('smBrevoKey','smBrevoToggle')" id="smBrevoToggle"
+          style="position:absolute;right:10px;top:8px;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;padding:2px"
+          title="Показать/скрыть">&#128065;</button>
       </div>
+
+      <label class="form-label">Email отправителя (подтверждённый в Brevo)</label>
+      <input id="smFrom" class="form-input" type="email" placeholder="banksnab@gmail.com">
+
+      <label class="form-label">Имя отправителя</label>
+      <input id="smName" class="form-input" value="Пространство задач — Сигма">
     </div>
 
-    <label class="form-label">Логин (email)</label>
-    <input id="smUser" class="form-input" type="email" placeholder="your@gmail.com">
+    <!-- SMTP section -->
+    <div id="secSmtp" style="display:none">
+      <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 mb-3 mt-3 space-y-1">
+        <div><strong>Gmail SMTP</strong> — нужен App Password:</div>
+        <div>1. <a href="https://myaccount.google.com/apppasswords" target="_blank" class="underline">Создать App Password</a></div>
+        <div>2. Порты 465/587 должны быть открыты (не Railway/Render)</div>
+      </div>
 
-    <label class="form-label">Пароль / App Password</label>
-    <div style="position:relative">
-      <input id="smPass" class="form-input" type="password" placeholder="Вставьте 16-символьный App Password" style="padding-right:44px">
-      <button type="button" onclick="togglePassVis()" id="smPassToggle"
-        style="position:absolute;right:10px;top:8px;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;padding:2px"
-        title="Показать/скрыть пароль">&#128065;</button>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="form-label">SMTP-сервер</label>
+          <input id="smHost" class="form-input" value="smtp.gmail.com">
+        </div>
+        <div>
+          <label class="form-label">Порт</label>
+          <select id="smPort" class="form-input">
+            <option value="465">465 (SSL)</option>
+            <option value="587">587 (STARTTLS)</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="form-label">Логин (email)</label>
+      <input id="smUser" class="form-input" type="email" placeholder="your@gmail.com">
+
+      <label class="form-label">Пароль / App Password</label>
+      <div style="position:relative">
+        <input id="smPass" class="form-input" type="password" placeholder="16-символьный App Password" style="padding-right:44px">
+        <button type="button" onclick="toggleKeyVis('smPass','smPassToggle')" id="smPassToggle"
+          style="position:absolute;right:10px;top:8px;background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;padding:2px"
+          title="Показать/скрыть">&#128065;</button>
+      </div>
+
+      <label class="form-label">Имя отправителя</label>
+      <input id="smNameSmtp" class="form-input" value="Пространство задач — Сигма">
+
+      <label class="form-label">Email отправителя</label>
+      <input id="smFromSmtp" class="form-input" type="email" placeholder="Оставьте пустым для логина">
     </div>
 
-    <label class="form-label">Имя отправителя</label>
-    <input id="smName" class="form-input" value="Пространство задач — Сигма">
-
-    <label class="form-label">Email отправителя (если отличается от логина)</label>
-    <input id="smFrom" class="form-input" type="email" placeholder="Оставьте пустым для логина">
-
-    <div id="smTestResult" class="mb-3"></div>
+    <div id="smTestResult" class="mt-3 mb-3"></div>
 
     <div class="flex items-center gap-2 mt-3">
-      <button onclick="testSmtpConnection()" class="btn btn-ghost text-sm" id="smTestBtn" style="border:1px solid #3b82f6;color:#3b82f6">Проверить подключение</button>
+      <button onclick="testSmtpConnection()" class="btn btn-ghost text-sm" id="smTestBtn" style="border:1px solid #3b82f6;color:#3b82f6">Проверить</button>
       <div class="ml-auto flex gap-2">
         <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
         <button onclick="saveSmtpSettings()" class="btn btn-primary">Сохранить</button>
@@ -1219,28 +1252,42 @@ function smtpSettingsForm() {
 async function loadSmtpSettings() {
   try {
     const cfg = await api('/api/email/config');
-    if (document.getElementById('smHost')) {
-      document.getElementById('smHost').value = cfg.host || 'smtp.gmail.com';
-      document.getElementById('smPort').value = String(cfg.port || 465);
-      document.getElementById('smUser').value = cfg.username || '';
-      document.getElementById('smPass').value = '';
-      document.getElementById('smPass').placeholder = cfg.configured ? '••••••••  (сохранён)' : 'Введите пароль';
-      document.getElementById('smName').value = cfg.from_name || '';
-      document.getElementById('smFrom').value = cfg.from_email || '';
-    }
+    const method = cfg.method || 'brevo';
+    document.getElementById('smMethod').value = method;
+    toggleEmailMethod();
+    // Brevo fields
+    document.getElementById('smBrevoKey').value = '';
+    document.getElementById('smBrevoKey').placeholder = cfg.brevo_api_key ? cfg.brevo_api_key : 'xkeysib-...';
+    document.getElementById('smFrom').value = cfg.from_email || '';
+    document.getElementById('smName').value = cfg.from_name || '';
+    // SMTP fields
+    document.getElementById('smHost').value = cfg.host || 'smtp.gmail.com';
+    document.getElementById('smPort').value = String(cfg.port || 465);
+    document.getElementById('smUser').value = cfg.username || '';
+    document.getElementById('smPass').value = '';
+    document.getElementById('smPass').placeholder = cfg.password ? '(сохранён)' : 'App Password';
+    document.getElementById('smNameSmtp').value = cfg.from_name || '';
+    document.getElementById('smFromSmtp').value = cfg.from_email || '';
   } catch(e) {}
 }
 
 async function saveSmtpSettings() {
-  const data = {
-    host: document.getElementById('smHost').value.trim(),
-    port: parseInt(document.getElementById('smPort').value) || 465,
-    username: document.getElementById('smUser').value.trim(),
-    password: document.getElementById('smPass').value,
-    from_name: document.getElementById('smName').value.trim(),
-    from_email: document.getElementById('smFrom').value.trim(),
-  };
-  if (!data.username) { alert('Укажите логин'); return; }
+  const method = document.getElementById('smMethod').value;
+  const data = { method };
+  if (method === 'brevo') {
+    data.brevo_api_key = document.getElementById('smBrevoKey').value.trim();
+    data.from_email = document.getElementById('smFrom').value.trim();
+    data.from_name = document.getElementById('smName').value.trim();
+    if (!data.from_email) { alert('Укажите email отправителя'); return; }
+  } else {
+    data.host = document.getElementById('smHost').value.trim();
+    data.port = parseInt(document.getElementById('smPort').value) || 465;
+    data.username = document.getElementById('smUser').value.trim();
+    data.password = document.getElementById('smPass').value;
+    data.from_name = document.getElementById('smNameSmtp').value.trim();
+    data.from_email = document.getElementById('smFromSmtp').value.trim();
+    if (!data.username) { alert('Укажите логин'); return; }
+  }
   try {
     await api('/api/email/config', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -1251,31 +1298,40 @@ async function saveSmtpSettings() {
   } catch(err) { alert('Ошибка: ' + err.message); }
 }
 
-function togglePassVis() {
-  const inp = document.getElementById('smPass');
-  const btn = document.getElementById('smPassToggle');
-  if (inp.type === 'password') {
-    inp.type = 'text'; btn.style.color = '#3b82f6';
-  } else {
-    inp.type = 'password'; btn.style.color = '#94a3b8';
-  }
+function toggleKeyVis(inputId, btnId) {
+  const inp = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  if (inp.type === 'password') { inp.type = 'text'; btn.style.color = '#3b82f6'; }
+  else { inp.type = 'password'; btn.style.color = '#94a3b8'; }
+}
+
+function toggleEmailMethod() {
+  const m = document.getElementById('smMethod').value;
+  document.getElementById('secBrevo').style.display = m === 'brevo' ? '' : 'none';
+  document.getElementById('secSmtp').style.display = m === 'smtp' ? '' : 'none';
 }
 
 async function testSmtpConnection() {
   const btn = document.getElementById('smTestBtn');
   const res = document.getElementById('smTestResult');
   btn.disabled = true; btn.textContent = 'Проверяю...';
-  res.innerHTML = '<div class="text-xs text-blue-500">Подключение к SMTP-серверу...</div>';
+  const method = document.getElementById('smMethod').value;
+  res.innerHTML = `<div class="text-xs text-blue-500">${method === 'brevo' ? 'Проверяю Brevo API...' : 'Подключение к SMTP...'}</div>`;
 
-  // Сначала сохраняем текущие значения (чтобы тест был актуальным)
-  const data = {
-    host: document.getElementById('smHost').value.trim(),
-    port: parseInt(document.getElementById('smPort').value) || 465,
-    username: document.getElementById('smUser').value.trim(),
-    password: document.getElementById('smPass').value,
-    from_name: document.getElementById('smName').value.trim(),
-    from_email: document.getElementById('smFrom').value.trim(),
-  };
+  // Сохраняем перед тестом
+  const data = { method };
+  if (method === 'brevo') {
+    data.brevo_api_key = document.getElementById('smBrevoKey').value.trim();
+    data.from_email = document.getElementById('smFrom').value.trim();
+    data.from_name = document.getElementById('smName').value.trim();
+  } else {
+    data.host = document.getElementById('smHost').value.trim();
+    data.port = parseInt(document.getElementById('smPort').value) || 465;
+    data.username = document.getElementById('smUser').value.trim();
+    data.password = document.getElementById('smPass').value;
+    data.from_name = document.getElementById('smNameSmtp').value.trim();
+    data.from_email = document.getElementById('smFromSmtp').value.trim();
+  }
   try {
     await api('/api/email/config', {
       method: 'POST', headers: {'Content-Type':'application/json'},
