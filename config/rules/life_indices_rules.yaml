@@ -81,6 +81,14 @@ utility:
   smog_wind_threshold_ms: 1.5   # м/с
   smog_pm25_threshold: 20.0     # мкг/м³
   smog_score: 2                 # +2 при выполнении обоих условий
+  # Снегопад — добавка к коммунальному напряжению
+  # snow_impact приходит из прогноза (ecology_rules.yaml → snow_impact)
+  snow_light_threshold: 2       # snow_impact ≥ 2 → +1
+  snow_light_score: 1
+  snow_moderate_threshold: 5    # snow_impact ≥ 5 → +2
+  snow_moderate_score: 2
+  snow_heavy_threshold: 8       # snow_impact ≥ 8 → +3
+  snow_heavy_score: 3
   # Пороги уровней (≤ значения)
   levels:
     - {max: 2, label: "Норма"}

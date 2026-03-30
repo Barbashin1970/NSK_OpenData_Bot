@@ -1297,7 +1297,7 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
 
   // Экология: AQI по районам + индексы жизни
   const ecoChipRows = d ? ecoRows : allEcoRows.slice(0, 11);
-  const ix = computeLifeIndices(ecoRows);
+  const ix = computeLifeIndices(ecoRows, eco?.snow_impact);
 
   const ecoBlock = `
     <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
@@ -1391,7 +1391,7 @@ async function renderMayorDashboard(power, eco, risks, trafficData) {
   const ac = _dashAqiClass(avgAqi);
   const tKpi = _dashTrafficKpi(trafficData);
   const ecoR = _dashEcoRatingKpi();
-  const indices = computeLifeIndices(ecoRows);
+  const indices = computeLifeIndices(ecoRows, eco?.snow_impact);
 
   // ── Общий фон страницы: полутон по худшему показателю ──────────────────
   // Мэру важно мгновенно считать «всё ОК» или «есть проблема»
@@ -4958,8 +4958,9 @@ function _termHint(label) {
 }
 
 // ─── Life Indices (вычисляются client-side из ECO_STATUS rows) ────────────────
-function computeLifeIndices(rows) {
+function computeLifeIndices(rows, snowImpact) {
   if (!rows || !rows.length) return null;
+  const _snowImpact = snowImpact || 0;
   const n = v => v != null ? Number(v) : null;
   const vals = key => rows.map(r => n(r[key])).filter(v => v !== null);
 
@@ -4983,6 +4984,9 @@ function computeLifeIndices(rows) {
   }
   if (avgW != null && avgW > 12) driver += 2;
   else if (avgW != null && avgW > 8) driver += 1;
+  // Снегопад: ухудшает видимость и сцепление
+  if (_snowImpact >= 8) driver += 2;
+  else if (_snowImpact >= 5) driver += 1;
   driver = Math.min(10, Math.max(0, Math.round(driver)));
   const driverLabel = driver <= 2 ? 'Безопасно' : driver <= 5 ? 'Осторожно' : driver <= 7 ? 'Опасно' : 'Крайне опасно';
   const driverColor = driver <= 2 ? 'text-emerald-600' : driver <= 5 ? 'text-yellow-600' : driver <= 7 ? 'text-orange-600' : 'text-red-600';
@@ -5020,6 +5024,10 @@ function computeLifeIndices(rows) {
     else if (minT < -5) utility += 1;
   }
   if (avgW != null && avgP != null && avgW < 1.5 && avgP > 20) utility += 2;
+  // Снегопад: добавка по snow_impact из прогноза
+  if (_snowImpact >= 8) utility += 3;
+  else if (_snowImpact >= 5) utility += 2;
+  else if (_snowImpact >= 2) utility += 1;
   utility = Math.min(10, Math.max(0, Math.round(utility)));
   const utilLabel = utility <= 2 ? 'Норма' : utility <= 5 ? 'Повышенная нагрузка' : utility <= 7 ? 'Высокое напряжение' : 'Критично';
   const utilColor = utility <= 2 ? 'text-emerald-600' : utility <= 5 ? 'text-yellow-600' : utility <= 7 ? 'text-orange-600' : 'text-red-600';
@@ -5151,7 +5159,7 @@ function renderEcology(data) {
 
   // ── ECO_STATUS ────────────────────────────────────────────────────────────
   if (op === 'ECO_STATUS') {
-    const indices = computeLifeIndices(rows);
+    const indices = computeLifeIndices(rows, data.snow_impact);
     const risks   = data.risks || [];   // backend включает risks в ECO_STATUS ответ
 
     const cards = rows.map(r => {
@@ -5322,7 +5330,12 @@ function renderEcology(data) {
       let risks = '';
       if (r.cold_risk)  risks += `<span class="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">🥶 Сильный мороз</span> `;
       if (r.ice_risk)   risks += `<span class="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">🧊 Риск гололёда</span> `;
-      if (r.snow_risk)  risks += `<span class="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">❄️ Снегопад</span> `;
+      if (r.snow_risk) {
+        const sf = r.snowfall_cm ? ` ${r.snowfall_cm} см` : '';
+        const si = r.snow_impact || 0;
+        const siCls = si >= 8 ? 'bg-red-100 text-red-800' : si >= 5 ? 'bg-orange-100 text-orange-800' : 'bg-slate-100 text-slate-700';
+        risks += `<span class="inline-flex items-center gap-1 text-xs ${siCls} px-2 py-0.5 rounded-full">❄️ Снег${sf}</span> `;
+      }
 
       // Цвет карточки по температуре
       const tNum = r.temp_min ?? r.temp_max ?? 0;
@@ -5357,7 +5370,12 @@ function renderEcology(data) {
       warnings.push('❗ Экстремальные морозы ожидаются в ближайшие дни — усилить теплоснабжение социальных объектов, открыть пункты обогрева.');
     if (warningDays.some(r => r.ice_risk))
       warnings.push('⚠️ Риск гололёда по прогнозу — вывести пескоразбрасывающую технику на мосты, перекрёстки, пешеходные зоны у больниц и школ.');
-    if (warningDays.some(r => r.snow_risk))
+    const maxSnowImpact = Math.max(...warningDays.map(r => r.snow_impact || 0));
+    if (maxSnowImpact >= 8)
+      warnings.push('🌨 Сильный снегопад ожидается в ближайшие дни — мобилизовать всю снегоуборочную технику, оповестить управляющие компании о проверке готовности к расчистке дворов, контролировать очистку кровель.');
+    else if (maxSnowImpact >= 5)
+      warnings.push('🌨 Умеренный снегопад по прогнозу — подготовить снегоуборочную технику, оповестить местные УК о предстоящей расчистке дворовых территорий.');
+    else if (warningDays.some(r => r.snow_risk))
       warnings.push('🌨 Ожидается снегопад — подготовить снегоуборочную технику, скорректировать расписание общественного транспорта.');
 
     const warningsHtml = warnings.length ? `

@@ -125,6 +125,17 @@ def get_ecology_status(
     meta = get_ecology_meta()
     cols = ["district", "address", "pm25", "pm10", "no2", "aqi",
             "temperature_c", "wind_speed_ms", "humidity_pct", "source", "measured_at"]
+
+    # Добавляем snow_impact из прогноза (для индексов жизни на фронтенде)
+    snow_impact_max = 0
+    try:
+        from ..ecology_cache import query_forecast
+        fc = query_forecast(days=3)
+        if fc:
+            snow_impact_max = max((r.get("snow_impact", 0) for r in fc), default=0)
+    except Exception:
+        pass
+
     return {
         "operation": "ECO_STATUS",
         "district": district,
@@ -133,6 +144,7 @@ def get_ecology_status(
         "rows": [{k: r.get(k) for k in cols} for r in rows],
         "columns": cols,
         "ecology_meta": meta,
+        "snow_impact": snow_impact_max,
     }
 
 

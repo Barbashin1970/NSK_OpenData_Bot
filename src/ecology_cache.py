@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS eco_forecast (
     temp_min      DOUBLE,
     wind_max      DOUBLE,
     precipitation DOUBLE,
+    snowfall_cm   DOUBLE,               -- снегопад см/сутки (Open-Meteo snowfall_sum)
     weathercode   INTEGER,
     fetched_at    VARCHAR
 )
@@ -140,6 +141,11 @@ def init_ecology_tables() -> None:
         conn.execute(_DDL_MEASUREMENTS)
         conn.execute(_DDL_DAILY_ARCHIVE)
         conn.execute(_DDL_FORECAST)
+        # Миграция: добавляем snowfall_cm если таблица уже существовала без неё
+        try:
+            conn.execute("ALTER TABLE eco_forecast ADD COLUMN snowfall_cm DOUBLE")
+        except Exception:
+            pass  # колонка уже есть
     finally:
         conn.close()
 
@@ -758,13 +764,14 @@ def upsert_forecast(records: list[dict]) -> int:
                     """
                     INSERT INTO eco_forecast
                         (id, station_id, district, forecast_date,
-                         temp_max, temp_min, wind_max, precipitation, weathercode, fetched_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         temp_max, temp_min, wind_max, precipitation, snowfall_cm, weathercode, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (id) DO UPDATE SET
                         temp_max      = excluded.temp_max,
                         temp_min      = excluded.temp_min,
                         wind_max      = excluded.wind_max,
                         precipitation = excluded.precipitation,
+                        snowfall_cm   = excluded.snowfall_cm,
                         weathercode   = excluded.weathercode,
                         fetched_at    = excluded.fetched_at
                     """,
@@ -773,7 +780,7 @@ def upsert_forecast(records: list[dict]) -> int:
                         r["forecast_date"],
                         r.get("temp_max"), r.get("temp_min"),
                         r.get("wind_max"), r.get("precipitation"),
-                        r.get("weathercode"), r["fetched_at"],
+                        r.get("snowfall_cm"), r.get("weathercode"), r["fetched_at"],
                     ],
                 )
                 count += 1
@@ -813,8 +820,8 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
 
     Возвращает список dict с полями:
       forecast_date, day_name, temp_max, temp_min, wind_max,
-      precipitation, weathercode, weather_icon, weather_desc,
-      ice_risk, cold_risk, snow_risk
+      precipitation, snowfall_cm, weathercode, weather_icon, weather_desc,
+      ice_risk, cold_risk, snow_risk, snow_impact
     """
     init_ecology_tables()
     conn = _get_conn()
@@ -837,7 +844,7 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
                 ROUND(AVG(temp_min), 1)      AS temp_min,
                 ROUND(MAX(wind_max), 1)      AS wind_max,
                 ROUND(AVG(precipitation), 1) AS precipitation,
-                -- Берём самый частый weathercode через медианный агрегат
+                ROUND(AVG(snowfall_cm), 1)   AS snowfall_cm,
                 CAST(ROUND(AVG(weathercode)) AS INTEGER) AS weathercode
             FROM eco_forecast
             {where_sql}
@@ -880,6 +887,38 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
             # Риск снегопада: осадки + код снега
             wc = r.get("weathercode") or 0
             r["snow_risk"] = bool(r.get("precipitation", 0) and _snow_min <= wc <= _snow_max)
+
+            # Индекс влияния снегопада (0–10)
+            _snow_cfg = _fc.get("snow_impact", {})
+            sf = r.get("snowfall_cm") or 0.0
+            regional_k = float(_snow_cfg.get("regional_coefficient", 1.0))
+            sf_adj = sf * regional_k  # скорректированный снегопад
+            # Формула: base (по суточному объёму) + длительность
+            if sf_adj >= float(_snow_cfg.get("heavy_cm", 15)):
+                snow_base = int(_snow_cfg.get("heavy_score", 8))
+            elif sf_adj >= float(_snow_cfg.get("moderate_cm", 5)):
+                snow_base = int(_snow_cfg.get("moderate_score", 5))
+            elif sf_adj >= float(_snow_cfg.get("light_cm", 1)):
+                snow_base = int(_snow_cfg.get("light_score", 2))
+            else:
+                snow_base = 0
+            r["snow_impact"] = min(10, snow_base)
+            r["snowfall_cm"] = sf
+
+        # Второй проход: учёт длительности (суммарный снег за окно)
+        _snow_cfg = _rules.get("ecology_rules").get("forecast", {}).get("snow_impact", {})
+        window = int(_snow_cfg.get("accumulation_days", 3))
+        acc_heavy = float(_snow_cfg.get("accumulation_heavy_cm", 20))
+        acc_mod   = float(_snow_cfg.get("accumulation_moderate_cm", 10))
+        regional_k = float(_snow_cfg.get("regional_coefficient", 1.0))
+        for i, r in enumerate(rows):
+            # сумма снегопада за окно (текущий + предыдущие дни в прогнозе)
+            start = max(0, i - window + 1)
+            acc_snow = sum((rows[j].get("snowfall_cm") or 0) for j in range(start, i + 1)) * regional_k
+            if acc_snow >= acc_heavy:
+                r["snow_impact"] = min(10, max(r["snow_impact"], 9))
+            elif acc_snow >= acc_mod:
+                r["snow_impact"] = min(10, max(r["snow_impact"], 6))
 
         return rows
     except Exception as e:

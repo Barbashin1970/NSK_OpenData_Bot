@@ -250,9 +250,9 @@ def execute_ecology(plan: Plan) -> dict[str, Any]:
             days = min(plan.limit, 7) if plan.limit and plan.limit > 0 else 7
             rows = query_forecast(district_filter=district, days=days)
             cols = ["forecast_date", "day_name", "temp_max", "temp_min",
-                    "wind_max", "precipitation", "weathercode",
+                    "wind_max", "precipitation", "snowfall_cm", "weathercode",
                     "weather_icon", "weather_desc",
-                    "ice_risk", "cold_risk", "snow_risk"]
+                    "ice_risk", "cold_risk", "snow_risk", "snow_impact"]
             return {
                 "operation": op,
                 "rows": [{k: r.get(k) for k in cols} for r in rows],
