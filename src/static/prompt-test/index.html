@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест по промпт-инжинирингу</title>
+    <style>
+:root {
+  /* Primitive Color Tokens */
+  --color-white: rgba(255, 255, 255, 1);
+  --color-black: rgba(0, 0, 0, 1);
+  --color-cream-50: rgba(252, 252, 249, 1);
+  --color-cream-100: rgba(255, 255, 253, 1);
+  --color-gray-200: rgba(245, 245, 245, 1);
+  --color-gray-300: rgba(167, 169, 169, 1);
+  --color-gray-400: rgba(119, 124, 124, 1);
+  --color-slate-500: rgba(98, 108, 113, 1);
+  --color-brown-600: rgba(94, 82, 64, 1);
+  --color-charcoal-700: rgba(31, 33, 33, 1);
+  --color-charcoal-800: rgba(38, 40, 40, 1);
+  --color-slate-900: rgba(19, 52, 59, 1);
+  --color-teal-300: rgba(50, 184, 198, 1);
+  --color-teal-400: rgba(45, 166, 178, 1);
+  --color-teal-500: rgba(33, 128, 141, 1);
+  --color-teal-600: rgba(29, 116, 128, 1);
+  --color-teal-700: rgba(26, 104, 115, 1);
+  --color-teal-800: rgba(41, 150, 161, 1);
+  --color-red-400: rgba(255, 84, 89, 1);
+  --color-red-500: rgba(192, 21, 47, 1);
+  --color-orange-400: rgba(230, 129, 97, 1);
+  --color-orange-500: rgba(168, 75, 47, 1);
+
+  --color-brown-600-rgb: 94, 82, 64;
+  --color-teal-500-rgb: 33, 128, 141;
+  --color-slate-900-rgb: 19, 52, 59;
+  --color-slate-500-rgb: 98, 108, 113;
+  --color-red-500-rgb: 192, 21, 47;
+  --color-red-400-rgb: 255, 84, 89;
+  --color-orange-500-rgb: 168, 75, 47;
+  --color-orange-400-rgb: 230, 129, 97;
+
+  --color-bg-1: rgba(59, 130, 246, 0.08);
+  --color-bg-2: rgba(245, 158, 11, 0.08);
+  --color-bg-3: rgba(34, 197, 94, 0.08);
+  --color-bg-4: rgba(239, 68, 68, 0.08);
+  --color-bg-5: rgba(147, 51, 234, 0.08);
+  --color-bg-6: rgba(249, 115, 22, 0.08);
+  --color-bg-7: rgba(236, 72, 153, 0.08);
+  --color-bg-8: rgba(6, 182, 212, 0.08);
+
+  --color-background: var(--color-cream-50);
+  --color-surface: var(--color-cream-100);
+  --color-text: var(--color-slate-900);
+  --color-text-secondary: var(--color-slate-500);
+  --color-primary: var(--color-teal-500);
+  --color-primary-hover: var(--color-teal-600);
+  --color-primary-active: var(--color-teal-700);
+  --color-border: rgba(var(--color-brown-600-rgb), 0.2);
+  --color-btn-primary-text: var(--color-cream-50);
+  --color-card-border: rgba(var(--color-brown-600-rgb), 0.12);
+  --color-error: var(--color-red-500);
+  --color-success: var(--color-teal-500);
+  --color-warning: var(--color-orange-500);
+  --color-info: var(--color-slate-500);
+
+  --color-success-rgb: 33, 128, 141;
+  --color-error-rgb: 192, 21, 47;
+  --color-warning-rgb: 168, 75, 47;
+  --color-info-rgb: 98, 108, 113;
+
+  --font-family-base: "FKGroteskNeue", "Inter", -apple-system, sans-serif;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 550;
+  --font-weight-bold: 600;
+
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-32: 32px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+}
+
+@font-face {
+  font-family: 'FKGroteskNeue';
+  src: url('https://r2cdn.perplexity.ai/fonts/FKGroteskNeue.woff2') format('woff2');
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family-base);
+  background-color: var(--color-background);
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-20) var(--space-24);
+}
+
+.header {
+  text-align: center;
+  margin-bottom: var(--space-20);
+}
+
+.header h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-bottom: var(--space-12);
+}
+
+.total-score-card {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-teal-700));
+  color: white;
+  padding: var(--space-12) var(--space-20);
+  border-radius: var(--radius-md);
+  text-align: center;
+  margin-bottom: var(--space-24);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.total-score-card h2 {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--space-8);
+  opacity: 0.95;
+}
+
+.total-score-number {
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+}
+
+.total-score-percentage {
+  font-size: var(--font-size-lg);
+  opacity: 0.9;
+  margin: 0;
+}
+
+.user-info-section {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-16);
+  margin-bottom: var(--space-24);
+}
+
+.user-info-section h3 {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-12);
+  color: var(--color-text);
+}
+
+.user-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-12);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--space-8);
+  color: var(--color-text);
+}
+
+.form-group input {
+  padding: var(--space-12);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-base);
+  font-family: var(--font-family-base);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+.form-group input:focus {
+  outline: 2px solid var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.modules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-16);
+  margin-top: var(--space-20);
+}
+
+.module-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-16);
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.module-card:hover {
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.module-header {
+  margin-bottom: var(--space-12);
+  flex-shrink: 0;
+}
+
+.module-number {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-bottom: var(--space-4);
+}
+
+.module-title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  line-height: 1.3;
+}
+
+.score-display {
+  text-align: center;
+  margin: var(--space-12) 0;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.score-text {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+}
+
+.score-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-top: var(--space-4);
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 6px;
+  background-color: var(--color-bg-1);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: var(--space-12);
+  flex-shrink: 0;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-teal-400));
+  transition: width 0.5s ease;
+  border-radius: var(--radius-sm);
+}
+
+.btn {
+  padding: var(--space-12) var(--space-24);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: var(--font-family-base);
+  text-align: center;
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: var(--color-btn-primary-text);
+  width: 100%;
+  margin-top: auto;
+  align-self: flex-end;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background-color: var(--color-bg-2);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-bg-1);
+}
+
+.hidden {
+  display: none !important;
+}
+
+#testView {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.test-header {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-24);
+  margin-bottom: var(--space-24);
+}
+
+.test-header h2 {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-bottom: var(--space-16);
+}
+
+.progress-section {
+  margin-top: var(--space-16);
+}
+
+.question-counter {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-8);
+}
+
+.question-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-32);
+  margin-bottom: var(--space-24);
+}
+
+.question-number {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-bottom: var(--space-16);
+}
+
+.question-text {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-24);
+  line-height: 1.5;
+}
+
+.options-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+.option-button {
+  display: flex;
+  align-items: flex-start;
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: left;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+}
+
+.option-button:hover {
+  border-color: var(--color-primary);
+  background-color: var(--color-bg-1);
+}
+
+.option-button.selected {
+  border-color: var(--color-primary);
+  background-color: var(--color-bg-1);
+  box-shadow: 0 0 0 3px rgba(var(--color-teal-500-rgb), 0.15);
+}
+
+.option-letter {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-right: var(--space-12);
+  min-width: 24px;
+}
+
+.option-text {
+  flex: 1;
+  line-height: 1.5;
+}
+
+.matching-container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-24);
+}
+
+.matching-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.column-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-8);
+}
+
+.matching-item {
+  background-color: var(--color-bg-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-16);
+}
+
+.matching-item-number {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-bottom: var(--space-8);
+}
+
+.matching-select {
+  width: 100%;
+  padding: var(--space-12);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-base);
+  font-family: var(--font-family-base);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  margin-top: var(--space-12);
+  cursor: pointer;
+}
+
+.matching-select:focus {
+  outline: 2px solid var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.right-option {
+  background-color: var(--color-bg-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-16);
+}
+
+.right-option-letter {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  margin-bottom: var(--space-8);
+}
+
+.navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-16);
+  margin-top: var(--space-24);
+}
+
+.navigation .btn {
+  flex: 1;
+  max-width: 200px;
+  padding: var(--space-16) var(--space-24);
+  font-size: var(--font-size-lg);
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: var(--space-12);
+  }
+  
+  .modules-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .user-info-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .navigation {
+    flex-direction: column;
+  }
+  
+  .navigation .btn {
+    max-width: 100%;
+  }
+  
+  .header h1 {
+    font-size: var(--font-size-xl);
+  }
+  
+  .module-card {
+    min-height: 160px;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .modules-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1025px) {
+  .modules-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Dashboard View -->
+        <div id="dashboardView">
+            <div class="header">
+                <h1>🧠 Тест по промпт-инжинирингу</h1>
+            </div>
+
+            <!-- Total Score Card - Compact -->
+            <div class="total-score-card">
+                <h2>Итоговый результат:</h2>
+                <div style="display: flex; align-items: center; justify-content: center; gap: var(--space-16);">
+                    <div class="total-score-number" id="totalScoreNumber">0/72</div>
+                    <div class="total-score-percentage" id="totalScorePercentage">0%</div>
+                </div>
+            </div>
+
+            <!-- User Info Section -->
+            <div class="user-info-section">
+                <h3>👤 Информация о пользователе</h3>
+                <div class="user-info-grid">
+                    <div class="form-group">
+                        <label for="userName">Имя</label>
+                        <input type="text" id="userName" placeholder="Введите ваше имя" onchange="saveUserInfo()">
+                    </div>
+                    <div class="form-group">
+                        <label for="userLastName">Фамилия</label>
+                        <input type="text" id="userLastName" placeholder="Введите вашу фамилию" onchange="saveUserInfo()">
+                    </div>
+                    <div class="form-group">
+                        <label for="userEmail">Почта</label>
+                        <input type="email" id="userEmail" placeholder="example@email.com" onchange="saveUserInfo()">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modules Grid -->
+            <div class="modules-grid" id="modulesGrid" style="display: grid;">
+                <!-- Modules will be rendered by JavaScript -->
+            </div>
+
+            <!-- Clear Results Button with Warning -->
+            <div style="margin-top: var(--space-32); text-align: center; padding: var(--space-24); border-top: 2px solid var(--color-border);">
+                <p style="margin-bottom: var(--space-16); color: var(--color-error); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold);">
+                    ⚠️ Внимание! Это удалит все баллы и результаты тестов.
+                </p>
+                <button id="clearResultsBtn" class="btn" style="background-color: var(--color-error); color: white; padding: var(--space-12) var(--space-24); font-size: var(--font-size-base); font-weight: var(--font-weight-bold); min-width: 250px;" onclick="showClearConfirmation()">
+                    🗑️ Очистить все результаты тестов
+                </button>
+            </div>
+        </div>
+
+        <!-- Test View -->
+        <div id="testView" class="hidden">
+            <div class="test-header">
+                <h2 id="testModuleTitle"></h2>
+                <div class="progress-section">
+                    <div class="question-counter" id="questionCounter">Вопрос 1 из 5</div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progressBar" style="width: 20%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="questionContainer">
+                <!-- Questions will be rendered by JavaScript -->
+            </div>
+
+            <div class="navigation" id="navigation">
+                <button class="btn btn-secondary" id="prevButton">← Назад</button>
+                <button class="btn btn-primary" id="nextButton">Далее →</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+    // Notify parent frame about score updates
+    const _origSaveScores = window.saveScores;
+    window.saveScores = function() {
+      _origSaveScores.apply(this, arguments);
+      const total = Object.values(moduleScores).reduce((a,b) => a+b, 0);
+      if (window.parent !== window) {
+        window.parent.postMessage({type: 'prompt-test-score', score: total, max: 72}, '*');
+      }
+    };
+    // Send initial score on load
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const total = Object.values(moduleScores).reduce((a,b) => a+b, 0);
+        if (window.parent !== window) {
+          window.parent.postMessage({type: 'prompt-test-score', score: total, max: 72}, '*');
+        }
+      }, 500);
+    });
+    </script>
+</body>
+</html>

@@ -1058,6 +1058,11 @@ async function _studioAuth() {
         <p class="text-xs text-slate-400 mt-0.5">Соберите структурированный промпт и вставьте в любую LLM (LM-Studio, ChatGPT, GigaChat, YandexGPT)</p>
       </div>
       <div class="flex items-center gap-2">
+        <span id="prompt-test-score-badge" class="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold hidden">0/72</span>
+        <button onclick="_openPromptTest()"
+                class="text-xs px-3 py-1.5 rounded bg-violet-600 hover:bg-violet-700 text-white font-medium transition-colors">
+          🧠 Получить допуск
+        </button>
         <button onclick="_promptReset()"
                 class="text-xs px-3 py-1.5 rounded border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors">
           ↺ Сбросить
@@ -5117,6 +5122,49 @@ async function _crPreviewReport(slug) {
 
 _loadCityLabel();
 _initFromHash();
+
+// ── Тест по промпт-инжинирингу ───────────────────────────────────────────
+function _openPromptTest() {
+  let overlay = document.getElementById('prompt-test-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'prompt-test-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:50000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="width:90vw;max-width:1100px;height:88vh;background:#fff;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <div style="display:flex;align-items:center;justify-content:between;padding:12px 20px;border-bottom:1px solid #e2e8f0;flex-shrink:0">
+          <span style="font-size:14px;font-weight:600;color:#334155;flex:1">🧠 Тест по промпт-инжинирингу</span>
+          <span id="prompt-test-modal-score" style="font-size:12px;padding:4px 10px;border-radius:20px;background:#f0fdf4;color:#166534;font-weight:600;margin-right:12px"></span>
+          <button onclick="document.getElementById('prompt-test-overlay').style.display='none'" style="border:none;background:#f1f5f9;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;color:#64748b;display:flex;align-items:center;justify-content:center">✕</button>
+        </div>
+        <iframe src="/static/prompt-test/index.html" style="flex:1;border:none;width:100%"></iframe>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+  overlay.style.display = 'flex';
+}
+
+// Listen for score updates from iframe
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'prompt-test-score') {
+    const {score, max} = e.data;
+    const badge = document.getElementById('prompt-test-score-badge');
+    if (badge) {
+      badge.textContent = `${score}/${max}`;
+      badge.classList.toggle('hidden', score === 0);
+      // Color by percentage
+      const pct = score / max;
+      badge.className = badge.className.replace(/bg-\S+|text-\S+/g, '').trim();
+      if (pct >= 0.8) badge.className += ' bg-emerald-100 text-emerald-700';
+      else if (pct >= 0.5) badge.className += ' bg-amber-100 text-amber-700';
+      else badge.className += ' bg-red-100 text-red-700';
+    }
+    const modalScore = document.getElementById('prompt-test-modal-score');
+    if (modalScore) {
+      modalScore.textContent = `${score} / ${max} (${Math.round(pct * 100)}%)`;
+    }
+  }
+});
 </script>
 </body>
 </html>
