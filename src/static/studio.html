@@ -239,9 +239,6 @@ async function _studioAuth() {
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="data">
       Данные
     </button>
-    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="schemas">
-      Схемы
-    </button>
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="rules">
       Регламенты
     </button>
@@ -530,9 +527,10 @@ async function _studioAuth() {
   <div id="tab-data" class="tab-pane">
     <!-- Под-табы -->
     <div class="flex gap-0 border-b border-slate-200 mb-5">
+      <button class="data-sub-btn active text-sm px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-medium" data-sub="reports" onclick="_switchDataSub('reports')">📊 Аналитические отчёты</button>
+      <button class="data-sub-btn text-sm px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-700" data-sub="schemas" onclick="_switchDataSub('schemas')">🗂 Схемы</button>
       <button class="data-sub-btn text-sm px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-700" data-sub="import" onclick="_switchDataSub('import')">Импорт данных</button>
       <button class="data-sub-btn text-sm px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-700" data-sub="sources" onclick="_switchDataSub('sources')">Онлайн источники</button>
-      <button class="data-sub-btn active text-sm px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-medium" data-sub="reports" onclick="_switchDataSub('reports')">📊 Аналитические отчёты</button>
     </div>
 
     <!-- Под-вкладка: Импорт -->
@@ -785,19 +783,19 @@ async function _studioAuth() {
       </div>
     </div>
 
-  </div><!-- /tab-data -->
-
-  <!-- ══ Вкладка: Справочник схем ═══════════════════════════════════════════ -->
-  <div id="tab-schemas" class="tab-pane">
-    <h2 class="text-lg font-semibold text-slate-800 mb-4">Справочник канонических схем</h2>
-    <p class="text-sm text-slate-500 mb-5">
-      Исходник: <code class="bg-slate-100 px-1 rounded">config/canonical_schemas.yaml</code>.
-      Имена полей <strong>нельзя менять</strong> без обновления кода.
-    </p>
-    <div id="schemas-container" class="space-y-3">
-      <div class="text-slate-400 text-sm py-8 text-center">Загрузка схем…</div>
+    <!-- Под-вкладка: Схемы -->
+    <div id="data-sub-schemas" class="data-sub-pane hidden">
+      <h2 class="text-lg font-semibold text-slate-800 mb-4">Справочник канонических схем</h2>
+      <p class="text-sm text-slate-500 mb-5">
+        Исходник: <code class="bg-slate-100 px-1 rounded">config/canonical_schemas.yaml</code>.
+        Имена полей <strong>нельзя менять</strong> без обновления кода.
+      </p>
+      <div id="schemas-container" class="space-y-3">
+        <div class="text-slate-400 text-sm py-8 text-center">Загрузка схем…</div>
+      </div>
     </div>
-  </div>
+
+  </div><!-- /tab-data -->
 
   <!-- ══ Вкладка: Регламенты ════════════════════════════════════════════════ -->
   <div id="tab-rules" class="tab-pane">
@@ -1655,7 +1653,6 @@ function switchTab(tab) {
   if (tab === 'api')       _loadApiDocs();
   if (tab === 'profiles')  loadProfiles();
   if (tab === 'data')      _switchDataSub('reports');
-  if (tab === 'schemas')   loadSchemas();
   if (tab === 'rules')     initRulesTab();
   if (tab === 'history')   loadHistory();
   if (tab === 'vocabulary') loadVocabulary();
@@ -1687,6 +1684,7 @@ function _switchDataSub(sub) {
 
   if (sub === 'sources') initSourcesTab();
   if (sub === 'reports') loadCustomReports();
+  if (sub === 'schemas') loadSchemas();
 }
 
 // ── Global city label (загружается один раз, обновляет все индикаторы) ────
@@ -1709,9 +1707,10 @@ async function _loadCityLabel() {
 }
 
 // ── Hash-роутинг ─────────────────────────────────────────────────────────
-const VALID_TABS = ['overview','api','testing','profiles','data','schemas','rules'];
+const VALID_TABS = ['overview','api','testing','profiles','data','rules'];
 function _initFromHash() {
   const hash = location.hash.replace('#','');
+  if (hash === 'schemas') { switchTab('data'); _switchDataSub('schemas'); return; }
   if (VALID_TABS.includes(hash)) {
     switchTab(hash);
   } else {

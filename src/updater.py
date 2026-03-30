@@ -11,6 +11,7 @@
 import asyncio
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .cache import table_exists
@@ -246,7 +247,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 # Пауза между городами (секунды) — бережём API лимиты
 _CITY_INTERVAL = 30
 # Интервал полного цикла (часы)
-_MULTI_CITY_INTERVAL_HOURS = 6
+_MULTI_CITY_INTERVAL_HOURS = 1  # каждый час — накопление экологии для аналитики
 
 
 def _list_city_profiles() -> list[dict]:
@@ -595,12 +596,129 @@ def _refresh_osm_topics_isolated(profile: dict, city_id: str) -> dict[str, int]:
     return results
 
 
+def _refresh_ecology_isolated(profile: dict, city_id: str) -> int:
+    """Обновляет экологию для города изолированно (без глобального контекста).
+
+    Напрямую вызывает Open-Meteo API для станций из профиля,
+    записывает в city-specific DB. Не зависит от get_ecology_stations().
+    """
+    import duckdb
+    from .ecology_fetcher import (
+        _fetch_openmeteo_air_quality,
+        _fetch_openmeteo_weather,
+    )
+    from .constants import ECOLOGY_HISTORY_DAYS
+
+    raw_stations = profile.get("ecology_stations", [])
+    if not raw_stations:
+        return 0
+
+    # Нормализуем станции (как get_ecology_stations)
+    stations = []
+    for s in raw_stations:
+        entry = dict(s)
+        entry.setdefault("latitude", s["lat"])
+        entry.setdefault("longitude", s["lon"])
+        stations.append(entry)
+
+    db_path = _city_db_path(city_id)
+    measured_at = datetime.now(timezone.utc).astimezone().isoformat()
+    records = []
+
+    for station in stations:
+        sid = station["station_id"]
+        aq_data = _fetch_openmeteo_air_quality(station)
+        weather_data = _fetch_openmeteo_weather(station)
+
+        if not aq_data and not weather_data:
+            continue
+
+        aq = aq_data or {}
+        weather = weather_data or {}
+        ts_key = measured_at[:19].replace(":", "-").replace("T", "_")
+        record_id = f"{sid}_{ts_key}"
+
+        records.append({
+            "id": record_id,
+            "station_id": sid,
+            "measured_at": measured_at,
+            "pm25": aq.get("pm25"),
+            "pm10": aq.get("pm10"),
+            "no2": aq.get("no2"),
+            "aqi": aq.get("aqi"),
+            "temperature_c": weather.get("temperature_c"),
+            "wind_speed_ms": weather.get("wind_speed_ms"),
+            "wind_direction_deg": weather.get("wind_direction_deg"),
+            "humidity_pct": weather.get("humidity_pct"),
+            "pressure_hpa": weather.get("pressure_hpa"),
+            "source": aq.get("source", "open-meteo"),
+        })
+
+    if not records:
+        return 0
+
+    conn = duckdb.connect(str(db_path))
+    try:
+        # Создаём таблицы если нет
+        conn.execute("""CREATE TABLE IF NOT EXISTS dim_stations (
+            station_id VARCHAR PRIMARY KEY, source VARCHAR,
+            latitude DOUBLE, longitude DOUBLE, district VARCHAR, address VARCHAR)""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS fact_measurements (
+            id VARCHAR PRIMARY KEY, station_id VARCHAR, measured_at VARCHAR,
+            pm25 DOUBLE, pm10 DOUBLE, no2 DOUBLE, aqi INTEGER,
+            temperature_c DOUBLE, wind_speed_ms DOUBLE, wind_direction_deg DOUBLE,
+            humidity_pct DOUBLE, pressure_hpa DOUBLE, source VARCHAR)""")
+
+        # Upsert станций
+        for s in stations:
+            conn.execute(
+                """INSERT INTO dim_stations (station_id, source, latitude, longitude, district, address)
+                   VALUES (?, 'open-meteo', ?, ?, ?, ?)
+                   ON CONFLICT (station_id) DO UPDATE SET
+                       latitude=excluded.latitude, longitude=excluded.longitude,
+                       district=excluded.district, address=excluded.address""",
+                [s["station_id"], s["latitude"], s["longitude"], s["district"], s.get("address", "")],
+            )
+
+        # Удаляем старые записи
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=ECOLOGY_HISTORY_DAYS)).isoformat()
+        conn.execute("DELETE FROM fact_measurements WHERE measured_at < ?", [cutoff])
+
+        # Upsert измерений
+        for r in records:
+            conn.execute(
+                """INSERT INTO fact_measurements
+                   (id, station_id, measured_at, pm25, pm10, no2, aqi,
+                    temperature_c, wind_speed_ms, wind_direction_deg, humidity_pct, pressure_hpa, source)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT (id) DO UPDATE SET
+                       pm25=excluded.pm25, pm10=excluded.pm10, no2=excluded.no2, aqi=excluded.aqi,
+                       temperature_c=excluded.temperature_c, wind_speed_ms=excluded.wind_speed_ms,
+                       wind_direction_deg=excluded.wind_direction_deg, humidity_pct=excluded.humidity_pct,
+                       pressure_hpa=excluded.pressure_hpa, source=excluded.source""",
+                [r["id"], r["station_id"], r["measured_at"], r["pm25"], r["pm10"],
+                 r["no2"], r["aqi"], r["temperature_c"], r["wind_speed_ms"],
+                 r["wind_direction_deg"], r["humidity_pct"], r["pressure_hpa"], r["source"]],
+            )
+
+        log.info("multi-city [%s]: экология — %d записей", city_id, len(records))
+        return len(records)
+    finally:
+        conn.close()
+
+
 def _refresh_one_city(city: dict) -> dict:
     """Обновляет все бесплатные источники для одного города (изолированно)."""
     city_id = city["city_id"]
     city_name = city["city_name"]
     profile = city["profile"]
     results = {}
+
+    try:
+        results["ecology"] = _refresh_ecology_isolated(profile, city_id)
+    except Exception as e:
+        log.warning("multi-city [%s] ecology: %s", city_name, e)
+        results["ecology"] = 0
 
     try:
         results["medical"] = _refresh_medical_isolated(profile, city_id)

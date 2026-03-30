@@ -27,14 +27,14 @@
     /* Тултип для терминов (AQI, PM2.5) */
     .term-hint { position: relative; cursor: help; border-bottom: 1px dotted currentColor; }
     .term-hint .term-tip {
-      display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+      display: none; position: absolute; bottom: calc(100% + 6px); left: 0;
       background: #1e293b; color: #fff; font-size: 11px; line-height: 1.4; padding: 8px 12px;
       border-radius: 10px; white-space: normal; width: max-content; max-width: 280px;
       z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,.25); pointer-events: none;
       font-weight: 400; text-transform: none; letter-spacing: 0;
     }
     .term-hint .term-tip::after {
-      content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+      content: ''; position: absolute; top: 100%; left: 16px;
       border: 5px solid transparent; border-top-color: #1e293b;
     }
     .term-hint:hover .term-tip, .term-hint:focus .term-tip { display: block; }
@@ -5204,7 +5204,7 @@ function renderEcology(data) {
           <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center">
             <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">🍃 Качество воздуха по районам</span>
             <div class="flex items-center gap-3">
-              <button onclick="document.getElementById('questionInput').value='прогноз погоды на неделю';submitQuestion()"
+              <button onclick="setQuery('прогноз погоды на неделю')"
                 class="text-xs px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-colors whitespace-nowrap font-medium">
                 📅 Прогноз
               </button>

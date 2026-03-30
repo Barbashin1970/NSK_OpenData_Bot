@@ -349,8 +349,8 @@ async def _start_background_preloader() -> None:
     # Проактивный сбор экологии + ЖКХ для активного города (каждые 25 мин)
     asyncio.create_task(critical_data_refresh_loop(interval_minutes=25, initial_delay=60.0))
     # Мульти-город: обновляет экологию/медицину/камеры для ВСЕХ городов
-    # Стартует через 2 мин (после основных preloader'ов), повторяется каждые 6 ч
-    asyncio.create_task(multi_city_refresh_loop(interval_hours=6, initial_delay=120.0))
+    # Стартует через 2 мин, повторяется каждый час (накопление экоданных)
+    asyncio.create_task(multi_city_refresh_loop(interval_hours=1, initial_delay=120.0))
 
 
 # ── Кастомный Swagger UI ─────────────────────────────────────────────────────
