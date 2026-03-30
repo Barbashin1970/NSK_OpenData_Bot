@@ -1191,9 +1191,14 @@ function smtpSettingsForm() {
     <label class="form-label">Email отправителя (если отличается от логина)</label>
     <input id="smFrom" class="form-input" type="email" placeholder="Оставьте пустым для логина">
 
-    <div class="flex justify-end gap-2 mt-3">
-      <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
-      <button onclick="saveSmtpSettings()" class="btn btn-primary">Сохранить</button>
+    <div id="smTestResult" class="mb-3"></div>
+
+    <div class="flex items-center gap-2 mt-3">
+      <button onclick="testSmtpConnection()" class="btn btn-ghost text-sm" id="smTestBtn" style="border:1px solid #3b82f6;color:#3b82f6">Проверить подключение</button>
+      <div class="ml-auto flex gap-2">
+        <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
+        <button onclick="saveSmtpSettings()" class="btn btn-primary">Сохранить</button>
+      </div>
     </div>
   `;
 }
@@ -1232,6 +1237,43 @@ async function saveSmtpSettings() {
     alert('SMTP-настройки сохранены');
     closeModal();
   } catch(err) { alert('Ошибка: ' + err.message); }
+}
+
+async function testSmtpConnection() {
+  const btn = document.getElementById('smTestBtn');
+  const res = document.getElementById('smTestResult');
+  btn.disabled = true; btn.textContent = 'Проверяю...';
+  res.innerHTML = '<div class="text-xs text-blue-500">Подключение к SMTP-серверу...</div>';
+
+  // Сначала сохраняем текущие значения (чтобы тест был актуальным)
+  const data = {
+    host: document.getElementById('smHost').value.trim(),
+    port: parseInt(document.getElementById('smPort').value) || 587,
+    use_tls: true,
+    username: document.getElementById('smUser').value.trim(),
+    password: document.getElementById('smPass').value,
+    from_name: document.getElementById('smName').value.trim(),
+    from_email: document.getElementById('smFrom').value.trim(),
+  };
+  try {
+    await api('/api/email/config', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+  } catch(e) {}
+
+  try {
+    const r = await fetch('/api/email/test', { method: 'POST' });
+    const result = await r.json();
+    if (result.ok) {
+      res.innerHTML = `<div class="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">${esc(result.message)}</div>`;
+    } else {
+      res.innerHTML = `<div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">${esc(result.error)}</div>`;
+    }
+  } catch(err) {
+    res.innerHTML = `<div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">Ошибка запроса: ${esc(err.message)}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Проверить подключение';
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

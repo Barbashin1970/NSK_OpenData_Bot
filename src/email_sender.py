@@ -54,6 +54,38 @@ def save_smtp_config(data: dict) -> dict:
     return get_smtp_config()
 
 
+def test_smtp_connection() -> dict:
+    """Проверяет подключение к SMTP без отправки письма."""
+    cfg = _load_config()
+    if not cfg.get("username") or not cfg.get("password"):
+        return {"ok": False, "error": "Логин или пароль не заполнены."}
+
+    try:
+        ctx = ssl.create_default_context()
+        server = smtplib.SMTP(cfg["host"], int(cfg.get("port", 587)), timeout=10)
+        try:
+            server.ehlo()
+            if cfg.get("use_tls", True):
+                server.starttls(context=ctx)
+                server.ehlo()
+            server.login(cfg["username"], cfg["password"])
+            return {"ok": True, "message": f"Подключение к {cfg['host']}:{cfg['port']} успешно. Авторизация пройдена."}
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                pass
+    except smtplib.SMTPAuthenticationError as e:
+        code = getattr(e, 'smtp_code', '')
+        return {"ok": False, "error": f"Ошибка авторизации ({code}). Для Gmail нужен App Password, а не обычный пароль."}
+    except TimeoutError:
+        return {"ok": False, "error": f"Таймаут подключения к {cfg['host']}:{cfg['port']}. Проверьте сервер и порт."}
+    except OSError as e:
+        return {"ok": False, "error": f"Сетевая ошибка: {e}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def send_email(
     to: str,
     subject: str,

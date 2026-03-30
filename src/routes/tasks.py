@@ -330,6 +330,17 @@ async def api_email_config_save(request: Request):
 
 
 @router.post(
+    "/api/email/test",
+    tags=["Пространство задач"],
+    summary="Проверить SMTP-подключение",
+)
+async def api_email_test():
+    import asyncio
+    from ..email_sender import test_smtp_connection
+    return await asyncio.to_thread(test_smtp_connection)
+
+
+@router.post(
     "/api/email/send",
     tags=["Пространство задач"],
     summary="Отправить email с вложениями",
