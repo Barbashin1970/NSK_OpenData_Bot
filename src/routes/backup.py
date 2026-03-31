@@ -7,6 +7,7 @@ Endpoints:
   GET  /api/backup/snapshots  — список снимков на сервере
   GET  /api/backup/download/{name} — скачать конкретный снимок
   DELETE /api/backup/snapshot/{name} — удалить снимок
+  GET  /api/version/check     — проверка наличия новой версии
 """
 
 import io
@@ -265,3 +266,61 @@ def backup_delete(name: str):
     path.unlink()
     log.info("backup delete: %s", name)
     return {"deleted": name}
+
+
+# ── Version check ────────────────────────────────────────────────────────────
+
+_GITHUB_REPO = "Barbashin1970/NSK_OpenData_Bot"
+_VERSION_CACHE: dict = {}
+
+
+@router.get(
+    "/api/version/check",
+    tags=["Backup"],
+    summary="Проверить наличие новой версии",
+)
+def version_check():
+    """Сравнивает локальную версию с последней на GitHub."""
+    import importlib.metadata
+    import urllib.request
+
+    try:
+        local_version = importlib.metadata.version("nsk-opendata-bot")
+    except Exception:
+        local_version = "unknown"
+
+    # Cache: check GitHub max once per hour
+    now = datetime.now()
+    if _VERSION_CACHE.get("checked_at") and (now - _VERSION_CACHE["checked_at"]).seconds < 3600:
+        return {
+            "local": local_version,
+            "remote": _VERSION_CACHE.get("remote", "unknown"),
+            "update_available": _VERSION_CACHE.get("update_available", False),
+            "cached": True,
+        }
+
+    remote_version = "unknown"
+    update_available = False
+    try:
+        url = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/pyproject.toml"
+        req = urllib.request.Request(url, headers={"User-Agent": "SIGMA-Bot"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            text = resp.read().decode()
+            for line in text.splitlines():
+                if line.startswith("version"):
+                    remote_version = line.split('"')[1]
+                    break
+        update_available = remote_version != "unknown" and remote_version != local_version
+    except Exception as e:
+        log.debug("version check failed: %s", e)
+
+    _VERSION_CACHE["remote"] = remote_version
+    _VERSION_CACHE["update_available"] = update_available
+    _VERSION_CACHE["checked_at"] = now
+
+    return {
+        "local": local_version,
+        "remote": remote_version,
+        "update_available": update_available,
+        "cached": False,
+    }

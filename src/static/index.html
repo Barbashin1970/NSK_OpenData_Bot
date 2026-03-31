@@ -7961,10 +7961,19 @@ if (currentRole !== 'citizen') {
   setTimeout(updateTime, 30000);
 })();
 
-// Footer version
+// Footer version + update check
 fetch('/api/version').then(r=>r.json()).then(d=>{
   const el=document.getElementById('footerVer');
   if(el&&d.version) el.textContent='v'+d.version;
+}).catch(()=>{});
+fetch('/api/version/check').then(r=>r.json()).then(d=>{
+  if(!d.update_available) return;
+  const el=document.getElementById('footerVer');
+  if(!el) return;
+  el.className='inline-block bg-amber-100 border border-amber-300 rounded px-1.5 py-0.5 text-[10px] text-amber-700 font-mono ml-1 cursor-pointer';
+  el.title='Нажмите для обновления';
+  el.textContent='v'+d.local+' → v'+d.remote;
+  el.onclick=()=>window.open('https://github.com/Barbashin1970/NSK_OpenData_Bot/archive/refs/heads/main.zip','_blank');
 }).catch(()=>{});
 
 // ── Footer QR Code ───────────────────────────────────────────────────

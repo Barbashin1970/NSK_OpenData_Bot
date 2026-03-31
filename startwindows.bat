@@ -33,9 +33,37 @@ echo [OK] pip
 
 git --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [--] git not found (optional)
+    echo [--] git not found (optional, needed for auto-update)
+    set HAS_GIT=0
 ) else (
     echo [OK] git
+    set HAS_GIT=1
+)
+
+echo.
+
+:: == Auto-update via git pull =================================================
+if %HAS_GIT% == 1 (
+    git rev-parse --git-dir >nul 2>&1
+    if !errorlevel! == 0 (
+        echo Checking for updates...
+        git fetch origin main --quiet 2>nul
+        for /f %%a in ('git rev-parse HEAD 2^>nul') do set LOCAL_REV=%%a
+        for /f %%a in ('git rev-parse origin/main 2^>nul') do set REMOTE_REV=%%a
+        if not "!LOCAL_REV!" == "!REMOTE_REV!" (
+            echo [!] New version available - updating...
+            git pull origin main --quiet 2>nul
+            if !errorlevel! == 0 (
+                echo [OK] Updated successfully
+            ) else (
+                echo [--] Update failed, continuing with current version
+            )
+        ) else (
+            echo [OK] Already up to date
+        )
+    ) else (
+        echo [--] Not a git repo, skipping auto-update
+    )
 )
 
 echo.
