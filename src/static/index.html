@@ -279,7 +279,6 @@
       <a href="/tasks" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Задачи ↗</a> ·
       <a href="/presentation" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Презентация ↗</a> ·
       <a href="/display" target="_blank" class="hover:text-blue-500 transition-colors">Пульт ДУ ↗</a> ·
-      <a href="https://safety-builder.streamlit.app/" target="_blank" class="hover:text-blue-500 transition-colors">Демо «ИИ-помощник строителя» ↗</a> ·
       <a href="https://github.com/Barbashin1970/NSK_OpenData_Bot" target="_blank" class="hover:text-blue-500 transition-colors">GitHub ↗</a> ·
       <button onclick="_openFeedback()" class="font-bold text-slate-600 hover:text-blue-600 transition-colors cursor-pointer">💬 Жалобы и предложения</button> ·
       <span id="footerTime"></span>
@@ -5834,6 +5833,7 @@ function renderInfo(_data) {
         { icon: '📄', name: 'Разрешения на строительство', q: 'разрешения на строительство' },
         { icon: '🔑', name: 'Введено в эксплуатацию',   q: 'ввод в эксплуатацию по районам' },
         { icon: '📊', name: 'Стройки по районам',        q: 'стройки по районам' },
+        { icon: '🦺', name: 'ИИ-помощник строителя',     q: '', onclick: "window.open('https://safety-builder.streamlit.app/','_blank')" },
       ],
     } : null,
     {
