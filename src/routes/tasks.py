@@ -4,11 +4,10 @@
 MVP v1: без авторизации, все операции открыты.
 """
 
-import base64
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Query, Request, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Query, Request, HTTPException
 from fastapi.responses import HTMLResponse
 
 from ..task_store import (
@@ -304,79 +303,3 @@ def api_seed_construction():
     from ..contractors_loader import seed_construction_contractors
     count = seed_construction_contractors()
     return {"imported": count}
-
-
-# ── Email ─────────────────────────────────────────────────────────────────
-
-@router.get(
-    "/api/email/config",
-    tags=["Пространство задач"],
-    summary="Получить SMTP-конфиг (без пароля)",
-)
-def api_email_config_get():
-    from ..email_sender import get_smtp_config
-    return get_smtp_config()
-
-
-@router.post(
-    "/api/email/config",
-    tags=["Пространство задач"],
-    summary="Сохранить SMTP-конфиг",
-)
-async def api_email_config_save(request: Request):
-    data = await request.json()
-    from ..email_sender import save_smtp_config
-    return save_smtp_config(data)
-
-
-@router.post(
-    "/api/email/test",
-    tags=["Пространство задач"],
-    summary="Проверить SMTP-подключение",
-)
-async def api_email_test():
-    import asyncio
-    from ..email_sender import test_smtp_connection
-    return await asyncio.to_thread(test_smtp_connection)
-
-
-@router.post(
-    "/api/email/send",
-    tags=["Пространство задач"],
-    summary="Отправить email с вложениями",
-)
-async def api_email_send(request: Request):
-    """Принимает multipart/form-data: to, subject, body, cc, files[]."""
-    import asyncio
-    from ..email_sender import send_email
-
-    content_type = request.headers.get("content-type", "")
-
-    if "multipart/form-data" in content_type:
-        form = await request.form()
-        to = form.get("to", "")
-        subject = form.get("subject", "")
-        body = form.get("body", "")
-        cc = form.get("cc", "")
-
-        attachments = []
-        for key in form:
-            item = form[key]
-            if hasattr(item, "read"):  # UploadFile
-                content = await item.read()
-                attachments.append((item.filename, content))
-
-        if not to:
-            raise HTTPException(400, "Поле to обязательно")
-        # smtplib блокирующий — запускаем в thread pool чтобы не блокировать event loop
-        return await asyncio.to_thread(
-            send_email, to, subject, body, attachments or None, cc
-        )
-    else:
-        data = await request.json()
-        if not data.get("to"):
-            raise HTTPException(400, "Поле to обязательно")
-        return await asyncio.to_thread(
-            send_email, data["to"], data.get("subject", ""), data.get("body", ""),
-            None, data.get("cc", ""),
-        )
