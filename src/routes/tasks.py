@@ -234,6 +234,74 @@ def api_tasks_list(
     return get_tasks(status, priority, initiative_id, department, contractor_id)
 
 
+# ── Отчёт по задачам (до {task_id}, иначе FastAPI перехватит "report" как ID) ─
+
+@router.get(
+    "/api/tasks/report",
+    tags=["Пространство задач"],
+    summary="Формальный отчёт по выполненным задачам",
+)
+def api_tasks_report(
+    period: str = Query("quarter", description="quarter | year | all"),
+):
+    """Генерирует отчёт по выполненным задачам за период."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    if period == "quarter":
+        q_month = ((now.month - 1) // 3) * 3 + 1
+        since = now.replace(month=q_month, day=1, hour=0, minute=0, second=0).strftime("%Y-%m-%d")
+        period_label = f"{now.year} Q{(now.month-1)//3+1}"
+    elif period == "year":
+        since = f"{now.year}-01-01"
+        period_label = str(now.year)
+    else:
+        since = "2000-01-01"
+        period_label = "Весь период"
+
+    all_tasks = get_tasks(status="done")
+    tasks = [t for t in all_tasks if (t.get("updated_at") or "") >= since]
+    inits = get_initiatives()
+    init_map = {i["initiative_id"]: i for i in inits}
+
+    by_init: dict[str, list] = {}
+    no_init = []
+    for t in tasks:
+        iid = t.get("initiative_id", "")
+        if iid and iid in init_map:
+            by_init.setdefault(iid, []).append(t)
+        else:
+            no_init.append(t)
+
+    iq_summary = {}
+    for iid, itasks in by_init.items():
+        ini = init_map.get(iid, {})
+        d = ini.get("iq_direction", "")
+        if d:
+            iq_summary.setdefault(d, {"name": "", "tasks": 0, "baseline": 0, "target": 0})
+            iq_summary[d]["tasks"] += len(itasks)
+            iq_summary[d]["name"] = IQ_DIRECTIONS.get(d, {}).get("name", d)
+            iq_summary[d]["baseline"] = ini.get("iq_baseline", 0)
+            iq_summary[d]["target"] = ini.get("iq_target", 0)
+
+    return {
+        "period": period_label,
+        "generated_at": now.strftime("%Y-%m-%d %H:%M"),
+        "total_done": len(tasks),
+        "by_initiative": [
+            {
+                "initiative": init_map[iid]["title"],
+                "direction": init_map[iid].get("direction", ""),
+                "iq_direction": init_map[iid].get("iq_direction", ""),
+                "tasks": [{"title": t["title"], "assignee": t.get("assignee",""), "department": t.get("department","")} for t in ts],
+            }
+            for iid, ts in by_init.items()
+        ],
+        "unlinked_tasks": [{"title": t["title"], "assignee": t.get("assignee","")} for t in no_init],
+        "iq_summary": iq_summary,
+    }
+
+
 @router.get(
     "/api/tasks/{task_id}",
     tags=["Пространство задач"],
@@ -327,73 +395,3 @@ def api_seed_construction():
     count = seed_construction_contractors()
     return {"imported": count}
 
-
-# ── Отчёт по задачам ──────────────────────────────────────────────────────
-
-@router.get(
-    "/api/tasks/report",
-    tags=["Пространство задач"],
-    summary="Формальный отчёт по выполненным задачам",
-)
-def api_tasks_report(
-    period: str = Query("quarter", description="quarter | year | all"),
-):
-    """Генерирует отчёт по выполненным задачам за период."""
-    from datetime import datetime, timezone, timedelta
-
-    now = datetime.now(timezone.utc)
-    if period == "quarter":
-        # Текущий квартал
-        q_month = ((now.month - 1) // 3) * 3 + 1
-        since = now.replace(month=q_month, day=1, hour=0, minute=0, second=0).strftime("%Y-%m-%d")
-        period_label = f"{now.year} Q{(now.month-1)//3+1}"
-    elif period == "year":
-        since = f"{now.year}-01-01"
-        period_label = str(now.year)
-    else:
-        since = "2000-01-01"
-        period_label = "Весь период"
-
-    all_tasks = get_tasks(status="done")
-    tasks = [t for t in all_tasks if (t.get("updated_at") or "") >= since]
-    inits = get_initiatives()
-    init_map = {i["initiative_id"]: i for i in inits}
-
-    # Группировка по инициативам
-    by_init: dict[str, list] = {}
-    no_init = []
-    for t in tasks:
-        iid = t.get("initiative_id", "")
-        if iid and iid in init_map:
-            by_init.setdefault(iid, []).append(t)
-        else:
-            no_init.append(t)
-
-    # IQ-покрытие
-    iq_summary = {}
-    for iid, itasks in by_init.items():
-        ini = init_map.get(iid, {})
-        d = ini.get("iq_direction", "")
-        if d:
-            iq_summary.setdefault(d, {"name": "", "tasks": 0, "baseline": 0, "target": 0})
-            iq_summary[d]["tasks"] += len(itasks)
-            iq_summary[d]["name"] = IQ_DIRECTIONS.get(d, {}).get("name", d)
-            iq_summary[d]["baseline"] = ini.get("iq_baseline", 0)
-            iq_summary[d]["target"] = ini.get("iq_target", 0)
-
-    return {
-        "period": period_label,
-        "generated_at": now.strftime("%Y-%m-%d %H:%M"),
-        "total_done": len(tasks),
-        "by_initiative": [
-            {
-                "initiative": init_map[iid]["title"],
-                "direction": init_map[iid].get("direction", ""),
-                "iq_direction": init_map[iid].get("iq_direction", ""),
-                "tasks": [{"title": t["title"], "assignee": t.get("assignee",""), "department": t.get("department","")} for t in ts],
-            }
-            for iid, ts in by_init.items()
-        ],
-        "unlinked_tasks": [{"title": t["title"], "assignee": t.get("assignee","")} for t in no_init],
-        "iq_summary": iq_summary,
-    }
