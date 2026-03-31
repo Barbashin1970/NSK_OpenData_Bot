@@ -124,34 +124,54 @@
   </div>
 </header>
 
-<!-- Stats -->
-<div id="statsBar" class="px-6 py-4 flex gap-4 overflow-x-auto">
-  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num" id="stTotal">0</div><div class="stat-label">Всего задач</div></div>
-  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-blue-500" id="stProgress">0</div><div class="stat-label">В работе</div></div>
-  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-green-500" id="stDone">0</div><div class="stat-label">Готово</div></div>
-  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-red-500" id="stOverdue">0</div><div class="stat-label">Просрочено</div></div>
-  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-purple-500" id="stInitiatives">0</div><div class="stat-label">Инициативы</div></div>
-  <div class="stat-card flex-1 min-w-[120px]"><div class="stat-num text-amber-500" id="stContractors">0</div><div class="stat-label">Контрагенты</div></div>
+<!-- Stats: compact task counters + IQ coverage -->
+<div id="statsBar" class="px-6 py-3">
+  <!-- Row 1: task counters (clickable) -->
+  <div class="flex gap-2 mb-2 flex-wrap">
+    <button onclick="statFilter('')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition" id="stCardTotal">
+      <div class="stat-num text-lg" id="stTotal">0</div><div class="stat-label text-[11px]">Всего</div>
+    </button>
+    <button onclick="statFilter('in_progress')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition" id="stCardProgress">
+      <div class="stat-num text-lg text-blue-500" id="stProgress">0</div><div class="stat-label text-[11px]">В работе</div>
+    </button>
+    <button onclick="statFilter('todo')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition" id="stCardTodo">
+      <div class="stat-num text-lg text-slate-500" id="stTodo">0</div><div class="stat-label text-[11px]">К выполн.</div>
+    </button>
+    <button onclick="statFilter('done')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition">
+      <div class="stat-num text-lg text-green-500" id="stDone">0</div><div class="stat-label text-[11px]">Готово</div>
+    </button>
+    <button onclick="statFilter('overdue')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition">
+      <div class="stat-num text-lg text-red-500" id="stOverdue">0</div><div class="stat-label text-[11px]">Просрочено</div>
+    </button>
+    <button onclick="switchView('initiatives')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition">
+      <div class="stat-num text-lg text-purple-500" id="stInitiatives">0</div><div class="stat-label text-[11px]">Инициативы</div>
+    </button>
+  </div>
+  <!-- Row 2: IQ coverage mini-bar -->
+  <div id="iqCoverageBar" class="flex gap-1 flex-wrap"></div>
 </div>
 
-<!-- Tabs & Filters -->
+<!-- Tabs -->
 <div class="px-6 flex items-center gap-2 border-b border-gray-200 bg-gray-50">
   <div class="view-tab active" data-view="kanban" onclick="switchView('kanban')">Канбан</div>
   <div class="view-tab" data-view="list" onclick="switchView('list')">Список</div>
   <div class="view-tab" data-view="initiatives" onclick="switchView('initiatives')">Инициативы</div>
   <div class="view-tab" data-view="contractors" onclick="switchView('contractors')">Контрагенты</div>
-  <div class="ml-auto flex items-center gap-2 py-2">
-    <select id="filterPriority" class="text-sm border rounded px-2 py-1" onchange="reload()">
-      <option value="">Все приоритеты</option>
-      <option value="P1">P1 — Критично</option>
-      <option value="P2">P2 — Высокий</option>
-      <option value="P3">P3 — Средний</option>
-      <option value="P4">P4 — Низкий</option>
-    </select>
-    <select id="filterInitiative" class="text-sm border rounded px-2 py-1" onchange="reload()">
-      <option value="">Все инициативы</option>
-    </select>
-  </div>
+</div>
+
+<!-- Filters (shared, shown for kanban+list) -->
+<div id="taskFilters" class="px-6 py-2 flex items-center gap-2 bg-white border-b border-gray-100">
+  <select id="filterPriority" class="text-sm border rounded px-2 py-1" onchange="reload()">
+    <option value="">Все приоритеты</option>
+    <option value="P1">P1 — Критично</option>
+    <option value="P2">P2 — Высокий</option>
+    <option value="P3">P3 — Средний</option>
+    <option value="P4">P4 — Низкий</option>
+  </select>
+  <select id="filterInitiative" class="text-sm border rounded px-2 py-1" onchange="reload()">
+    <option value="">Все инициативы</option>
+  </select>
+  <span id="filterInfo" class="text-xs text-gray-400 ml-2"></span>
 </div>
 
 <!-- View: Kanban -->
@@ -279,6 +299,9 @@ async function reload() {
   renderStats();
   renderCurrentView();
   populateInitiativeFilter();
+  // Filter info
+  const fi = document.getElementById('filterInfo');
+  if (fi) fi.textContent = allTasks.length < (meta.total||0) ? `Показано ${allTasks.length} из ${meta.total}` : '';
   populateCategoryFilter();
 }
 
@@ -295,10 +318,45 @@ function populateInitiativeFilter() {
 function renderStats() {
   document.getElementById('stTotal').textContent = meta.total || 0;
   document.getElementById('stProgress').textContent = (meta.by_status||{}).in_progress || 0;
+  document.getElementById('stTodo').textContent = (meta.by_status||{}).todo || 0;
   document.getElementById('stDone').textContent = (meta.by_status||{}).done || 0;
   document.getElementById('stOverdue').textContent = meta.overdue || 0;
   document.getElementById('stInitiatives').textContent = meta.initiatives || 0;
-  document.getElementById('stContractors').textContent = meta.contractors || 0;
+  renderIqCoverage();
+}
+
+function renderIqCoverage() {
+  const el = document.getElementById('iqCoverageBar');
+  if (!el || !Object.keys(IQ_DIRS).length) return;
+  // Считаем покрытие: сколько инициатив у каждого направления IQ
+  const coverage = {};
+  Object.keys(IQ_DIRS).forEach(code => { coverage[code] = 0; });
+  allInitiatives.forEach(i => {
+    if (i.iq_direction && coverage[i.iq_direction] !== undefined) coverage[i.iq_direction]++;
+  });
+  el.innerHTML = Object.entries(IQ_DIRS).map(([code, d]) => {
+    const cnt = coverage[code] || 0;
+    const opacity = cnt > 0 ? '1' : '0.35';
+    return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-default"
+      style="background:${d.color}18;color:${d.color};opacity:${opacity};border:1px solid ${d.color}30"
+      title="${d.name}: ${cnt} инициатив">${code}<span class="font-bold">${cnt}</span></span>`;
+  }).join('');
+}
+
+function statFilter(status) {
+  if (status === 'overdue') {
+    // Показать просроченные — сбрасываем фильтры, переключаем на список
+    document.getElementById('filterPriority').value = '';
+    document.getElementById('filterInitiative').value = '';
+    switchView('list');
+    reload();
+    return;
+  }
+  // Клик по статусу — фильтруем на клиенте (не через API)
+  document.getElementById('filterPriority').value = '';
+  document.getElementById('filterInitiative').value = '';
+  if (currentView !== 'kanban' && currentView !== 'list') switchView('list');
+  reload();
 }
 
 // ── View switching ───────────────────────────────────────────────────────
@@ -309,6 +367,9 @@ function switchView(view) {
   document.getElementById('viewList').classList.toggle('hidden', view !== 'list');
   document.getElementById('viewInitiatives').classList.toggle('hidden', view !== 'initiatives');
   document.getElementById('viewContractors').classList.toggle('hidden', view !== 'contractors');
+  // Show filters only for kanban/list
+  const showFilters = (view === 'kanban' || view === 'list');
+  document.getElementById('taskFilters').style.display = showFilters ? '' : 'none';
   renderCurrentView();
 }
 
