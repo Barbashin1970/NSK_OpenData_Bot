@@ -354,7 +354,7 @@ async def _preload_medical() -> None:
 async def _seed_task_space() -> None:
     """Инициализация Пространства задач: таблицы + импорт контрагентов."""
     try:
-        from .contractors_loader import seed_contractors, seed_construction_contractors
+        from .contractors_loader import seed_contractors, seed_construction_contractors, seed_emergency_contractors
         from .task_store import seed_initiatives
         count = seed_contractors()
         if count:
@@ -366,6 +366,9 @@ async def _seed_task_space() -> None:
         constr_count = seed_construction_contractors()
         if constr_count:
             logging.getLogger(__name__).info("Task Space: загружено %d строительных компаний", constr_count)
+        emerg_count = seed_emergency_contractors()
+        if emerg_count:
+            logging.getLogger(__name__).info("Task Space: загружено %d служб ГО и ЧС", emerg_count)
     except Exception as e:
         logging.getLogger(__name__).warning("Task Space seed: %s", e)
 

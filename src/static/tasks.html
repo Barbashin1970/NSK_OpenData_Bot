@@ -835,6 +835,11 @@ async function openContractorDetail(cid) {
         <svg class="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         <div><div class="text-xs text-gray-400">Режим работы</div><div class="text-sm font-medium">${esc(c.work_hours)}</div></div>
       </div>` : ''}
+      ${c.address || c.district ? `
+      <div class="flex items-start gap-3">
+        <svg class="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <div><div class="text-xs text-gray-400">Адрес</div><div class="text-sm font-medium">${esc(c.address||'')}${c.district ? ` <span class="text-xs text-gray-400">(${esc(c.district)} район)</span>` : ''}</div></div>
+      </div>` : ''}
     </div>
 
     <!-- Задачи: счётчик -->
@@ -914,6 +919,17 @@ function contractorForm(c) {
     <label class="form-label">Режим работы</label>
     <input id="cWorkHours" class="form-input" value="${esc(d.work_hours||'')}" placeholder="Круглосуточно / Пн-Пт 9:00-18:00">
 
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="form-label">Адрес</label>
+        <input id="cAddress" class="form-input" value="${esc(d.address||'')}" placeholder="ул. Ленина, 57">
+      </div>
+      <div>
+        <label class="form-label">Район</label>
+        <input id="cDistrict" class="form-input" value="${esc(d.district||'')}" placeholder="Центральный">
+      </div>
+    </div>
+
     <label class="form-label">Комментарий</label>
     <textarea id="cComment" class="form-input" placeholder="Заметки, особенности взаимодействия...">${esc(d.comment||'')}</textarea>
 
@@ -933,6 +949,8 @@ async function saveContractor(editId) {
     email:       document.getElementById('cEmail').value.trim(),
     duty_phone:  document.getElementById('cPhone').value.trim(),
     work_hours:  document.getElementById('cWorkHours').value.trim(),
+    address:     document.getElementById('cAddress').value.trim(),
+    district:    document.getElementById('cDistrict').value.trim(),
     comment:     document.getElementById('cComment').value.trim(),
   };
   if (!data.org_name) { alert('Название организации обязательно'); return; }

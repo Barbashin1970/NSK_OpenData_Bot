@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS ts_contractors (
     email           VARCHAR,
     channel_type    VARCHAR DEFAULT 'email_only',
     comment         VARCHAR DEFAULT '',
+    address         VARCHAR DEFAULT '',
+    district        VARCHAR DEFAULT '',
     created_at      VARCHAR
 )
 """
@@ -95,6 +97,8 @@ def init_task_tables() -> None:
         for stmt in [
             "ALTER TABLE ts_tasks ADD COLUMN acceptance_criteria VARCHAR DEFAULT ''",
             "ALTER TABLE ts_contractors ADD COLUMN comment VARCHAR DEFAULT ''",
+            "ALTER TABLE ts_contractors ADD COLUMN address VARCHAR DEFAULT ''",
+            "ALTER TABLE ts_contractors ADD COLUMN district VARCHAR DEFAULT ''",
         ]:
             try:
                 conn.execute(stmt)
@@ -124,8 +128,9 @@ def upsert_contractor(row: dict) -> str:
         conn.execute("""
             INSERT OR REPLACE INTO ts_contractors
             (contractor_id, category, org_name, duty_phone, work_hours,
-             head_name, head_phone, email, channel_type, comment, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             head_name, head_phone, email, channel_type, comment,
+             address, district, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             cid,
             row.get("category", ""),
@@ -137,6 +142,8 @@ def upsert_contractor(row: dict) -> str:
             row.get("email", ""),
             row.get("channel_type", "email_only"),
             row.get("comment", ""),
+            row.get("address", ""),
+            row.get("district", ""),
             now,
         ])
         return cid
@@ -202,8 +209,9 @@ def create_contractor(data: dict) -> dict:
         conn.execute("""
             INSERT INTO ts_contractors
             (contractor_id, category, org_name, duty_phone, work_hours,
-             head_name, head_phone, email, channel_type, comment, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             head_name, head_phone, email, channel_type, comment,
+             address, district, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             cid,
             data.get("category", ""),
@@ -215,6 +223,8 @@ def create_contractor(data: dict) -> dict:
             data.get("email", ""),
             data.get("channel_type", "email_only"),
             data.get("comment", ""),
+            data.get("address", ""),
+            data.get("district", ""),
             now,
         ])
         return {"contractor_id": cid, "org_name": data.get("org_name", "")}
@@ -246,6 +256,7 @@ def update_contractor(contractor_id: str, data: dict) -> dict | None:
         allowed = (
             "category", "org_name", "duty_phone", "work_hours",
             "head_name", "head_phone", "email", "channel_type", "comment",
+            "address", "district",
         )
         fields = []
         vals: list = []
