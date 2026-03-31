@@ -276,6 +276,20 @@ def update_contractor(contractor_id: str, data: dict) -> dict | None:
         conn.close()
 
 
+def delete_contractor(contractor_id: str) -> dict:
+    """Удаляет контрагента. Задачи открепляются (contractor_id=''), не удаляются."""
+    conn = _get_conn()
+    try:
+        unlinked = conn.execute(
+            "UPDATE ts_tasks SET contractor_id = '' WHERE contractor_id = ? RETURNING task_id",
+            [contractor_id]
+        ).fetchall()
+        conn.execute("DELETE FROM ts_contractors WHERE contractor_id = ?", [contractor_id])
+        return {"deleted": True, "tasks_unlinked": len(unlinked)}
+    finally:
+        conn.close()
+
+
 def contractors_count() -> int:
     conn = _get_conn()
     try:
@@ -354,11 +368,30 @@ def update_initiative(initiative_id: str, data: dict) -> dict | None:
         conn.close()
 
 
-def delete_initiative(initiative_id: str) -> bool:
+def delete_initiative(initiative_id: str, delete_tasks: bool = False) -> dict:
+    """Удаляет инициативу. delete_tasks=True удаляет связанные задачи, иначе открепляет."""
     conn = _get_conn()
     try:
+        if delete_tasks:
+            # Удаляем комментарии связанных задач
+            conn.execute("""
+                DELETE FROM ts_comments WHERE task_id IN
+                (SELECT task_id FROM ts_tasks WHERE initiative_id = ?)
+            """, [initiative_id])
+            deleted = conn.execute(
+                "DELETE FROM ts_tasks WHERE initiative_id = ? RETURNING task_id",
+                [initiative_id]
+            ).fetchall()
+            tasks_deleted = len(deleted)
+        else:
+            # Открепляем задачи от инициативы
+            conn.execute(
+                "UPDATE ts_tasks SET initiative_id = '' WHERE initiative_id = ?",
+                [initiative_id]
+            )
+            tasks_deleted = 0
         conn.execute("DELETE FROM ts_initiatives WHERE initiative_id = ?", [initiative_id])
-        return True
+        return {"deleted": True, "tasks_deleted": tasks_deleted}
     finally:
         conn.close()
 

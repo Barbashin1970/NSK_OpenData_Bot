@@ -535,9 +535,9 @@ async function openDetail(taskId) {
     </div>
 
     <!-- Actions -->
-    <div class="border-t border-gray-100 pt-4 mt-4 flex gap-2">
+    <div class="border-t border-gray-100 pt-4 mt-4 flex gap-2 items-center">
       <button onclick="openModal('task','${task.task_id}')" class="btn btn-ghost text-sm">Редактировать</button>
-      <button onclick="deleteTaskConfirm('${task.task_id}')" class="btn btn-danger text-sm">Удалить</button>
+      <button onclick="deleteTaskConfirm('${task.task_id}')" title="Удалить задачу" style="background:none;border:none;cursor:pointer;font-size:18px;opacity:0.5;margin-left:auto" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">🗑️</button>
     </div>
 
     <div class="text-xs text-gray-300 mt-4">
@@ -727,7 +727,10 @@ function initiativeForm(init) {
   const sLabels = {draft:'Черновик',active:'Активная',on_hold:'На паузе',completed:'Завершена',cancelled:'Отменена'};
 
   return `
-    <h2>${isEdit ? 'Редактировать инициативу' : 'Новая инициатива'}</h2>
+    <div class="flex items-center justify-between">
+      <h2>${isEdit ? 'Редактировать инициативу' : 'Новая инициатива'}</h2>
+      ${isEdit ? `<button onclick="deleteInitiativeConfirm('${i.initiative_id}')" title="Удалить инициативу" style="background:none;border:none;cursor:pointer;font-size:22px;opacity:0.6" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.6">🗑️</button>` : ''}
+    </div>
     <label class="form-label">Название *</label>
     <input id="iTitle" class="form-input" value="${esc(i.title||'')}" placeholder="Например: Безопасные дороги 2026">
 
@@ -753,10 +756,12 @@ function initiativeForm(init) {
       </div>
     </div>
 
-    <div class="flex justify-end gap-2 mt-2">
-      <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
-      ${isEdit ? `<button onclick="deleteInitiativeConfirm('${i.initiative_id}')" class="btn btn-danger">Удалить</button>` : ''}
-      <button onclick="saveInitiative('${i.initiative_id||''}')" class="btn btn-primary">${isEdit?'Сохранить':'Создать'}</button>
+    <div class="flex items-center gap-2 mt-2">
+      ${isEdit ? `<button onclick="createTaskForInitiative('${i.initiative_id}')" class="btn text-sm" style="border:1px solid #3b82f6;color:#3b82f6">+ Задача</button>` : ''}
+      <div class="ml-auto flex gap-2">
+        <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
+        <button onclick="saveInitiative('${i.initiative_id||''}')" class="btn btn-primary">${isEdit?'Сохранить':'Создать'}</button>
+      </div>
     </div>
   `;
 }
@@ -792,10 +797,27 @@ async function saveInitiative(editId) {
 }
 
 async function deleteInitiativeConfirm(id) {
-  if (!confirm('Удалить инициативу?')) return;
-  await api(`/api/initiatives/${id}`, { method:'DELETE' });
+  const tasks = allTasks.filter(t => t.initiative_id === id && t.status !== 'done' && t.status !== 'cancelled');
+  let deleteTasks = false;
+  if (tasks.length > 0) {
+    const choice = confirm(`У инициативы ${tasks.length} незакрытых задач.\n\nОК = Удалить вместе с задачами\nОтмена = Оставить (не удалять)`);
+    if (!choice) return;
+    deleteTasks = true;
+  } else {
+    if (!confirm('Удалить инициативу?')) return;
+  }
+  await api(`/api/initiatives/${id}?delete_tasks=${deleteTasks}`, { method:'DELETE' });
   closeModal();
   await reload();
+}
+
+function createTaskForInitiative(initId) {
+  closeModal();
+  openModal('task');
+  requestAnimationFrame(() => {
+    const sel = document.getElementById('fInit');
+    if (sel) sel.value = initId;
+  });
 }
 
 // ── Contractor detail (slide-in panel) ───────────────────────────────────
@@ -874,12 +896,25 @@ async function openContractorDetail(cid) {
       <button onclick="createTaskForContractor('${c.contractor_id}')" class="btn btn-primary text-sm flex-1">+ Задача</button>
       ${c.email ? `<button onclick="emailContractor('${c.contractor_id}')" class="btn text-sm flex-1" style="background:#0ea5e9;color:#fff">✉ Написать</button>` : ''}
       <button onclick="openModal('contractor_edit','${c.contractor_id}')" class="btn btn-ghost text-sm">Ред.</button>
+      <button onclick="deleteContractorConfirm('${c.contractor_id}')" title="Удалить" style="background:none;border:none;cursor:pointer;font-size:18px;opacity:0.5" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">🗑️</button>
     </div>
 
     <div class="text-xs text-gray-300 mt-4">ID: ${c.contractor_id} · ${formatDateTime(c.created_at)}</div>
   `;
   _openPanelId = 'contr:'+cid;
   document.getElementById('detailPanel').classList.add('open');
+}
+
+async function deleteContractorConfirm(cid) {
+  const tasks = allTasks.filter(t => t.contractor_id === cid);
+  let msg = 'Удалить контрагента?';
+  if (tasks.length > 0) {
+    msg = `У контрагента ${tasks.length} задач. Они будут откреплены (не удалены).\n\nУдалить контрагента?`;
+  }
+  if (!confirm(msg)) return;
+  await api(`/api/contractors/${cid}`, { method:'DELETE' });
+  closeDetail();
+  await reload();
 }
 
 function createTaskForContractor(contractorId) {

@@ -15,7 +15,7 @@ from ..task_store import (
     create_initiative, get_initiatives, update_initiative, delete_initiative,
     create_task, get_tasks, get_task, update_task, delete_task,
     add_comment, get_comments,
-    get_contractors, get_contractor, create_contractor, update_contractor,
+    get_contractors, get_contractor, create_contractor, update_contractor, delete_contractor,
     get_contractor_categories,
     get_task_stats,
     TASK_STATUSES, TASK_PRIORITIES, DIRECTIONS,
@@ -148,6 +148,15 @@ async def api_contractor_update(contractor_id: str, request: Request):
     return result
 
 
+@router.delete(
+    "/api/contractors/{contractor_id}",
+    tags=["Пространство задач"],
+    summary="Удалить контрагента (задачи открепляются)",
+)
+def api_contractor_delete(contractor_id: str):
+    return delete_contractor(contractor_id)
+
+
 # ── Инициативы ───────────────────────────────────────────────────────────────
 
 @router.get(
@@ -189,9 +198,8 @@ async def api_initiatives_update(initiative_id: str, request: Request):
     tags=["Пространство задач"],
     summary="Удалить инициативу",
 )
-def api_initiatives_delete(initiative_id: str):
-    delete_initiative(initiative_id)
-    return {"deleted": True}
+def api_initiatives_delete(initiative_id: str, delete_tasks: bool = Query(False)):
+    return delete_initiative(initiative_id, delete_tasks=delete_tasks)
 
 
 # ── Задачи ───────────────────────────────────────────────────────────────────
