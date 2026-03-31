@@ -107,6 +107,51 @@
   /* Contact links */
   .contact-link { color:#3b82f6; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
   .contact-link:hover { color:#1d4ed8; }
+
+  /* ── Mobile responsive ──────────────────────────────────────────────── */
+  @media (max-width: 640px) {
+    /* Header: stack vertically */
+    header { flex-wrap:wrap; gap:8px; padding:10px 12px; }
+    header > div:last-child { width:100%; display:flex; gap:6px; }
+    header > div:last-child .btn { flex:1; text-align:center; font-size:13px; padding:8px 10px; }
+
+    /* Stats: 3 per row, smaller */
+    #statsBar { padding:8px 12px; }
+    #statsBar .stat-card { min-width:0 !important; padding:8px 6px !important; }
+    #statsBar .stat-num { font-size:1.1rem !important; }
+    #statsBar .stat-label { font-size:10px !important; }
+
+    /* IQ bar: allow wrap, smaller badges */
+    #iqCoverageBar { gap:3px !important; }
+    #iqCoverageBar > span { padding:2px 5px !important; font-size:10px !important; }
+
+    /* Tabs: scroll horizontally */
+    .view-tab { padding:8px 10px; font-size:13px; white-space:nowrap; }
+
+    /* Filters bar */
+    #taskFilters { flex-wrap:wrap; gap:6px; padding:8px 12px; }
+    #taskFilters select { flex:1; min-width:0; font-size:13px; }
+
+    /* Content padding */
+    #viewKanban, #viewList, #viewInitiatives, #viewContractors { padding:8px 12px !important; }
+
+    /* Kanban columns: full width on mobile */
+    .kanban-col { min-width:240px; max-width:none; }
+
+    /* Detail panel: full-screen on mobile */
+    .detail-panel { width:100% !important; max-width:100% !important; }
+
+    /* Modal: near full width */
+    .modal-box { width:95% !important; padding:16px; max-height:90vh; }
+
+    /* Contractor filter row: stack on mobile */
+    #viewContractors > .flex.flex-wrap { gap:6px !important; }
+    #viewContractors > .flex.flex-wrap > select { flex:1 1 100%; }
+    #viewContractors > .flex.flex-wrap > .btn { width:100%; margin-left:0 !important; }
+
+    /* Tables: smaller padding on mobile */
+    .task-table th, .task-table td { padding:8px 8px; font-size:13px; }
+  }
 </style>
 </head>
 <body class="min-h-screen">
@@ -127,23 +172,23 @@
 <!-- Stats: compact task counters + IQ coverage -->
 <div id="statsBar" class="px-6 py-3">
   <!-- Row 1: task counters (clickable) -->
-  <div class="flex gap-2 mb-2 flex-wrap">
-    <button onclick="statFilter('')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition" id="stCardTotal">
+  <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-2">
+    <button onclick="statFilter('')" class="stat-card py-2 cursor-pointer hover:shadow-md transition" id="stCardTotal">
       <div class="stat-num text-lg" id="stTotal">0</div><div class="stat-label text-[11px]">Всего</div>
     </button>
-    <button onclick="statFilter('in_progress')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition" id="stCardProgress">
+    <button onclick="statFilter('in_progress')" class="stat-card py-2 cursor-pointer hover:shadow-md transition" id="stCardProgress">
       <div class="stat-num text-lg text-blue-500" id="stProgress">0</div><div class="stat-label text-[11px]">В работе</div>
     </button>
-    <button onclick="statFilter('todo')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition" id="stCardTodo">
+    <button onclick="statFilter('todo')" class="stat-card py-2 cursor-pointer hover:shadow-md transition" id="stCardTodo">
       <div class="stat-num text-lg text-slate-500" id="stTodo">0</div><div class="stat-label text-[11px]">К выполн.</div>
     </button>
-    <button onclick="statFilter('done')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition">
+    <button onclick="statFilter('done')" class="stat-card py-2 cursor-pointer hover:shadow-md transition">
       <div class="stat-num text-lg text-green-500" id="stDone">0</div><div class="stat-label text-[11px]">Готово</div>
     </button>
-    <button onclick="statFilter('overdue')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition">
+    <button onclick="statFilter('overdue')" class="stat-card py-2 cursor-pointer hover:shadow-md transition">
       <div class="stat-num text-lg text-red-500" id="stOverdue">0</div><div class="stat-label text-[11px]">Просрочено</div>
     </button>
-    <button onclick="switchView('initiatives')" class="stat-card flex-1 min-w-[90px] py-2 cursor-pointer hover:shadow-md transition">
+    <button onclick="switchView('initiatives')" class="stat-card py-2 cursor-pointer hover:shadow-md transition">
       <div class="stat-num text-lg text-purple-500" id="stInitiatives">0</div><div class="stat-label text-[11px]">Инициативы</div>
     </button>
   </div>
@@ -152,7 +197,7 @@
 </div>
 
 <!-- Tabs -->
-<div class="px-6 flex items-center gap-2 border-b border-gray-200 bg-gray-50">
+<div class="px-6 flex items-center gap-2 border-b border-gray-200 bg-gray-50 overflow-x-auto">
   <div class="view-tab active" data-view="kanban" onclick="switchView('kanban')">Канбан</div>
   <div class="view-tab" data-view="list" onclick="switchView('list')">Список</div>
   <div class="view-tab" data-view="initiatives" onclick="switchView('initiatives')">Инициативы</div>
@@ -206,18 +251,17 @@
 
 <!-- View: Contractors -->
 <div id="viewContractors" class="px-6 py-4 hidden">
-  <div class="flex items-center justify-between mb-3">
-    <div class="flex items-center gap-2">
-      <select id="filterCategory" class="text-sm border rounded px-2 py-1" onchange="filterContractors()">
-        <option value="">Все контрагенты</option>
-      </select>
-      <label class="inline-flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
-        <input type="checkbox" id="filterWithTasks" onchange="filterContractors()"> С задачами
-      </label>
-      <span id="contractorCount" class="text-xs text-gray-400"></span>
-    </div>
-    <button onclick="openModal('contractor')" class="btn btn-primary text-sm">+ Контрагент</button>
+  <div class="flex flex-wrap items-center gap-2 mb-3">
+    <select id="filterCategory" class="text-sm border rounded px-2 py-1 flex-1 min-w-[140px]" onchange="filterContractors()">
+      <option value="">Все контрагенты</option>
+    </select>
+    <label class="inline-flex items-center gap-1 text-sm text-gray-600 cursor-pointer whitespace-nowrap">
+      <input type="checkbox" id="filterWithTasks" onchange="filterContractors()"> С задачами
+    </label>
+    <span id="contractorCount" class="text-xs text-gray-400 whitespace-nowrap"></span>
+    <button onclick="openModal('contractor')" class="btn btn-primary text-sm whitespace-nowrap ml-auto">+ Контрагент</button>
   </div>
+  <div style="overflow-x:auto">
   <table class="task-table" id="contractorsTable">
     <thead>
       <tr>
@@ -228,6 +272,7 @@
     </thead>
     <tbody id="contractorsBody"></tbody>
   </table>
+  </div>
 </div>
 
 <!-- Detail Panel (slide-in) -->
