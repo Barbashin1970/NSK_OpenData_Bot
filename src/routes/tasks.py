@@ -19,6 +19,7 @@ from ..task_store import (
     get_contractor_categories,
     get_task_stats,
     TASK_STATUSES, TASK_PRIORITIES, DIRECTIONS,
+    IQ_DIRECTIONS, IQ_IMPACT_LEVELS, IQ_IMPACT_LABELS, calc_iq_priority,
 )
 
 log = logging.getLogger(__name__)
@@ -77,7 +78,21 @@ def api_tasks_meta():
             "Контрольный замер показателей в норме",
             "Объект введён в эксплуатацию",
         ],
+        "iq_directions": IQ_DIRECTIONS,
+        "iq_impact_levels": IQ_IMPACT_LEVELS,
+        "iq_impact_labels": IQ_IMPACT_LABELS,
     }
+
+
+@router.get(
+    "/api/iq/recommend-priority",
+    tags=["Пространство задач"],
+    summary="Рекомендованный приоритет по IQ-разрыву",
+)
+def api_iq_recommend(baseline: float = Query(0), target: float = Query(0)):
+    gap = max(0, target - baseline)
+    priority, label = calc_iq_priority(gap)
+    return {"gap": gap, "priority": priority, "label": label}
 
 
 # ── Статистика ───────────────────────────────────────────────────────────────

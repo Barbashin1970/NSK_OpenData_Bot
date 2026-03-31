@@ -245,6 +245,8 @@ let allContractors = [];
 let meta = {};
 let currentView = 'kanban';
 let ACCEPTANCE_OPTIONS = [];
+let IQ_DIRS = {};
+let IQ_IMPACT = {};
 let allCategories = [];
 let _openPanelId = null;
 
@@ -271,6 +273,8 @@ async function reload() {
   ]);
   allTasks = tasks; allInitiatives = inits; allContractors = contrs; meta = stats;
   ACCEPTANCE_OPTIONS = metaData.acceptance_criteria_options || [];
+  IQ_DIRS = metaData.iq_directions || {};
+  IQ_IMPACT = metaData.iq_impact_labels || {};
   allCategories = cats || [];
   renderStats();
   renderCurrentView();
@@ -410,15 +414,36 @@ function renderInitiatives() {
     const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
     const statusColors = { draft:'gray', active:'blue', on_hold:'amber', completed:'green', cancelled:'gray' };
     const sc = statusColors[i.status] || 'gray';
+    const iqDir = i.iq_direction && IQ_DIRS[i.iq_direction] ? IQ_DIRS[i.iq_direction] : null;
+    const iqColor = iqDir ? iqDir.color : '';
+    const iqBase = i.iq_baseline || 0;
+    const iqTgt = i.iq_target || 0;
+    const iqGap = Math.max(0, iqTgt - iqBase);
+    const iqPct = iqTgt > 0 ? Math.round(iqBase / iqTgt * 100) : 0;
     return `
       <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer"
-           onclick="editInitiative('${i.initiative_id}')">
+           onclick="editInitiative('${i.initiative_id}')"
+           ${iqColor ? `style="border-left:4px solid ${iqColor}"` : ''}>
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-medium px-2 py-0.5 rounded bg-${sc}-100 text-${sc}-700">${i.status}</span>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-medium px-2 py-0.5 rounded bg-${sc}-100 text-${sc}-700">${i.status}</span>
+            ${iqDir ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded" style="background:${iqColor}20;color:${iqColor}">${i.iq_direction}</span>` : ''}
+          </div>
           <span class="text-xs text-gray-400">${i.direction||''}</span>
         </div>
         <h3 class="font-semibold text-gray-800 mb-1">${esc(i.title)}</h3>
-        <p class="text-sm text-gray-500 mb-3 line-clamp-2">${esc(i.description||'')}</p>
+        <p class="text-sm text-gray-500 mb-2 line-clamp-2">${esc(i.description||'')}</p>
+        ${iqDir && iqTgt > 0 ? `
+        <div class="flex items-center gap-2 text-[10px] text-gray-500 mb-2">
+          <span style="color:${iqColor}" class="font-semibold">${iqDir.name}</span>
+          <span>${iqBase}%</span>
+          <div class="flex-1 rounded-full h-1.5" style="background:${iqColor}20">
+            <div class="rounded-full h-1.5" style="width:${iqPct}%;background:${iqColor}"></div>
+          </div>
+          <span>→ ${iqTgt}%</span>
+          <span class="font-bold" style="color:${iqColor}">+${iqGap}</span>
+        </div>
+        ` : ''}
         <div class="flex items-center gap-2 text-xs text-gray-400">
           <span>${tasks.length} задач</span>
           <div class="flex-1 bg-gray-100 rounded-full h-1.5">
@@ -672,8 +697,21 @@ function taskForm(task) {
     <textarea id="fAcceptCustom" class="form-input" placeholder="Опишите критерий решённости..."
       style="display:${t.acceptance_criteria && !(ACCEPTANCE_OPTIONS||[]).includes(t.acceptance_criteria) ? 'block' : 'none'}">${esc(t.acceptance_criteria && !(ACCEPTANCE_OPTIONS||[]).includes(t.acceptance_criteria) ? t.acceptance_criteria : '')}</textarea>
 
-    <label class="form-label">Теги</label>
-    <input id="fTags" class="form-input" value="${esc(t.tags||'')}" placeholder="через запятую">
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="form-label">Влияние на IQ города</label>
+        <select id="fIqImpact" class="form-input">
+          <option value="" ${!t.iq_impact?'selected':''}>— Не указано —</option>
+          <option value="high" ${t.iq_impact==='high'?'selected':''}>Высокое</option>
+          <option value="medium" ${t.iq_impact==='medium'?'selected':''}>Среднее</option>
+          <option value="low" ${t.iq_impact==='low'?'selected':''}>Низкое</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Теги</label>
+        <input id="fTags" class="form-input" value="${esc(t.tags||'')}" placeholder="через запятую">
+      </div>
+    </div>
 
     <div class="flex justify-end gap-2 mt-2">
       <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
@@ -699,6 +737,7 @@ async function saveTask(editId) {
     assignee:            document.getElementById('fAssignee').value.trim(),
     tags:                document.getElementById('fTags').value.trim(),
     acceptance_criteria: acceptance,
+    iq_impact:           document.getElementById('fIqImpact').value,
   };
   if (!data.title) { alert('Заголовок обязателен'); return; }
   try {
@@ -725,6 +764,8 @@ function initiativeForm(init) {
   const dirs = ['Транспорт','ЖКХ','Экология','Безопасность','Цифровизация','Благоустройство','Образование','Здравоохранение','Культура','Другое'];
   const statuses = ['draft','active','on_hold','completed','cancelled'];
   const sLabels = {draft:'Черновик',active:'Активная',on_hold:'На паузе',completed:'Завершена',cancelled:'Отменена'};
+  const curIqDir = i.iq_direction || '';
+  const curKpis = (i.iq_kpi || '').split(',').filter(Boolean);
 
   return `
     <div class="flex items-center justify-between">
@@ -734,29 +775,63 @@ function initiativeForm(init) {
     <label class="form-label">Название *</label>
     <input id="iTitle" class="form-input" value="${esc(i.title||'')}" placeholder="Например: Безопасные дороги 2026">
 
-    <label class="form-label">Направление</label>
-    <select id="iDir" class="form-input">
-      <option value="">— Не указано —</option>
-      ${dirs.map(d => `<option value="${d}" ${i.direction===d?'selected':''}>${d}</option>`).join('')}
-    </select>
-
-    <label class="form-label">Описание</label>
-    <textarea id="iDesc" class="form-input">${esc(i.description||'')}</textarea>
-
     <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="form-label">Направление</label>
+        <select id="iDir" class="form-input">
+          <option value="">— Не указано —</option>
+          ${dirs.map(d => `<option value="${d}" ${i.direction===d?'selected':''}>${d}</option>`).join('')}
+        </select>
+      </div>
       <div>
         <label class="form-label">Статус</label>
         <select id="iStatus" class="form-input">
           ${statuses.map(s => `<option value="${s}" ${i.status===s?'selected':''}>${sLabels[s]}</option>`).join('')}
         </select>
       </div>
-      <div>
-        <label class="form-label">Период</label>
-        <input id="iPeriod" class="form-input" value="${esc(i.period||'')}" placeholder="2026 Q2">
+    </div>
+
+    <label class="form-label">Описание</label>
+    <textarea id="iDesc" class="form-input">${esc(i.description||'')}</textarea>
+
+    <label class="form-label">Период</label>
+    <input id="iPeriod" class="form-input" value="${esc(i.period||'')}" placeholder="2026 Q2">
+
+    <!-- IQ городов -->
+    <div class="mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+      <div class="text-xs font-bold text-indigo-700 uppercase tracking-wide mb-2">IQ городов (Минстрой)</div>
+
+      <label class="form-label">Направление IQ</label>
+      <select id="iIqDir" class="form-input" onchange="onIqDirChange()">
+        <option value="">— Не привязано —</option>
+        ${Object.entries(IQ_DIRS).map(([code, d]) => `<option value="${code}" ${curIqDir===code?'selected':''}>${code} — ${d.name}</option>`).join('')}
+      </select>
+
+      <div id="iqKpiBlock" style="display:${curIqDir?'block':'none'}">
+        <label class="form-label mt-2">Показатели KPI</label>
+        <div id="iqKpiList" class="flex flex-wrap gap-1.5 mb-2">
+          ${curIqDir && IQ_DIRS[curIqDir] ? Object.entries(IQ_DIRS[curIqDir].kpis).map(([code, desc]) =>
+            `<label class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer ${curKpis.includes(code)?'bg-indigo-200 text-indigo-800':'bg-white border border-gray-200 text-gray-600'}">
+              <input type="checkbox" value="${code}" ${curKpis.includes(code)?'checked':''} class="iq-kpi-cb" style="width:14px;height:14px"> ${code}: ${desc}
+            </label>`
+          ).join('') : ''}
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="form-label">Текущий балл (baseline)</label>
+            <input id="iIqBase" type="number" min="0" max="100" class="form-input" value="${i.iq_baseline||''}" placeholder="0–100" oninput="updateIqGap()">
+          </div>
+          <div>
+            <label class="form-label">Целевой балл (target)</label>
+            <input id="iIqTarget" type="number" min="0" max="100" class="form-input" value="${i.iq_target||''}" placeholder="0–100" oninput="updateIqGap()">
+          </div>
+        </div>
+        <div id="iqGapInfo" class="mt-2 text-xs"></div>
       </div>
     </div>
 
-    <div class="flex items-center gap-2 mt-2">
+    <div class="flex items-center gap-2 mt-3">
       ${isEdit ? `<button onclick="createTaskForInitiative('${i.initiative_id}')" class="btn text-sm" style="border:1px solid #3b82f6;color:#3b82f6">+ Задача</button>` : ''}
       <div class="ml-auto flex gap-2">
         <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
@@ -766,17 +841,55 @@ function initiativeForm(init) {
   `;
 }
 
+function onIqDirChange() {
+  const code = document.getElementById('iIqDir').value;
+  const block = document.getElementById('iqKpiBlock');
+  const list = document.getElementById('iqKpiList');
+  if (!code || !IQ_DIRS[code]) { block.style.display='none'; return; }
+  block.style.display='block';
+  const d = IQ_DIRS[code];
+  list.innerHTML = Object.entries(d.kpis).map(([k,v]) =>
+    `<label class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer bg-white border border-gray-200 text-gray-600 hover:bg-indigo-50">
+      <input type="checkbox" value="${k}" class="iq-kpi-cb" style="width:14px;height:14px"> ${k}: ${v}
+    </label>`
+  ).join('');
+  updateIqGap();
+}
+
+async function updateIqGap() {
+  const base = parseFloat(document.getElementById('iIqBase')?.value) || 0;
+  const target = parseFloat(document.getElementById('iIqTarget')?.value) || 0;
+  const el = document.getElementById('iqGapInfo');
+  if (!el) return;
+  const gap = Math.max(0, target - base);
+  if (gap === 0 && base === 0 && target === 0) { el.innerHTML = ''; return; }
+  try {
+    const r = await api(`/api/iq/recommend-priority?baseline=${base}&target=${target}`);
+    const colors = {P1:'bg-red-100 text-red-700',P2:'bg-amber-100 text-amber-700',P3:'bg-blue-100 text-blue-700',P4:'bg-gray-100 text-gray-500'};
+    el.innerHTML = `<span class="inline-block px-2 py-1 rounded text-xs font-medium ${colors[r.priority]||''}">Разрыв: ${r.gap} баллов → рекомендация ${r.priority} — ${r.label}</span>`;
+  } catch(e) {
+    el.innerHTML = `<span class="text-xs text-gray-400">Разрыв: ${gap} баллов</span>`;
+  }
+}
+
 function editInitiative(id) {
   openModal('initiative', id);
 }
 
 async function saveInitiative(editId) {
+  // Собираем выбранные KPI чекбоксы
+  const kpiCbs = document.querySelectorAll('.iq-kpi-cb:checked');
+  const kpiCodes = Array.from(kpiCbs).map(cb => cb.value).join(',');
   const data = {
-    title:       document.getElementById('iTitle').value.trim(),
-    direction:   document.getElementById('iDir').value,
-    description: document.getElementById('iDesc').value.trim(),
-    status:      document.getElementById('iStatus').value,
-    period:      document.getElementById('iPeriod').value.trim(),
+    title:        document.getElementById('iTitle').value.trim(),
+    direction:    document.getElementById('iDir').value,
+    description:  document.getElementById('iDesc').value.trim(),
+    status:       document.getElementById('iStatus').value,
+    period:       document.getElementById('iPeriod').value.trim(),
+    iq_direction: document.getElementById('iIqDir').value,
+    iq_kpi:       kpiCodes,
+    iq_baseline:  parseFloat(document.getElementById('iIqBase')?.value) || 0,
+    iq_target:    parseFloat(document.getElementById('iIqTarget')?.value) || 0,
   };
   if (!data.title) { alert('Название обязательно'); return; }
   try {

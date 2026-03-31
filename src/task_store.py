@@ -99,6 +99,13 @@ def init_task_tables() -> None:
             "ALTER TABLE ts_contractors ADD COLUMN comment VARCHAR DEFAULT ''",
             "ALTER TABLE ts_contractors ADD COLUMN address VARCHAR DEFAULT ''",
             "ALTER TABLE ts_contractors ADD COLUMN district VARCHAR DEFAULT ''",
+            # IQ городов
+            "ALTER TABLE ts_initiatives ADD COLUMN iq_direction VARCHAR DEFAULT ''",
+            "ALTER TABLE ts_initiatives ADD COLUMN iq_kpi VARCHAR DEFAULT ''",
+            "ALTER TABLE ts_initiatives ADD COLUMN iq_baseline FLOAT DEFAULT 0",
+            "ALTER TABLE ts_initiatives ADD COLUMN iq_target FLOAT DEFAULT 0",
+            "ALTER TABLE ts_tasks ADD COLUMN iq_kpi VARCHAR DEFAULT ''",
+            "ALTER TABLE ts_tasks ADD COLUMN iq_impact VARCHAR DEFAULT ''",
         ]:
             try:
                 conn.execute(stmt)
@@ -311,8 +318,9 @@ def create_initiative(data: dict) -> dict:
         conn.execute("""
             INSERT INTO ts_initiatives
             (initiative_id, title, direction, description, status, period,
+             iq_direction, iq_kpi, iq_baseline, iq_target,
              created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             iid,
             data.get("title", "Без названия"),
@@ -320,6 +328,10 @@ def create_initiative(data: dict) -> dict:
             data.get("description", ""),
             data.get("status", "draft"),
             data.get("period", ""),
+            data.get("iq_direction", ""),
+            data.get("iq_kpi", ""),
+            float(data.get("iq_baseline", 0) or 0),
+            float(data.get("iq_target", 0) or 0),
             now, now,
         ])
         return {"initiative_id": iid, "title": data.get("title"), "status": "draft"}
@@ -350,7 +362,8 @@ def update_initiative(initiative_id: str, data: dict) -> dict | None:
     try:
         fields = []
         vals: list = []
-        for key in ("title", "direction", "description", "status", "period"):
+        for key in ("title", "direction", "description", "status", "period",
+                    "iq_direction", "iq_kpi", "iq_baseline", "iq_target"):
             if key in data:
                 fields.append(f"{key} = ?")
                 vals.append(data[key])
@@ -398,6 +411,142 @@ def delete_initiative(initiative_id: str, delete_tasks: bool = False) -> dict:
 
 # ── Задачи ───────────────────────────────────────────────────────────────────
 
+# ── IQ городов (Минстрой, Приказ №696/пр от 28.09.2023) ───────────────────
+
+IQ_DIRECTIONS = {
+    "A": {
+        "name": "Городское управление",
+        "color": "#6366f1",
+        "kpis": {
+            "P1": "Платформа обратной связи (ЕПГУ)",
+            "P2": "Заявки через МФЦ/ОНФ",
+            "P3": "Муниципальный центр управления (МЦУ)",
+            "P4": "Кейсы в «Банке решений умного города»",
+        },
+    },
+    "B": {
+        "name": "Умное ЖКХ",
+        "color": "#f59e0b",
+        "kpis": {
+            "B1": "Электронные ОСС",
+            "B2": "Онлайн-оплата услуг УК",
+            "B3": "Онлайн-оплата коммунальных услуг",
+            "B4": "Раскрытие данных в ГИС ЖКХ",
+            "B5": "Диспетчерские в системе мониторинга аварий",
+            "B6": "Ресурсоснабжающие орг. в ГИС ЖКХ",
+            "B7": "Жители на порталах городского развития",
+            "B8": "Электронные техусловия присоединения",
+        },
+    },
+    "C": {
+        "name": "Строительство и жилфонд",
+        "color": "#8b5cf6",
+        "kpis": {
+            "C1": "Экспертизы с ТИМ/BIM-моделями",
+            "C2": "Задания на проектирование в XML",
+            "C3": "Региональный стандарт комфортности",
+            "C4": "Реестр аварийного жилья",
+        },
+    },
+    "D": {
+        "name": "Умный транспорт",
+        "color": "#3b82f6",
+        "kpis": {
+            "D1": "GPS/ГЛОНАСС на транспорте М2/М3/N",
+        },
+    },
+    "E": {
+        "name": "Энергетика и ТЭК",
+        "color": "#ef4444",
+        "kpis": {
+            "E2": "Цифровой профиль компаний ТЭК",
+        },
+    },
+    "G": {
+        "name": "Градостроительство",
+        "color": "#14b8a6",
+        "kpis": {
+            "G1": "ГИС обеспечения градостроительной деятельности",
+            "G2": "Интеграция с ФГИС",
+            "G3": "Интеграция с НСПД",
+        },
+    },
+    "M": {
+        "name": "Здравоохранение",
+        "color": "#ec4899",
+        "kpis": {
+            "M1": "Онлайн-запись к врачу",
+            "M2": "Медорганизации в ЕГИСЗ",
+        },
+    },
+    "K": {
+        "name": "Цифровая зрелость",
+        "color": "#0ea5e9",
+        "kpis": {
+            "K1": "Достижение показателей цифровой зрелости (Минцифры)",
+        },
+    },
+    "Y": {
+        "name": "Образование",
+        "color": "#22c55e",
+        "kpis": {
+            "Y1": "Участие в НТО",
+            "Y2": "Молодёжь на Госуслугах",
+        },
+    },
+    "ECO": {
+        "name": "Экология и безопасность",
+        "color": "#84cc16",
+        "kpis": {
+            "ECO1": "Мониторинг аварий ЖКХ",
+            "ECO2": "Видеонаблюдение / АПК «Безопасный город»",
+        },
+    },
+    "T": {
+        "name": "Туризм и сервис",
+        "color": "#f97316",
+        "kpis": {
+            "T1": "Цифровые сервисы для гостей города",
+        },
+    },
+    "INN": {
+        "name": "Инновации городской среды",
+        "color": "#a855f7",
+        "kpis": {
+            "INN1": "Внедрённые smart-кейсы",
+        },
+    },
+    "ECON": {
+        "name": "Экономика и инвестклимат",
+        "color": "#64748b",
+        "kpis": {
+            "ECON1": "Цифровые инструменты поддержки бизнеса",
+        },
+    },
+    "NET": {
+        "name": "Инфраструктура связи",
+        "color": "#06b6d4",
+        "kpis": {
+            "NET1": "Покрытие LTE/5G, открытые данные",
+        },
+    },
+}
+
+IQ_IMPACT_LEVELS = ["high", "medium", "low"]
+IQ_IMPACT_LABELS = {"high": "Высокое", "medium": "Среднее", "low": "Низкое"}
+
+
+def calc_iq_priority(iq_gap: float, iq_weight: float = 1.0) -> tuple[str, str]:
+    """Рекомендованный приоритет по IQ-разрыву. Возвращает (priority, label)."""
+    if iq_gap >= 30 and iq_weight >= 5:
+        return "P1", "Критично для IQ города"
+    if iq_gap >= 15 and iq_weight >= 3:
+        return "P2", "Значимо для IQ города"
+    if iq_gap >= 5:
+        return "P3", "Плановый вклад в IQ"
+    return "P4", "Фоновое улучшение"
+
+
 _TASK_STATUSES = ("todo", "in_progress", "review", "done", "cancelled")
 _TASK_PRIORITIES = ("P1", "P2", "P3", "P4")
 
@@ -424,8 +573,9 @@ def create_task(data: dict) -> dict:
             INSERT INTO ts_tasks
             (task_id, title, description, initiative_id, department,
              contractor_id, assignee, priority, status, due_date,
-             parent_task_id, tags, acceptance_criteria, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             parent_task_id, tags, acceptance_criteria,
+             iq_kpi, iq_impact, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             tid,
             data.get("title", "Без названия"),
@@ -439,6 +589,8 @@ def create_task(data: dict) -> dict:
             data.get("parent_task_id", ""),
             data.get("tags", ""),
             data.get("acceptance_criteria", ""),
+            data.get("iq_kpi", ""),
+            data.get("iq_impact", ""),
             now, now,
         ])
         return {
@@ -509,6 +661,7 @@ def update_task(task_id: str, data: dict) -> dict | None:
             "title", "description", "initiative_id", "department",
             "contractor_id", "assignee", "priority", "status",
             "due_date", "parent_task_id", "tags", "acceptance_criteria",
+            "iq_kpi", "iq_impact",
         )
         fields = []
         vals: list = []
@@ -625,6 +778,7 @@ _SEED_INITIATIVES = [
         "description": "Завершение зимней уборки: вывоз снежных куч, очистка ливнёвок, обработка тротуаров. Контроль подрядчиков по районам.",
         "status": "active",
         "period": "2026-04",
+        "iq_direction": "B", "iq_kpi": "B5", "iq_baseline": 42, "iq_target": 65,
     },
     {
         "title": "Ямочный ремонт дорог — весна 2026",
@@ -632,6 +786,7 @@ _SEED_INITIATIVES = [
         "description": "Выявление и ремонт дефектов дорожного покрытия после зимы. Горячая линия 051, фотофиксация, контроль сроков.",
         "status": "active",
         "period": "2026-04 — 2026-05",
+        "iq_direction": "D", "iq_kpi": "D1", "iq_baseline": 55, "iq_target": 80,
     },
     {
         "title": "Нанесение дорожной разметки — май 2026",
@@ -639,6 +794,7 @@ _SEED_INITIATIVES = [
         "description": "Обновление разметки на магистралях, пешеходных переходах и парковках. Координация с ГИБДД.",
         "status": "draft",
         "period": "2026-05",
+        "iq_direction": "D", "iq_kpi": "D1", "iq_baseline": 55, "iq_target": 70,
     },
     {
         "title": "Озеленение и велодорожки — лето 2026",
@@ -646,6 +802,7 @@ _SEED_INITIATIVES = [
         "description": "Высадка деревьев и кустарников, обустройство клумб, строительство и ремонт велодорожек в парковых зонах.",
         "status": "draft",
         "period": "2026-06",
+        "iq_direction": "INN", "iq_kpi": "INN1", "iq_baseline": 30, "iq_target": 50,
     },
     {
         "title": "Готовность школ и ремонты к 1 сентября",
@@ -653,6 +810,7 @@ _SEED_INITIATIVES = [
         "description": "Капитальный и текущий ремонт школ, проверка систем отопления, пожарной безопасности, благоустройство территорий.",
         "status": "draft",
         "period": "2026-07 — 2026-08",
+        "iq_direction": "Y", "iq_kpi": "Y1,Y2", "iq_baseline": 40, "iq_target": 70,
     },
 ]
 
