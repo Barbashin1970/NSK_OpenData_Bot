@@ -1,9 +1,10 @@
 """Task Space API — Пространство задач.
 
 Эндпоинты для управления инициативами, задачами и контрагентами.
-MVP v1: без авторизации, все операции открыты.
+Авторизация: общий пароль + выбор роли (демо-режим).
 """
 
+import hashlib
 import logging
 from pathlib import Path
 
@@ -17,10 +18,12 @@ from ..task_store import (
     add_comment, get_comments,
     get_contractors, get_contractor, create_contractor, update_contractor, delete_contractor,
     get_contractor_categories,
-    get_task_stats,
+    get_task_stats, get_users,
     TASK_STATUSES, TASK_PRIORITIES, DIRECTIONS,
     IQ_DIRECTIONS, IQ_IMPACT_LEVELS, IQ_IMPACT_LABELS, calc_iq_priority,
 )
+
+_TASKS_PASSWORD_HASH = hashlib.sha256(b"sigma 2025").hexdigest()
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +44,32 @@ def tasks_page():
         html_file.read_text(encoding="utf-8"),
         headers={"Cache-Control": "no-store"},
     )
+
+
+# ── Авторизация ──────────────────────────────────────────────────────────────
+
+@router.post(
+    "/api/tasks/login",
+    tags=["Пространство задач"],
+    summary="Вход в Пространство задач",
+)
+async def api_tasks_login(request: Request):
+    """Проверяет пароль, при успехе возвращает список пользователей."""
+    data = await request.json()
+    password = data.get("password", "")
+    pwd_hash = hashlib.sha256(password.encode()).hexdigest()
+    if pwd_hash != _TASKS_PASSWORD_HASH:
+        raise HTTPException(403, "Неверный пароль")
+    return {"valid": True, "users": get_users()}
+
+
+@router.get(
+    "/api/tasks/users",
+    tags=["Пространство задач"],
+    summary="Список пользователей (для dropdown исполнителя)",
+)
+def api_tasks_users():
+    return get_users()
 
 
 # ── Справочные данные ────────────────────────────────────────────────────────
@@ -81,6 +110,7 @@ def api_tasks_meta():
         "iq_directions": IQ_DIRECTIONS,
         "iq_impact_levels": IQ_IMPACT_LEVELS,
         "iq_impact_labels": IQ_IMPACT_LABELS,
+        "users": get_users(),
     }
 
 
@@ -377,7 +407,10 @@ async def api_task_status(task_id: str, request: Request):
     new_status = data.get("status")
     if new_status not in TASK_STATUSES:
         raise HTTPException(400, f"Недопустимый статус: {new_status}")
-    result = update_task(task_id, {"status": new_status})
+    update_data = {"status": new_status}
+    if data.get("updated_by"):
+        update_data["updated_by"] = data["updated_by"]
+    result = update_task(task_id, update_data)
     if not result:
         raise HTTPException(404, "Задача не найдена")
     return result

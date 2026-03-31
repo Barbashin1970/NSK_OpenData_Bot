@@ -1,6 +1,7 @@
 """Хранилище Пространства задач в DuckDB.
 
 Таблицы:
+  - ts_users        — пользователи (мэр, главы районов, замы мэра)
   - ts_contractors  — справочник контрагентов (аварийные службы, МУПы и т.д.)
   - ts_initiatives  — инициативы (аналог Portfolio/Project)
   - ts_tasks         — задачи, привязанные к инициативам и контрагентам
@@ -82,6 +83,43 @@ CREATE TABLE IF NOT EXISTS ts_comments (
 )
 """
 
+_USERS_DDL = """
+CREATE TABLE IF NOT EXISTS ts_users (
+    user_id         VARCHAR PRIMARY KEY,
+    display_name    VARCHAR NOT NULL,
+    role            VARCHAR NOT NULL,
+    district        VARCHAR DEFAULT '',
+    direction       VARCHAR DEFAULT '',
+    sort_order      INTEGER DEFAULT 100,
+    created_at      VARCHAR
+)
+"""
+
+_SEED_USERS = [
+    # Руководство
+    ("mayor",               "Мэр",                               "mayor",         "",                        "",                 1),
+    # Главы районов
+    ("head_dzerzhinsky",    "Глава Дзержинского района",         "district_head", "Дзержинский район",       "",                10),
+    ("head_zheleznodorozhny","Глава Железнодорожного района",    "district_head", "Железнодорожный район",   "",                11),
+    ("head_zaeltsovsky",    "Глава Заельцовского района",        "district_head", "Заельцовский район",      "",                12),
+    ("head_kalininsky",     "Глава Калининского района",         "district_head", "Калининский район",       "",                13),
+    ("head_kirovsky",       "Глава Кировского района",           "district_head", "Кировский район",         "",                14),
+    ("head_leninsky",       "Глава Ленинского района",           "district_head", "Ленинский район",         "",                15),
+    ("head_oktyabrsky",     "Глава Октябрьского района",         "district_head", "Октябрьский район",       "",                16),
+    ("head_pervomaysky",    "Глава Первомайского района",        "district_head", "Первомайский район",      "",                17),
+    ("head_sovetsky",       "Глава Советского района",           "district_head", "Советский район",         "",                18),
+    ("head_tsentralny",     "Глава Центрального района",         "district_head", "Центральный район",       "",                19),
+    ("head_koltsovo",       "Глава Кольцово",                    "district_head", "Кольцово",                "",                20),
+    # Заместители мэра
+    ("dep_zhkh",            "Зам. мэра по ЖКХ",                 "deputy_mayor",  "",                        "ЖКХ",             30),
+    ("dep_transport",       "Зам. мэра по транспорту",           "deputy_mayor",  "",                        "Транспорт",       31),
+    ("dep_ecology",         "Зам. мэра по экологии",             "deputy_mayor",  "",                        "Экология",        32),
+    ("dep_construction",    "Зам. мэра по строительству",        "deputy_mayor",  "",                        "Строительство",   33),
+    ("dep_digital",         "Зам. мэра по цифровизации",         "deputy_mayor",  "",                        "Цифровизация",    34),
+    ("dep_education",       "Зам. мэра по образованию",          "deputy_mayor",  "",                        "Образование",     35),
+    ("dep_safety",          "Зам. мэра по безопасности",         "deputy_mayor",  "",                        "Безопасность",    36),
+]
+
 
 # ── Инициализация ────────────────────────────────────────────────────────────
 
@@ -93,6 +131,7 @@ def init_task_tables() -> None:
         conn.execute(_INITIATIVES_DDL)
         conn.execute(_TASKS_DDL)
         conn.execute(_COMMENTS_DDL)
+        conn.execute(_USERS_DDL)
         # Миграции: добавляем новые колонки если таблицы уже существовали
         for stmt in [
             "ALTER TABLE ts_tasks ADD COLUMN acceptance_criteria VARCHAR DEFAULT ''",
@@ -106,6 +145,9 @@ def init_task_tables() -> None:
             "ALTER TABLE ts_initiatives ADD COLUMN iq_target FLOAT DEFAULT 0",
             "ALTER TABLE ts_tasks ADD COLUMN iq_kpi VARCHAR DEFAULT ''",
             "ALTER TABLE ts_tasks ADD COLUMN iq_impact VARCHAR DEFAULT ''",
+            # Авторство
+            "ALTER TABLE ts_tasks ADD COLUMN created_by VARCHAR DEFAULT ''",
+            "ALTER TABLE ts_tasks ADD COLUMN updated_by VARCHAR DEFAULT ''",
         ]:
             try:
                 conn.execute(stmt)
@@ -574,8 +616,9 @@ def create_task(data: dict) -> dict:
             (task_id, title, description, initiative_id, department,
              contractor_id, assignee, priority, status, due_date,
              parent_task_id, tags, acceptance_criteria,
-             iq_kpi, iq_impact, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             iq_kpi, iq_impact, created_by, updated_by,
+             created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, [
             tid,
             data.get("title", "Без названия"),
@@ -591,6 +634,8 @@ def create_task(data: dict) -> dict:
             data.get("acceptance_criteria", ""),
             data.get("iq_kpi", ""),
             data.get("iq_impact", ""),
+            data.get("created_by", ""),
+            data.get("updated_by", ""),
             now, now,
         ])
         return {
@@ -661,7 +706,7 @@ def update_task(task_id: str, data: dict) -> dict | None:
             "title", "description", "initiative_id", "department",
             "contractor_id", "assignee", "priority", "status",
             "due_date", "parent_task_id", "tags", "acceptance_criteria",
-            "iq_kpi", "iq_impact",
+            "iq_kpi", "iq_impact", "updated_by",
         )
         fields = []
         vals: list = []
@@ -832,6 +877,52 @@ def seed_initiatives() -> int:
         create_initiative(data)
         created += 1
     log.info("Task Space: создано %d типовых инициатив", created)
+    return created
+
+
+# ── Пользователи ─────────────────────────────────────────────────────────────
+
+def get_users() -> list[dict]:
+    """Возвращает всех пользователей, отсортированных по sort_order."""
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM ts_users ORDER BY sort_order, display_name"
+        ).fetchall()
+        cols = [d[0] for d in conn.description]
+        return [dict(zip(cols, r)) for r in rows]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
+def seed_users() -> int:
+    """Создаёт предзаполненных пользователей, если таблица пуста."""
+    conn = _get_conn()
+    try:
+        cnt = conn.execute("SELECT COUNT(*) FROM ts_users").fetchone()[0]
+        if cnt > 0:
+            return 0
+    except Exception:
+        return 0
+    finally:
+        conn.close()
+
+    now = _now_iso()
+    created = 0
+    conn = _get_conn()
+    try:
+        for user_id, display_name, role, district, direction, sort_order in _SEED_USERS:
+            conn.execute("""
+                INSERT OR IGNORE INTO ts_users
+                (user_id, display_name, role, district, direction, sort_order, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, [user_id, display_name, role, district, direction, sort_order, now])
+            created += 1
+    finally:
+        conn.close()
+    log.info("Task Space: создано %d пользователей", created)
     return created
 
 

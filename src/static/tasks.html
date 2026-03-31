@@ -156,14 +156,53 @@
 </head>
 <body class="min-h-screen">
 
+<!-- Login Screen -->
+<div id="tsLoginScreen" class="fixed inset-0 bg-gradient-to-br from-slate-100 to-blue-50 z-[200] flex items-center justify-center">
+  <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm mx-4">
+    <div class="text-center mb-6">
+      <div class="text-3xl mb-2">🏛️</div>
+      <h2 class="text-xl font-bold text-gray-800">Пространство задач</h2>
+      <p class="text-sm text-gray-400 mt-1">Мэрия города Новосибирска</p>
+    </div>
+
+    <!-- Step 1: Password -->
+    <div id="loginStep1">
+      <label class="form-label">Пароль</label>
+      <input type="password" id="tsLoginPwd" class="form-input" placeholder="Введите пароль"
+             onkeydown="if(event.key==='Enter')tsCheckPassword()">
+      <button onclick="tsCheckPassword()" class="btn btn-primary w-full mt-2">Далее</button>
+      <div id="loginError" class="text-red-500 text-sm text-center mt-2 hidden">Неверный пароль</div>
+    </div>
+
+    <!-- Step 2: Select user -->
+    <div id="loginStep2" class="hidden">
+      <label class="form-label">Войти как</label>
+      <select id="tsUserDropdown" class="form-input" size="8" style="height:auto">
+      </select>
+      <button onclick="tsSelectUser()" class="btn btn-primary w-full mt-3">Войти</button>
+    </div>
+  </div>
+</div>
+
 <!-- Header -->
 <header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
   <div class="flex items-center gap-3">
     <a href="/" class="text-gray-400 hover:text-gray-600 text-sm">&larr; Главная</a>
     <h1 class="text-lg font-bold text-gray-800">Пространство задач</h1>
-    <span class="text-xs text-gray-400">MVP v1</span>
   </div>
   <div class="flex items-center gap-2">
+    <!-- User badge -->
+    <div class="relative" id="userBadgeWrap">
+      <button onclick="toggleUserMenu()" id="userBadge"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 transition">
+        <span id="userBadgeName">...</span>
+        <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </button>
+      <div id="userMenu" class="hidden absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 min-w-[160px]">
+        <button onclick="tsSwitchUser()" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Сменить пользователя</button>
+        <button onclick="tsLogout()" class="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50">Выйти</button>
+      </div>
+    </div>
     <button onclick="openModal('initiative')" class="btn btn-ghost text-sm">+ Инициатива</button>
     <button onclick="openModal('task')" class="btn btn-primary text-sm">+ Задача</button>
   </div>
@@ -293,7 +332,7 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
-   Пространство задач — клиентская логика (MVP v1)
+   Пространство задач — клиентская логика
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const STATUS_ORDER  = ['todo','in_progress','review','done','cancelled'];
@@ -310,6 +349,7 @@ const PRIORITY_LABELS = { P1:'P1', P2:'P2', P3:'P3', P4:'P4' };
 let allTasks = [];
 let allInitiatives = [];
 let allContractors = [];
+let allUsers = [];
 let meta = {};
 let currentView = 'kanban';
 let ACCEPTANCE_OPTIONS = [];
@@ -317,6 +357,108 @@ let IQ_DIRS = {};
 let IQ_IMPACT = {};
 let allCategories = [];
 let _openPanelId = null;
+
+// ── Auth ─────────────────────────────────────────────────────────────────
+function tsGetUser() {
+  try { return JSON.parse(sessionStorage.getItem('ts_user') || 'null'); } catch { return null; }
+}
+
+function tsCheckAuth() {
+  const user = tsGetUser();
+  const loginEl = document.getElementById('tsLoginScreen');
+  if (user) {
+    loginEl.style.display = 'none';
+    document.getElementById('userBadgeName').textContent = user.display_name;
+    return true;
+  }
+  loginEl.style.display = 'flex';
+  return false;
+}
+
+async function tsCheckPassword() {
+  const pwd = document.getElementById('tsLoginPwd').value;
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+  try {
+    const res = await api('/api/tasks/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ password: pwd })
+    });
+    // Show user selection
+    const users = res.users || [];
+    const sel = document.getElementById('tsUserDropdown');
+    const groups = { mayor:'Руководство', district_head:'Главы районов', deputy_mayor:'Заместители мэра' };
+    let html = '';
+    for (const [role, label] of Object.entries(groups)) {
+      const roleUsers = users.filter(u => u.role === role);
+      if (roleUsers.length) {
+        html += `<optgroup label="${label}">`;
+        roleUsers.forEach(u => { html += `<option value='${JSON.stringify(u).replace(/'/g,"&#39;")}'>${esc(u.display_name)}</option>`; });
+        html += '</optgroup>';
+      }
+    }
+    sel.innerHTML = html;
+    document.getElementById('loginStep1').classList.add('hidden');
+    document.getElementById('loginStep2').classList.remove('hidden');
+  } catch(e) {
+    errEl.textContent = 'Неверный пароль';
+    errEl.classList.remove('hidden');
+  }
+}
+
+function tsSelectUser() {
+  const sel = document.getElementById('tsUserDropdown');
+  if (!sel.value) { alert('Выберите пользователя'); return; }
+  const user = JSON.parse(sel.value);
+  sessionStorage.setItem('ts_user', JSON.stringify(user));
+  tsCheckAuth();
+  reload();
+}
+
+function tsSwitchUser() {
+  document.getElementById('userMenu').classList.add('hidden');
+  sessionStorage.removeItem('ts_user');
+  // Populate user dropdown from allUsers if available
+  if (allUsers.length) {
+    const sel = document.getElementById('tsUserDropdown');
+    const groups = { mayor:'Руководство', district_head:'Главы районов', deputy_mayor:'Заместители мэра' };
+    let html = '';
+    for (const [role, label] of Object.entries(groups)) {
+      const roleUsers = allUsers.filter(u => u.role === role);
+      if (roleUsers.length) {
+        html += `<optgroup label="${label}">`;
+        roleUsers.forEach(u => { html += `<option value='${JSON.stringify(u).replace(/'/g,"&#39;")}'>${esc(u.display_name)}</option>`; });
+        html += '</optgroup>';
+      }
+    }
+    sel.innerHTML = html;
+  }
+  document.getElementById('loginStep1').classList.add('hidden');
+  document.getElementById('loginStep2').classList.remove('hidden');
+  document.getElementById('tsLoginScreen').style.display = 'flex';
+}
+
+function tsLogout() {
+  document.getElementById('userMenu').classList.add('hidden');
+  sessionStorage.removeItem('ts_user');
+  // Reset login form fully
+  document.getElementById('tsLoginPwd').value = '';
+  document.getElementById('loginStep1').classList.remove('hidden');
+  document.getElementById('loginStep2').classList.add('hidden');
+  document.getElementById('tsLoginScreen').style.display = 'flex';
+}
+
+function toggleUserMenu() {
+  document.getElementById('userMenu').classList.toggle('hidden');
+}
+
+// Close user menu on click outside
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('userBadgeWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('userMenu').classList.add('hidden');
+  }
+});
 
 // ── API helpers ──────────────────────────────────────────────────────────
 async function api(url, opts) {
@@ -343,6 +485,7 @@ async function reload() {
   ACCEPTANCE_OPTIONS = metaData.acceptance_criteria_options || [];
   IQ_DIRS = metaData.iq_directions || {};
   IQ_IMPACT = metaData.iq_impact_labels || {};
+  allUsers = metaData.users || [];
   allCategories = cats || [];
   renderStats();
   renderCurrentView();
@@ -661,8 +804,9 @@ async function openDetail(taskId) {
       <div id="commentsList">
         ${(task.comments||[]).map(c => `
           <div class="comment-bubble">
+            ${c.author ? `<div class="text-xs font-semibold text-indigo-600 mb-0.5">${esc(c.author)}</div>` : ''}
             <div class="text-sm">${esc(c.text)}</div>
-            <div class="comment-date">${c.author ? esc(c.author)+' · ' : ''}${formatDateTime(c.created_at)}</div>
+            <div class="comment-date">${formatDateTime(c.created_at)}</div>
           </div>
         `).join('') || '<div class="text-sm text-gray-400">Нет комментариев</div>'}
       </div>
@@ -679,8 +823,8 @@ async function openDetail(taskId) {
     </div>
 
     <div class="text-xs text-gray-300 mt-4">
-      Создано: ${formatDateTime(task.created_at)}<br>
-      Обновлено: ${formatDateTime(task.updated_at)}<br>
+      Создано: ${formatDateTime(task.created_at)}${task.created_by ? ` (${esc(task.created_by)})` : ''}<br>
+      Обновлено: ${formatDateTime(task.updated_at)}${task.updated_by ? ` (${esc(task.updated_by)})` : ''}<br>
       ID: ${task.task_id}
     </div>
   `;
@@ -694,9 +838,10 @@ function closeDetail() {
 }
 
 async function changeStatus(taskId, status) {
+  const user = tsGetUser();
   await api(`/api/tasks/${taskId}/status`, {
     method:'PATCH', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({status})
+    body: JSON.stringify({status, updated_by: user ? user.display_name : ''})
   });
   await reload();
   openDetail(taskId);
@@ -706,9 +851,10 @@ async function postComment(taskId) {
   const input = document.getElementById('commentInput');
   const text = input.value.trim();
   if (!text) return;
+  const user = tsGetUser();
   await api(`/api/tasks/${taskId}/comments`, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({text})
+    body: JSON.stringify({text, author: user ? user.display_name : ''})
   });
   input.value = '';
   openDetail(taskId);
@@ -799,7 +945,14 @@ function taskForm(task) {
     </select>
 
     <label class="form-label">Исполнитель</label>
-    <input id="fAssignee" class="form-input" value="${esc(t.assignee||'')}" placeholder="ФИО или подразделение">
+    <select id="fAssignee" class="form-input" onchange="if(this.value==='__custom__'){document.getElementById('fAssigneeCustom').style.display='block'}else{document.getElementById('fAssigneeCustom').style.display='none'}">
+      <option value="">— Не указан —</option>
+      ${buildUserOptions(t.assignee||'')}
+      <option value="__custom__" ${t.assignee && !allUsers.find(u=>u.display_name===t.assignee) && t.assignee ? 'selected' : ''}>Другой...</option>
+    </select>
+    <input id="fAssigneeCustom" class="form-input" placeholder="Введите ФИО или подразделение"
+      style="display:${t.assignee && !allUsers.find(u=>u.display_name===t.assignee) && t.assignee ? 'block':'none'}"
+      value="${esc(t.assignee && !allUsers.find(u=>u.display_name===t.assignee) ? t.assignee : '')}">
 
     <label class="form-label">Критерий решённости</label>
     <select id="fAcceptSel" class="form-input" onchange="if(this.value==='__custom__'){document.getElementById('fAcceptCustom').style.display='block'}else{document.getElementById('fAcceptCustom').style.display='none'}">
@@ -838,6 +991,12 @@ async function saveTask(editId) {
   const acceptance = selVal === '__custom__'
     ? document.getElementById('fAcceptCustom').value.trim()
     : selVal;
+  const assigneeVal = document.getElementById('fAssignee').value;
+  const assignee = assigneeVal === '__custom__'
+    ? document.getElementById('fAssigneeCustom').value.trim()
+    : assigneeVal;
+  const user = tsGetUser();
+  const userName = user ? user.display_name : '';
   const data = {
     title:               document.getElementById('fTitle').value.trim(),
     description:         document.getElementById('fDesc').value.trim(),
@@ -847,11 +1006,13 @@ async function saveTask(editId) {
     due_date:            document.getElementById('fDue').value,
     initiative_id:       document.getElementById('fInit').value,
     contractor_id:       document.getElementById('fContr').value,
-    assignee:            document.getElementById('fAssignee').value.trim(),
+    assignee:            assignee,
     tags:                document.getElementById('fTags').value.trim(),
     acceptance_criteria: acceptance,
     iq_impact:           document.getElementById('fIqImpact').value,
+    updated_by:          userName,
   };
+  if (!editId) data.created_by = userName;
   if (!data.title) { alert('Заголовок обязателен'); return; }
   try {
     if (editId) {
@@ -1390,6 +1551,22 @@ function phoneMask(input) {
   input.value = r;
 }
 
+// ── User options for assignee dropdown ────────────────────────────────────
+function buildUserOptions(selected) {
+  const groups = { mayor:'Руководство', district_head:'Главы районов', deputy_mayor:'Заместители мэра' };
+  let html = '';
+  for (const [role, label] of Object.entries(groups)) {
+    const roleUsers = allUsers.filter(u => u.role === role);
+    if (!roleUsers.length) continue;
+    html += `<optgroup label="${label}">`;
+    roleUsers.forEach(u => {
+      html += `<option value="${esc(u.display_name)}" ${u.display_name===selected?'selected':''}>${esc(u.display_name)}</option>`;
+    });
+    html += '</optgroup>';
+  }
+  return html;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 function esc(s) {
   if (!s) return '';
@@ -1426,7 +1603,9 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Init ─────────────────────────────────────────────────────────────────
-reload();
+if (tsCheckAuth()) {
+  reload();
+}
 </script>
 </body>
 </html>
