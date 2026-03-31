@@ -46,6 +46,18 @@ def _table_exists(conn, table_name: str) -> bool:
     return len(rows) > 0
 
 
+def _json_default(obj):
+    """Сериализация нестандартных типов DuckDB (datetime, Decimal и т.д.)."""
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    if isinstance(obj, (bytes, bytearray)):
+        return obj.hex()
+    try:
+        return str(obj)
+    except Exception:
+        return None
+
+
 def _dump_table(conn, table_name: str) -> list[dict]:
     """Дамп таблицы в список словарей."""
     if not _table_exists(conn, table_name):
@@ -63,6 +75,7 @@ def _dump_table(conn, table_name: str) -> list[dict]:
 def _create_backup_zip(scope: str = "tasks") -> io.BytesIO:
     """Создаёт ZIP-архив с JSON-дампами."""
     conn = _get_conn()
+    errors = []
     try:
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -71,23 +84,40 @@ def _create_backup_zip(scope: str = "tasks") -> io.BytesIO:
                 "scope": scope,
                 "created_at": datetime.now().isoformat(),
                 "tables": {},
+                "errors": [],
             }
 
-            tables = _TS_TABLES
+            tables = list(_TS_TABLES)
             if scope == "all":
-                # Добавляем все topic_* таблицы
                 topic_tables = conn.execute(
                     "SELECT table_name FROM information_schema.tables "
                     "WHERE table_name LIKE 'topic_%' ORDER BY table_name"
                 ).fetchall()
-                tables = list(_TS_TABLES) + [r[0] for r in topic_tables]
+                tables += [r[0] for r in topic_tables]
+                # Также экологические и другие служебные таблицы
+                extra = conn.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_name NOT LIKE 'topic_%' "
+                    "AND table_name NOT LIKE 'ts_%' "
+                    "AND table_name NOT LIKE 'information_%' "
+                    "ORDER BY table_name"
+                ).fetchall()
+                tables += [r[0] for r in extra if r[0] not in tables]
 
             for tbl in tables:
-                data = _dump_table(conn, tbl)
-                if data:
-                    fname = f"{tbl}.json"
-                    zf.writestr(fname, json.dumps(data, ensure_ascii=False, indent=2))
-                    manifest["tables"][tbl] = len(data)
+                try:
+                    data = _dump_table(conn, tbl)
+                    if data:
+                        fname = f"{tbl}.json"
+                        zf.writestr(
+                            fname,
+                            json.dumps(data, ensure_ascii=False, default=_json_default),
+                        )
+                        manifest["tables"][tbl] = len(data)
+                except Exception as e:
+                    err_msg = f"{tbl}: {e}"
+                    manifest["errors"].append(err_msg)
+                    log.warning("backup export skip %s: %s", tbl, e)
 
             zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
 
