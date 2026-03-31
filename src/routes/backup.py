@@ -174,14 +174,13 @@ def _restore_from_zip(zip_bytes: bytes) -> dict:
                             col_defs = ", ".join(f'"{c}" VARCHAR' for c in cols)
                             conn.execute(f"CREATE TABLE {table_name} ({col_defs})")
 
-                        # Очищаем и заливаем (внутри транзакции)
+                        # Очищаем и заливаем (внутри транзакции, batch)
                         conn.execute(f"DELETE FROM {table_name}")
-                        for row in data:
-                            vals = [row.get(c) for c in cols]
-                            conn.execute(
-                                f"INSERT INTO {table_name} ({col_list}) VALUES ({placeholders})",
-                                vals,
-                            )
+                        all_vals = [[row.get(c) for c in cols] for row in data]
+                        conn.executemany(
+                            f"INSERT INTO {table_name} ({col_list}) VALUES ({placeholders})",
+                            all_vals,
+                        )
 
                         result["restored"][table_name] = len(data)
                         log.info("backup import: %s — %d строк", table_name, len(data))
