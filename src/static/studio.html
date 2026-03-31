@@ -268,6 +268,9 @@ async function _studioAuth() {
     <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="feedback">
       💬 Баги/Фичи<span id="feedback-count-badge" class="ml-1.5 bg-amber-100 text-amber-600 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"></span>
     </button>
+    <button class="tab-btn px-5 py-3 text-sm text-slate-600 border-b-2 border-transparent" data-tab="backup">
+      Backup
+    </button>
   </nav>
 </div>
 
@@ -1701,6 +1704,64 @@ async function _studioAuth() {
     <!-- List -->
     <div id="fb-list" class="space-y-2">
       <div class="text-center text-slate-400 py-8">Загрузка...</div>
+    </div>
+  </div>
+
+  <!-- ══ Вкладка: Backup ═══════════════════════════════════════════════════ -->
+  <div id="tab-backup" class="tab-pane">
+    <div class="flex items-center justify-between mb-5">
+      <h2 class="text-xl font-bold text-slate-800">Backup / Restore</h2>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Export -->
+      <div class="bg-white border border-slate-200 rounded-xl p-5">
+        <h3 class="font-semibold text-slate-800 mb-3">Экспорт данных</h3>
+        <p class="text-sm text-slate-500 mb-4">Скачать ZIP-архив с JSON-дампами таблиц Task Space (задачи, инициативы, комментарии, контрагенты, пользователи).</p>
+
+        <div class="flex items-center gap-3 mb-4">
+          <label class="text-sm text-slate-600">Scope:</label>
+          <select id="bk-scope" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm">
+            <option value="tasks">Task Space</option>
+            <option value="all">Task Space + кеши opendata</option>
+          </select>
+        </div>
+
+        <div class="flex gap-3">
+          <button onclick="_bkExport()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+            Скачать архив
+          </button>
+          <button onclick="_bkSnapshot()" class="bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+            Сохранить на сервере
+          </button>
+        </div>
+        <div id="bk-export-status" class="mt-3 text-sm text-slate-500 hidden"></div>
+      </div>
+
+      <!-- Import -->
+      <div class="bg-white border border-slate-200 rounded-xl p-5">
+        <h3 class="font-semibold text-slate-800 mb-3">Импорт данных</h3>
+        <p class="text-sm text-slate-500 mb-4">Загрузить ZIP-архив для восстановления. Текущие данные в таблицах будут заменены.</p>
+
+        <div id="bk-dropzone" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition">
+          <div class="text-3xl mb-2">📦</div>
+          <div class="text-sm text-slate-500">Перетащите ZIP-файл сюда или нажмите для выбора</div>
+          <input type="file" id="bk-file-input" accept=".zip" class="hidden">
+        </div>
+        <div id="bk-import-status" class="mt-3 text-sm hidden"></div>
+      </div>
+    </div>
+
+    <!-- Snapshots -->
+    <div class="mt-6 bg-white border border-slate-200 rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-slate-800">Снимки на сервере</h3>
+        <button onclick="_bkLoadSnapshots()" class="text-sm text-blue-600 hover:text-blue-800">Обновить</button>
+      </div>
+      <div id="bk-snapshots-list">
+        <div class="text-sm text-slate-400 py-4 text-center">Нажмите «Обновить» для загрузки списка</div>
+      </div>
     </div>
   </div>
 
@@ -5317,6 +5378,111 @@ window.addEventListener('message', (e) => {
     }
   }
 });
+
+// ── Backup / Restore ────────────────────────────────────────────────────────
+
+function _bkExport() {
+  const scope = document.getElementById('bk-scope').value;
+  const st = document.getElementById('bk-export-status');
+  st.className = 'mt-3 text-sm text-blue-600';
+  st.textContent = 'Формирую архив...';
+  window.location.href = '/api/backup/export?scope=' + scope;
+  setTimeout(() => { st.textContent = 'Загрузка началась'; }, 1000);
+  setTimeout(() => { st.className = 'mt-3 text-sm text-slate-500 hidden'; }, 3000);
+}
+
+async function _bkSnapshot() {
+  const scope = document.getElementById('bk-scope').value;
+  const st = document.getElementById('bk-export-status');
+  st.className = 'mt-3 text-sm text-blue-600';
+  st.textContent = 'Сохраняю снимок...';
+  try {
+    const resp = await fetch('/api/backup/snapshot?scope=' + scope, { method: 'POST' });
+    const data = await resp.json();
+    st.className = 'mt-3 text-sm text-green-600';
+    st.textContent = 'Сохранено: ' + data.name + ' (' + data.size_kb + ' KB)';
+    _bkLoadSnapshots();
+  } catch (e) {
+    st.className = 'mt-3 text-sm text-red-600';
+    st.textContent = 'Ошибка: ' + e.message;
+  }
+}
+
+async function _bkImport(file) {
+  const st = document.getElementById('bk-import-status');
+  st.className = 'mt-3 text-sm text-blue-600';
+  st.textContent = 'Загружаю ' + file.name + '...';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const resp = await fetch('/api/backup/import', { method: 'POST', body: form });
+    const data = await resp.json();
+    if (data.error) {
+      st.className = 'mt-3 text-sm text-red-600';
+      st.textContent = 'Ошибка: ' + data.error;
+      return;
+    }
+    const tables = Object.entries(data.restored || {}).map(([t, n]) => t + ': ' + n).join(', ');
+    st.className = 'mt-3 text-sm text-green-600';
+    st.textContent = 'Восстановлено: ' + (tables || 'пусто');
+    if (data.errors && data.errors.length) {
+      st.textContent += ' | Ошибки: ' + data.errors.join('; ');
+    }
+  } catch (e) {
+    st.className = 'mt-3 text-sm text-red-600';
+    st.textContent = 'Ошибка: ' + e.message;
+  }
+}
+
+async function _bkLoadSnapshots() {
+  const el = document.getElementById('bk-snapshots-list');
+  try {
+    const resp = await fetch('/api/backup/snapshots');
+    const data = await resp.json();
+    const snaps = data.snapshots || [];
+    if (!snaps.length) {
+      el.innerHTML = '<div class="text-sm text-slate-400 py-4 text-center">Нет сохранённых снимков</div>';
+      return;
+    }
+    el.innerHTML = '<table class="w-full text-sm"><thead><tr class="text-left text-slate-500 border-b"><th class="py-2 px-2">Имя</th><th class="py-2 px-2">Размер</th><th class="py-2 px-2">Дата</th><th class="py-2 px-2"></th></tr></thead><tbody>' +
+      snaps.map(s => {
+        const dt = new Date(s.created).toLocaleString('ru-RU');
+        return '<tr class="border-b border-slate-100 hover:bg-slate-50">' +
+          '<td class="py-2 px-2 font-mono text-xs">' + s.name + '</td>' +
+          '<td class="py-2 px-2">' + s.size_kb + ' KB</td>' +
+          '<td class="py-2 px-2 text-slate-500">' + dt + '</td>' +
+          '<td class="py-2 px-2 text-right">' +
+            '<a href="/api/backup/download/' + s.name + '" class="text-blue-600 hover:text-blue-800 mr-3">Скачать</a>' +
+            '<button onclick="_bkDeleteSnap(\'' + s.name + '\')" class="text-red-500 hover:text-red-700">Удалить</button>' +
+          '</td></tr>';
+      }).join('') +
+      '</tbody></table>';
+  } catch (e) {
+    el.innerHTML = '<div class="text-sm text-red-500 py-4">' + e.message + '</div>';
+  }
+}
+
+async function _bkDeleteSnap(name) {
+  if (!confirm('Удалить снимок ' + name + '?')) return;
+  await fetch('/api/backup/snapshot/' + name, { method: 'DELETE' });
+  _bkLoadSnapshots();
+}
+
+// Drag & drop + click for import
+(function() {
+  const dz = document.getElementById('bk-dropzone');
+  const fi = document.getElementById('bk-file-input');
+  if (!dz || !fi) return;
+  dz.addEventListener('click', () => fi.click());
+  fi.addEventListener('change', () => { if (fi.files[0]) _bkImport(fi.files[0]); });
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('border-blue-400', 'bg-blue-50'); });
+  dz.addEventListener('dragleave', () => { dz.classList.remove('border-blue-400', 'bg-blue-50'); });
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('border-blue-400', 'bg-blue-50');
+    if (e.dataTransfer.files[0]) _bkImport(e.dataTransfer.files[0]);
+  });
+})();
 </script>
 </body>
 </html>

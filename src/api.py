@@ -960,6 +960,7 @@ from .routes.vocabulary_routes import router as vocabulary_router
 from .routes.feedback import router as feedback_router
 from .routes.custom_data import router as custom_data_router
 from .routes.tasks import router as tasks_router
+from .routes.backup import router as backup_router
 
 app.include_router(data_router)
 app.include_router(ecology_router)
@@ -976,6 +977,7 @@ app.include_router(vocabulary_router)
 app.include_router(feedback_router)
 app.include_router(custom_data_router)
 app.include_router(tasks_router)
+app.include_router(backup_router)
 
 
 # ── Статические файлы (tailwind.css, иконки и т.д.) ─────────────────────────
