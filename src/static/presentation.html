@@ -38,6 +38,9 @@
   .slide-11 { background: linear-gradient(135deg, #fdf2f8 0%, #fbcfe8 100%); color:#1e293b; }
   .slide-12 { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); color:#fff; }
   .slide-13 { background: linear-gradient(135deg, #ecfdf5 0%, #6ee7b7 100%); color:#1e293b; }
+  .slide-14 { background: linear-gradient(135deg, #eff6ff 0%, #bfdbfe 100%); color:#1e293b; }
+  .slide-15 { background: linear-gradient(135deg, #0f172a 0%, #1e40af 100%); color:#fff; }
+  .slide-16 { background: linear-gradient(135deg, #f0fdf4 0%, #4ade80 60%, #22c55e 100%); color:#1e293b; }
 
   .bullet { display:flex; align-items:flex-start; gap:12px; margin-bottom:12px; }
   .bullet-icon { font-size:1.3rem; flex-shrink:0; margin-top:2px; }
@@ -61,11 +64,32 @@
   .nav-dot.active { background:#fff; transform:scale(1.3); }
   @media (max-width:640px) { .nav-dots { display:none; } }
 
-  /* Nav arrows */
-  .nav-arrows {
+  /* Nav arrows — mobile (top center) */
+  .nav-arrows-mobile {
     position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:50;
-    display:flex; gap:8px;
+    display:none; gap:8px;
   }
+  @media (max-width:640px) { .nav-arrows-mobile { display:flex; } }
+
+  /* Nav arrows — desktop (side panels for wall displays) */
+  .nav-side {
+    position:fixed; top:0; bottom:0; width:80px; z-index:50;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; transition:background .2s;
+  }
+  .nav-side:hover { background:rgba(0,0,0,.08); }
+  .nav-side:active { background:rgba(0,0,0,.15); }
+  .nav-side.left { left:0; }
+  .nav-side.right { right:0; }
+  .nav-side-icon {
+    width:56px; height:56px; border-radius:50%;
+    background:rgba(0,0,0,.15); backdrop-filter:blur(4px); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:24px;
+    transition:background .2s; font-weight:bold;
+  }
+  .nav-side:hover .nav-side-icon { background:rgba(0,0,0,.35); }
+  @media (max-width:640px) { .nav-side { display:none; } }
+
   .nav-arrow {
     width:40px; height:40px; border-radius:50%;
     background:rgba(0,0,0,.3); backdrop-filter:blur(4px); color:#fff; border:none;
@@ -100,11 +124,20 @@
 <body>
 
 <a href="/" class="home-btn">&larr; Главная</a>
-<div class="slide-counter" id="slideCounter">1 / 14</div>
+<div class="slide-counter" id="slideCounter">1 / 17</div>
 
-<div class="nav-arrows">
-  <button class="nav-arrow" onclick="goSlide(current-1)" title="Предыдущий (←)">&larr;</button>
-  <button class="nav-arrow" onclick="goSlide(current+1)" title="Следующий (→)">&rarr;</button>
+<!-- Mobile: compact arrows at top -->
+<div class="nav-arrows-mobile">
+  <button class="nav-arrow" onclick="goSlide(current-1)" title="Предыдущий">&larr;</button>
+  <button class="nav-arrow" onclick="goSlide(current+1)" title="Следующий">&rarr;</button>
+</div>
+
+<!-- Desktop/wall display: large side click zones -->
+<div class="nav-side left" onclick="goSlide(current-1)" title="Предыдущий (←)">
+  <div class="nav-side-icon">&larr;</div>
+</div>
+<div class="nav-side right" onclick="goSlide(current+1)" title="Следующий (→)">
+  <div class="nav-side-icon">&rarr;</div>
 </div>
 
 <div class="nav-dots" id="navDots"></div>
@@ -335,6 +368,67 @@
       </div>
       <div class="mt-8 text-center">
         <a href="/" class="inline-block bg-teal-600 hover:bg-teal-700 text-white font-semibold px-8 py-3 rounded-xl transition text-lg">
+          Открыть платформу &rarr;
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 15: Commercial — Demo access -->
+  <div class="slide slide-14">
+    <div class="slide-inner">
+      <span class="phase-badge bg-blue-200 text-blue-800">Коммерция</span>
+      <h2 class="text-2xl sm:text-3xl font-bold mb-2">Модель доступа</h2>
+      <p class="text-lg text-blue-700 font-semibold mb-4">Демо-доступ к ядру платформы — навсегда бесплатно</p>
+      <div class="space-y-4">
+        <div class="bullet"><span class="bullet-icon">🚀</span><span class="bullet-text">Готовый демо-стенд СИГМЫ с данными Новосибирска и типового города — разворачивается сразу</span></div>
+        <div class="bullet"><span class="bullet-icon">🔄</span><span class="bullet-text">Полный управленческий цикл: данные &rarr; сигнал &rarr; инициатива &rarr; задачи &rarr; верификация &rarr; отчёты по IQ</span></div>
+        <div class="bullet"><span class="bullet-icon">🔒</span><span class="bullet-text"><strong>Ограничения демо:</strong> фиксированный набор городов, до 5 инициатив, 20 задач, 5 дашбордов</span></div>
+        <div class="bullet"><span class="bullet-icon">🎯</span><span class="bullet-text">Цель — дать мэру и департаментам <strong>поработать в живой системе</strong>, прежде чем брать подписку</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 16: Commercial — Subscription -->
+  <div class="slide slide-15">
+    <div class="slide-inner">
+      <span class="phase-badge bg-blue-400/30 text-blue-200">Подписка</span>
+      <h2 class="text-2xl sm:text-3xl font-bold mb-2">Подписка «Город»</h2>
+      <p class="text-lg text-blue-300 font-semibold mb-4">SaaS-модель для управления по IQ городов</p>
+      <div class="space-y-4 mb-6">
+        <div class="bullet"><span class="bullet-icon">🏙️</span><span class="bullet-text">Адаптация CAL под конкретный город: источники данных, бюджет, аварийные службы, транспорт</span></div>
+        <div class="bullet"><span class="bullet-icon">⚙️</span><span class="bullet-text">Эксплуатация ядра: мониторинг, Task Space, отчёты по IQ Минстроя</span></div>
+        <div class="bullet"><span class="bullet-icon">🔄</span><span class="bullet-text">Обновления функционала и методики, техподдержка и резервное копирование</span></div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="bg-white/10 rounded-xl p-4 border border-white/20">
+          <div class="text-sm text-blue-300 font-semibold mb-1">2–3 квартал 2026</div>
+          <div class="text-2xl font-bold">200 000 ₽/мес</div>
+          <div class="text-sm text-blue-300 mt-1">2,4 млн ₽/год — льготный тариф</div>
+        </div>
+        <div class="bg-white/10 rounded-xl p-4 border border-white/20">
+          <div class="text-sm text-blue-300 font-semibold mb-1">С 4 квартала 2026</div>
+          <div class="text-2xl font-bold">300 000 ₽/мес</div>
+          <div class="text-sm text-blue-300 mt-1">3,6 млн ₽/год — стандартный тариф</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 17: Commercial — Why now -->
+  <div class="slide slide-16">
+    <div class="slide-inner">
+      <span class="phase-badge bg-green-800 text-green-100">Аргументы</span>
+      <h2 class="text-2xl sm:text-3xl font-bold mb-2">Почему выгодно подключиться сейчас</h2>
+      <p class="text-lg text-green-800 font-semibold mb-4">Аргументы для мэра и региона</p>
+      <div class="space-y-4">
+        <div class="bullet"><span class="bullet-icon">⚡</span><span class="bullet-text"><strong>Быстрый старт:</strong> демо-версия разворачивается сразу, команда учится работать с полным циклом без затрат на ИТ-инфраструктуру</span></div>
+        <div class="bullet"><span class="bullet-icon">💰</span><span class="bullet-text"><strong>Финансовый стимул:</strong> подключив город во 2–3 кв. 2026, регион фиксирует льготный тариф <strong>200 тыс. ₽/мес</strong> на весь первый год</span></div>
+        <div class="bullet"><span class="bullet-icon">🎯</span><span class="bullet-text"><strong>Управление по целям Минстроя:</strong> платформа привязана к показателям «IQ городов» — каждый рубль подписки работает на рост рейтинга</span></div>
+        <div class="bullet"><span class="bullet-icon">📈</span><span class="bullet-text"><strong>Масштабирование:</strong> модель «по городам» позволяет региону поэтапно подключать муниципалитеты, используя единое ядро</span></div>
+      </div>
+      <div class="mt-8 text-center">
+        <a href="/" class="inline-block bg-green-700 hover:bg-green-800 text-white font-semibold px-8 py-3 rounded-xl transition text-lg">
           Открыть платформу &rarr;
         </a>
       </div>
