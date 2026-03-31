@@ -130,10 +130,12 @@ def _create_backup_zip(scope: str = "tasks") -> io.BytesIO:
 def _restore_from_zip(zip_bytes: bytes) -> dict:
     """Восстанавливает данные из ZIP-архива."""
     conn = _get_conn()
-    result = {"restored": {}, "errors": []}
+    result = {"restored": {}, "errors": [], "zip_size": len(zip_bytes)}
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
             names = zf.namelist()
+            result["files_in_zip"] = len(names)
+            log.info("backup import: ZIP %d bytes, %d files: %s", len(zip_bytes), len(names), names[:10])
 
             for name in names:
                 if name == "manifest.json" or not name.endswith(".json"):

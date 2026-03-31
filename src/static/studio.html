@@ -5411,7 +5411,9 @@ async function _bkSnapshot() {
 async function _bkImport(file) {
   const st = document.getElementById('bk-import-status');
   st.className = 'mt-3 text-sm text-blue-600';
-  st.textContent = 'Загружаю ' + file.name + '...';
+  st.textContent = 'Загружаю ' + file.name + ' (' + Math.round(file.size/1024) + ' KB)...';
+  // Сбрасываем input чтобы повторная загрузка того же файла работала
+  document.getElementById('bk-file-input').value = '';
   try {
     const form = new FormData();
     form.append('file', file);
@@ -5423,8 +5425,9 @@ async function _bkImport(file) {
       return;
     }
     const tables = Object.entries(data.restored || {}).map(([t, n]) => t + ': ' + n).join(', ');
-    st.className = 'mt-3 text-sm text-green-600';
-    st.textContent = 'Восстановлено: ' + (tables || 'пусто');
+    const info = 'ZIP: ' + (data.zip_size ? Math.round(data.zip_size/1024) + ' KB' : '?') + ', файлов: ' + (data.files_in_zip || '?');
+    st.className = 'mt-3 text-sm ' + (tables ? 'text-green-600' : 'text-amber-600');
+    st.textContent = (tables ? 'Восстановлено: ' + tables : 'Ничего не восстановлено (' + info + ')');
     if (data.errors && data.errors.length) {
       st.textContent += ' | Ошибки: ' + data.errors.join('; ');
     }
