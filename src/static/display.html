@@ -289,6 +289,16 @@ function setStatus(state, text) {
   else dot.classList.add('bg-amber-400', 'pulse-dot');
 }
 
+// ── Listen for navigate messages from iframe ────────────────────────────────
+window.addEventListener('message', (ev) => {
+  if (!ev.data || typeof ev.data !== 'object') return;
+  if (ev.data.type === 'navigate' && ev.data.url) {
+    // iframe (display mode) просит открыть страницу (презентация и т.п.)
+    const frame = document.getElementById('mainFrame');
+    frame.src = ev.data.url;
+  }
+});
+
 // ── Query → iframe ──────────────────────────────────────────────────────────
 function handleQuery(query) {
   dismissIdle();

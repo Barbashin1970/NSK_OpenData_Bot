@@ -277,7 +277,8 @@
     <p>
       <a href="/studio" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Данные ↗</a> ·
       <a href="/tasks" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Задачи ↗</a> ·
-      <a href="/display" target="_blank" class="hover:text-blue-500 transition-colors">Презентация ↗</a> ·
+      <a href="/presentation" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Презентация ↗</a> ·
+      <a href="/display" target="_blank" class="hover:text-blue-500 transition-colors">Пульт ДУ ↗</a> ·
       <a href="https://safety-builder.streamlit.app/" target="_blank" class="hover:text-blue-500 transition-colors">Демо «ИИ-помощник строителя» ↗</a> ·
       <a href="https://github.com/Barbashin1970/NSK_OpenData_Bot" target="_blank" class="hover:text-blue-500 transition-colors">GitHub ↗</a> ·
       <button onclick="_openFeedback()" class="font-bold text-slate-600 hover:text-blue-600 transition-colors cursor-pointer">💬 Жалобы и предложения</button> ·
@@ -1999,6 +2000,19 @@ function _trySpecialQuery(raw) {
     return true;
   }
   // ── [/PUZZLE GAME] ────────────────────────────────────────────────────────
+
+  // ── Презентация СИГМА ──────────────────────────────────────────────────────
+  if (/(?:покажи|открой|запусти)\s+презентаци/i.test(ql) || /^презентаци[яю]$/i.test(ql)) {
+    document.getElementById('queryInput').value = '';
+    document.getElementById('loadingState').className = 'hidden';
+    if (_DISPLAY_MODE) {
+      // В режиме дисплея — сообщаем родительскому display.html открыть презентацию в iframe
+      window.parent.postMessage({ type: 'navigate', url: '/presentation' }, '*');
+    } else {
+      window.open('/presentation', '_blank');
+    }
+    return true;
+  }
 
   // ── Рейтинг качества ЖКХ по районам ──────────────────────────────────────
   if (/рейтинг\S*\s+(?:качеств\S*\s+)?(?:жкх|коммунал|услуг)|качеств\S*\s+(?:жкх|коммунал)\S*\s+(?:по\s+)?район/i.test(ql)) {
