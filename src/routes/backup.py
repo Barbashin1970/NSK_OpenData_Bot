@@ -127,8 +127,16 @@ def _create_backup_zip(scope: str = "tasks") -> io.BytesIO:
         conn.close()
 
 
+# Глобальный флаг — фоновые задачи проверяют его перед записью
+import_in_progress = False
+
+
 def _restore_from_zip(zip_bytes: bytes) -> dict:
-    """Восстанавливает данные из ZIP-архива."""
+    """Восстанавливает данные из ZIP-архива в единой транзакции."""
+    global import_in_progress
+    import_in_progress = True
+    log.info("backup import: START, фоновые записи приостановлены")
+
     conn = _get_conn()
     result = {"restored": {}, "errors": [], "zip_size": len(zip_bytes)}
     try:
@@ -137,51 +145,62 @@ def _restore_from_zip(zip_bytes: bytes) -> dict:
             result["files_in_zip"] = len(names)
             log.info("backup import: ZIP %d bytes, %d files: %s", len(zip_bytes), len(names), names[:10])
 
-            for name in names:
-                if name == "manifest.json" or not name.endswith(".json"):
-                    continue
-
-                table_name = name.replace(".json", "")
-
-                # Безопасность: запрещаем системные таблицы
-                if table_name.startswith("information_") or table_name.startswith("pg_"):
-                    result["errors"].append(f"Пропущена таблица {table_name}: системная")
-                    continue
-
-                try:
-                    data = json.loads(zf.read(name))
-                    if not data or not isinstance(data, list):
+            # Единая транзакция — DELETE+INSERT атомарны
+            conn.execute("BEGIN TRANSACTION")
+            try:
+                for name in names:
+                    if name == "manifest.json" or not name.endswith(".json"):
                         continue
 
-                    cols = list(data[0].keys())
-                    # Экранируем имена колонок (E-mail, другие спецсимволы)
-                    quoted_cols = [f'"{c}"' for c in cols]
-                    col_list = ", ".join(quoted_cols)
-                    placeholders = ", ".join(["?"] * len(cols))
+                    table_name = name.replace(".json", "")
 
-                    # Создаём таблицу если не существует
-                    if not _table_exists(conn, table_name):
-                        col_defs = ", ".join(f'"{c}" VARCHAR' for c in cols)
-                        conn.execute(f"CREATE TABLE {table_name} ({col_defs})")
+                    # Безопасность: запрещаем системные таблицы
+                    if table_name.startswith("information_") or table_name.startswith("pg_"):
+                        result["errors"].append(f"Пропущена таблица {table_name}: системная")
+                        continue
 
-                    # Очищаем и заливаем
-                    conn.execute(f"DELETE FROM {table_name}")
-                    for row in data:
-                        vals = [row.get(c) for c in cols]
-                        conn.execute(
-                            f"INSERT INTO {table_name} ({col_list}) VALUES ({placeholders})",
-                            vals,
-                        )
+                    try:
+                        data = json.loads(zf.read(name))
+                        if not data or not isinstance(data, list):
+                            continue
 
-                    result["restored"][table_name] = len(data)
-                    log.info("backup import: %s — %d строк", table_name, len(data))
+                        cols = list(data[0].keys())
+                        quoted_cols = [f'"{c}"' for c in cols]
+                        col_list = ", ".join(quoted_cols)
+                        placeholders = ", ".join(["?"] * len(cols))
 
-                except Exception as e:
-                    result["errors"].append(f"{table_name}: {e}")
-                    log.warning("backup import error %s: %s", table_name, e)
+                        # Создаём таблицу если не существует
+                        if not _table_exists(conn, table_name):
+                            col_defs = ", ".join(f'"{c}" VARCHAR' for c in cols)
+                            conn.execute(f"CREATE TABLE {table_name} ({col_defs})")
+
+                        # Очищаем и заливаем (внутри транзакции)
+                        conn.execute(f"DELETE FROM {table_name}")
+                        for row in data:
+                            vals = [row.get(c) for c in cols]
+                            conn.execute(
+                                f"INSERT INTO {table_name} ({col_list}) VALUES ({placeholders})",
+                                vals,
+                            )
+
+                        result["restored"][table_name] = len(data)
+                        log.info("backup import: %s — %d строк", table_name, len(data))
+
+                    except Exception as e:
+                        result["errors"].append(f"{table_name}: {e}")
+                        log.warning("backup import error %s: %s", table_name, e)
+
+                conn.execute("COMMIT")
+                log.info("backup import: COMMIT OK, %d таблиц восстановлено", len(result["restored"]))
+            except Exception as e:
+                conn.execute("ROLLBACK")
+                result["errors"].append(f"Транзакция откачена: {e}")
+                log.error("backup import: ROLLBACK — %s", e)
 
     finally:
         conn.close()
+        import_in_progress = False
+        log.info("backup import: DONE, фоновые записи возобновлены")
 
     return result
 

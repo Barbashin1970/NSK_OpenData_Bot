@@ -51,6 +51,15 @@ def refresh_topic(topic: str, force: bool = False) -> int:
       -1  — данные уже свежие, загрузка не нужна
        0  — ошибка или нет данных
     """
+    # Приостановка во время импорта бэкапа
+    try:
+        from .routes.backup import import_in_progress
+        if import_in_progress:
+            log.debug("refresh_topic(%s): пропуск — идёт импорт бэкапа", topic)
+            return -1
+    except ImportError:
+        pass
+
     from .fetcher import fetch_csv
     from .parser import read_csv
     from .cache import load_into_db
