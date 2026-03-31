@@ -5,6 +5,48 @@ setlocal enabledelayedexpansion
 :: Переходим в каталог, где лежит этот .bat файл (работает из любого места)
 cd /d "%~dp0"
 
+:: ── Проверяем наличие Python ──────────────────────────────────────────────────
+echo.
+echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+echo   Проверка зависимостей...
+echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+echo.
+
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ❌ Python не найден!
+    echo.
+    echo Установите Python 3.11+ с https://www.python.org/downloads/
+    echo Важно: поставьте галку "Add Python to PATH" при установке
+    echo.
+    pause
+    exit /b 1
+)
+
+:: ── Проверяем версию Python ───────────────────────────────────────────────────
+for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PYTHON_VERSION=%%v
+echo ✓ Python найден: %PYTHON_VERSION%
+
+:: ── Проверяем pip ────────────────────────────────────────────────────────────
+pip --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ❌ pip не найден!
+    echo Переустановите Python с опцией "Add pip"
+    pause
+    exit /b 1
+)
+echo ✓ pip готов
+
+:: ── Проверяем git ────────────────────────────────────────────────────────────
+git --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ⚠ git не найден (опционально, нужен только для истории коммитов)
+) else (
+    echo ✓ git готов
+)
+
+echo.
+
 :: ── Читаем версию из pyproject.toml ──────────────────────────────────────────
 set VERSION=
 for /f "tokens=3 delims= " %%v in ('findstr /r "^version" pyproject.toml') do (
@@ -17,7 +59,6 @@ set COMMIT_MSG=
 for /f "delims=" %%c in ('git rev-parse --short HEAD 2^>nul') do set COMMIT=%%c
 for /f "delims=" %%m in ('git log -1 --format^="%%s" 2^>nul') do set COMMIT_MSG=%%m
 
-echo.
 echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 echo   Фреймворк Сигма  v%VERSION%
 echo   Открытые данные и цифровые регламенты городской среды
