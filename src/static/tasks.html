@@ -211,6 +211,9 @@
       <select id="filterCategory" class="text-sm border rounded px-2 py-1" onchange="filterContractors()">
         <option value="">Все контрагенты</option>
       </select>
+      <label class="inline-flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
+        <input type="checkbox" id="filterWithTasks" onchange="filterContractors()"> С задачами
+      </label>
       <span id="contractorCount" class="text-xs text-gray-400"></span>
     </div>
     <button onclick="openModal('contractor')" class="btn btn-primary text-sm">+ Контрагент</button>
@@ -337,9 +340,9 @@ function renderIqCoverage() {
   el.innerHTML = Object.entries(IQ_DIRS).map(([code, d]) => {
     const cnt = coverage[code] || 0;
     const opacity = cnt > 0 ? '1' : '0.35';
-    return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-default"
+    return `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-default"
       style="background:${d.color}18;color:${d.color};opacity:${opacity};border:1px solid ${d.color}30"
-      title="${d.name}: ${cnt} инициатив">${code}<span class="font-bold">${cnt}</span></span>`;
+      title="${d.name}: ${cnt} инициатив">${code} <span class="font-bold">${cnt}</span></span>`;
   }).join('');
 }
 
@@ -395,6 +398,7 @@ function renderKanban() {
         <span class="status-dot status-${status}"></span>
         ${STATUS_LABELS[status]}
         <span class="ml-auto text-xs font-normal opacity-60">${tasks.length}</span>
+        ${status === 'done' && tasks.length > 0 ? `<button onclick="event.stopPropagation();openReport()" class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-white/60 hover:bg-white text-green-700 font-medium" title="Сформировать отчёт">Отчёт</button>` : ''}
       </div>
       <div class="kanban-col-body" data-status="${status}"
            ondragover="event.preventDefault(); this.style.background='#f0f9ff'"
@@ -413,7 +417,8 @@ function kanbanCard(t) {
   return `
     <div class="kanban-card p-${t.priority}" draggable="true"
          ondragstart="event.dataTransfer.setData('text/plain','${t.task_id}')"
-         onclick="openDetail('${t.task_id}')">
+         onclick="openDetail('${t.task_id}')"
+         ${isOverdue(t) ? 'style="background:#fef2f2"' : ''}>
       <div class="flex items-center justify-between mb-1">
         <span class="priority-badge priority-${t.priority}">${t.priority}</span>
         ${due ? `<span class="text-xs ${overdue}">${due}</span>` : ''}
@@ -535,7 +540,9 @@ function filterContractors() {
 function renderContractors() {
   const tbody = document.getElementById('contractorsBody');
   const catFilter = (document.getElementById('filterCategory') || {}).value || '';
-  const filtered = catFilter ? allContractors.filter(c => c.category === catFilter) : allContractors;
+  const withTasks = document.getElementById('filterWithTasks')?.checked;
+  let filtered = catFilter ? allContractors.filter(c => c.category === catFilter) : allContractors;
+  if (withTasks) filtered = filtered.filter(c => (c.task_count || 0) > 0);
   document.getElementById('contractorCount').textContent = `${filtered.length} из ${allContractors.length}`;
   tbody.innerHTML = filtered.map(c => {
     const tc = c.task_count || 0;
@@ -1195,6 +1202,133 @@ function callPhone(phone) {
   // Оставляем только цифры и +
   const clean = first.replace(/[^\d+]/g, '');
   if (clean) window.open('tel:' + clean, '_self');
+}
+
+// ── Отчёт ────────────────────────────────────────────────────────────────
+async function openReport() {
+  const box = document.getElementById('modalBox');
+  box.innerHTML = '<div class="text-center py-8 text-gray-400">Формирование отчёта...</div>';
+  document.getElementById('modalOverlay').style.display = 'flex';
+
+  try {
+    const sel = await new Promise(resolve => {
+      box.innerHTML = `
+        <h2>Отчёт по выполненным задачам</h2>
+        <label class="form-label">Период</label>
+        <select id="rPeriod" class="form-input">
+          <option value="quarter">Текущий квартал</option>
+          <option value="year">Текущий год</option>
+          <option value="all">Весь период</option>
+        </select>
+        <div class="flex justify-end gap-2 mt-3">
+          <button onclick="closeModal()" class="btn btn-ghost">Отмена</button>
+          <button onclick="document.getElementById('_rResolve').click()" class="btn btn-primary">Сформировать</button>
+        </div>
+        <button id="_rResolve" style="display:none"></button>
+      `;
+      document.getElementById('_rResolve').onclick = () => resolve(document.getElementById('rPeriod').value);
+    });
+
+    const r = await api(`/api/tasks/report?period=${sel}`);
+    renderReport(r);
+  } catch(e) {
+    if (e.message) box.innerHTML = `<div class="text-red-500">Ошибка: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderReport(r) {
+  const box = document.getElementById('modalBox');
+  const iqRows = Object.entries(r.iq_summary||{}).map(([code, d]) => {
+    const dir = IQ_DIRS[code] || {};
+    return `<tr>
+      <td class="text-sm"><span class="font-bold" style="color:${dir.color||'#666'}">${code}</span> ${esc(d.name)}</td>
+      <td class="text-sm text-center">${d.tasks}</td>
+      <td class="text-sm">${d.baseline}% → ${d.target}%</td>
+    </tr>`;
+  }).join('');
+
+  const initBlocks = (r.by_initiative||[]).map(b => `
+    <div class="mb-3">
+      <div class="font-semibold text-sm">${esc(b.initiative)} <span class="text-xs text-gray-400">${esc(b.direction)}</span>
+        ${b.iq_direction ? `<span class="text-xs font-bold" style="color:${(IQ_DIRS[b.iq_direction]||{}).color||''}"> ${b.iq_direction}</span>` : ''}
+      </div>
+      <ul class="ml-4 text-sm text-gray-600 list-disc">
+        ${b.tasks.map(t => `<li>${esc(t.title)}${t.assignee ? ` <span class="text-gray-400">— ${esc(t.assignee)}</span>` : ''}${t.department ? ` <span class="text-gray-400">(${esc(t.department)})</span>` : ''}</li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+
+  const unlinked = (r.unlinked_tasks||[]).length ? `
+    <div class="mb-3">
+      <div class="font-semibold text-sm text-gray-500">Без инициативы</div>
+      <ul class="ml-4 text-sm text-gray-600 list-disc">
+        ${r.unlinked_tasks.map(t => `<li>${esc(t.title)}${t.assignee ? ` — ${esc(t.assignee)}` : ''}</li>`).join('')}
+      </ul>
+    </div>
+  ` : '';
+
+  box.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold">Отчёт: ${esc(r.period)}</h2>
+      <button onclick="printReport()" class="btn btn-ghost text-sm" title="Печать">🖨️ Печать</button>
+    </div>
+
+    <div id="reportContent">
+      <div class="text-center mb-4 pb-3 border-b border-gray-200">
+        <div class="text-xs text-gray-400 uppercase tracking-wide">Мэрия города Новосибирска</div>
+        <div class="text-sm font-bold mt-1">Отчёт о выполнении задач</div>
+        <div class="text-xs text-gray-500">Период: ${esc(r.period)} · Дата: ${esc(r.generated_at)}</div>
+      </div>
+
+      <div class="flex items-center gap-4 mb-4 p-3 bg-gray-50 rounded-lg">
+        <div class="text-center">
+          <div class="text-2xl font-bold text-green-600">${r.total_done}</div>
+          <div class="text-[10px] text-gray-500 uppercase">Выполнено</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-bold text-purple-600">${(r.by_initiative||[]).length}</div>
+          <div class="text-[10px] text-gray-500 uppercase">Инициатив</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-bold text-indigo-600">${Object.keys(r.iq_summary||{}).length}</div>
+          <div class="text-[10px] text-gray-500 uppercase">Направл. IQ</div>
+        </div>
+      </div>
+
+      ${iqRows ? `
+      <div class="mb-4">
+        <div class="text-xs font-bold text-gray-500 uppercase mb-2">Вклад в IQ городов</div>
+        <table class="w-full text-left">
+          <thead><tr><th class="text-xs text-gray-400 pb-1">Направление</th><th class="text-xs text-gray-400 text-center pb-1">Задач</th><th class="text-xs text-gray-400 pb-1">Показатели</th></tr></thead>
+          <tbody>${iqRows}</tbody>
+        </table>
+      </div>
+      ` : ''}
+
+      <div class="text-xs font-bold text-gray-500 uppercase mb-2">Выполненные задачи по инициативам</div>
+      ${initBlocks}
+      ${unlinked}
+
+      <div class="border-t border-gray-200 pt-3 mt-4 text-xs text-gray-400 text-center">
+        Сформировано: Фреймворк Сигма — Пространство задач · ${esc(r.generated_at)}
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-2 mt-3">
+      <button onclick="closeModal()" class="btn btn-ghost">Закрыть</button>
+    </div>
+  `;
+}
+
+function printReport() {
+  const content = document.getElementById('reportContent');
+  if (!content) return;
+  const w = window.open('', '_blank');
+  w.document.write('<html><head><title>Отчёт</title><style>body{font-family:system-ui,sans-serif;padding:40px;font-size:14px;color:#1e293b}table{border-collapse:collapse;width:100%}th,td{padding:4px 8px;border-bottom:1px solid #e2e8f0}h2{margin:0}ul{margin:4px 0}.font-bold{font-weight:700}.text-center{text-align:center}</style></head><body>');
+  w.document.write(content.innerHTML);
+  w.document.write('</body></html>');
+  w.document.close();
+  w.print();
 }
 
 // ── Phone input mask ─────────────────────────────────────────────────────
