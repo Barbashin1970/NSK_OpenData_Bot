@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 try:
     __version__ = importlib.metadata.version("nsk-opendata-bot")
 except importlib.metadata.PackageNotFoundError:
-    __version__ = "1.4.0"
+    __version__ = "1.5.0"
 
 try:
     from fastapi import FastAPI, Request
