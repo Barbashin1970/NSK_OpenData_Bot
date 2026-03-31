@@ -204,6 +204,20 @@ async function _studioAuth() {
       </div>
 
       <div>
+        <div class="font-semibold text-slate-800 mb-1">📋 Пространство задач — управление инициативами мэра</div>
+        <p class="text-slate-600 leading-relaxed">
+          Модуль задач и инициатив с привязкой к IQ городов Минстроя (14 направлений, 29 KPI).
+          Канбан-доска, контрагенты, отчёты. Вход по паролю с выбором роли (мэр, глава района, зам. мэра).
+          API: <code class="bg-slate-100 px-1 rounded">GET /api/tasks</code>,
+          <code class="bg-slate-100 px-1 rounded">GET /api/initiatives</code>,
+          <code class="bg-slate-100 px-1 rounded">GET /api/contractors</code>,
+          <code class="bg-slate-100 px-1 rounded">GET /api/tasks/stats</code>,
+          <code class="bg-slate-100 px-1 rounded">GET /api/tasks/users</code>,
+          <code class="bg-slate-100 px-1 rounded">GET /api/tasks/report</code>.
+        </p>
+      </div>
+
+      <div>
         <div class="font-semibold text-slate-800 mb-1">💬 Промпт-конструктор — генерация промптов для LLM</div>
         <p class="text-slate-600 leading-relaxed">
           Инструмент для сборки структурированных промптов для аналитиков умного города.
@@ -2335,6 +2349,22 @@ const STTests = (() => {
         else              { totalErr++; _addLine('  \u2717 ' + tid + ' (OSM) — ' + (info.error || 'ошибка'), 'failed'); }
       }
     } catch(e) { totalErr++; _addLine('  \u2717 OSM: ' + e.message, 'failed'); }
+
+    // ── Пространство задач (Task Space) ────────────────────────────────────
+    _addLine('', '');
+    _addLine('▶ Пространство задач (Task Space)…', 'info');
+    try {
+      const resp = await fetch('/api/tasks/stats');
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      totalOk++;
+      _addLine('  \u2713 Задач: ' + (data.total||0) + ', инициатив: ' + (data.initiatives||0) + ', контрагентов: ' + (data.contractors||0), 'passed');
+      const usersResp = await fetch('/api/tasks/users');
+      if (usersResp.ok) {
+        const users = await usersResp.json();
+        _addLine('  \u2713 Пользователей: ' + users.length, 'passed');
+      }
+    } catch(e) { totalErr++; _addLine('  \u2717 Task Space: ' + e.message, 'failed'); }
 
     _addLine('', '');
     const r = el('st-result');

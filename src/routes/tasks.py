@@ -23,7 +23,7 @@ from ..task_store import (
     IQ_DIRECTIONS, IQ_IMPACT_LEVELS, IQ_IMPACT_LABELS, calc_iq_priority,
 )
 
-_TASKS_PASSWORD_HASH = hashlib.sha256(b"sigma 2025").hexdigest()
+_TASKS_PASSWORD_HASH = hashlib.sha256(b"sigma2025").hexdigest()
 
 log = logging.getLogger(__name__)
 

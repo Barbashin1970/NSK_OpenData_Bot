@@ -5795,6 +5795,7 @@ function renderInfo(_data) {
         { icon: '📊', name: 'Экоотчёт за 30 дней',       q: 'статистика экологии за месяц' },
         { icon: '📉', name: 'Динамика загрязнения',       q: 'динамика качества воздуха' },
         { icon: '🚶', name: 'Индексы жизни города',       q: 'качество воздуха в городе' },
+        { icon: '🎬', name: 'IQ городов — презентация',  q: '', onclick: "window.open('/presentation','_blank')" },
       ],
     },
     {
@@ -5851,16 +5852,16 @@ function renderInfo(_data) {
       ],
     },
     {
-      id: 'sources',
-      label: 'Источники данных',
-      color: 'slate',
+      id: 'taskspace',
+      label: 'Пространство инициатив и задач',
+      color: 'teal',
       items: [
-        { icon: '🏛️', name: 'Мэрия и портал OpenData',  q: '', onclick: "window.open('https://opendata.novo-sibirsk.ru','_blank')" },
-        { icon: '🗺️', name: 'OpenStreetMap (OSM)',       q: '', onclick: "window.open('https://www.openstreetmap.org','_blank')" },
-        { icon: '🌤️', name: 'Open-Meteo (погода/AQI)',   q: '', onclick: "window.open('https://open-meteo.com','_blank')" },
-        { icon: '📡', name: 'Росприроднадзор (2-ТП)',    q: '', onclick: "window.open('https://rpn.gov.ru','_blank')" },
-        { icon: '📍', name: '2GIS (геокодирование)',      q: '', onclick: "window.open('https://2gis.ru','_blank')" },
-        { icon: '🚔', name: 'ГИБДД (камеры)',            q: '', onclick: "window.open('https://гибдд.рф','_blank')" },
+        { icon: '📋', name: 'Канбан-доска задач',         q: '', onclick: "window.open('/tasks','_blank')" },
+        { icon: '🎯', name: 'Инициативы мэра',            q: '', onclick: "window.open('/tasks','_blank')" },
+        { icon: '🏛️', name: 'Контрагенты и службы',       q: '', onclick: "window.open('/tasks','_blank')" },
+        { icon: '📊', name: 'IQ городов Минстроя',        q: '', onclick: "window.open('/tasks','_blank')" },
+        { icon: '📑', name: 'Отчёты по задачам',           q: '', onclick: "window.open('/tasks','_blank')" },
+        { icon: '🎬', name: 'Презентация СИГМА',          q: '', onclick: "window.open('/presentation','_blank')" },
       ],
     },
   ];
@@ -5878,6 +5879,7 @@ function renderInfo(_data) {
       { icon: '📤', name: 'No-Code: загрузить CSV',       q: '', onclick: "window.open('/studio#data','_blank')" },
       { icon: '💬', name: 'Жалобы и предложения',         q: '', onclick: '_openFeedback()' },
       { icon: '🔧', name: 'Студия (admin-панель)',        q: '', onclick: "window.open('/studio','_blank')" },
+      { icon: '🏛️', name: 'Портал OpenData',              q: '', onclick: "window.open('https://opendata.novo-sibirsk.ru','_blank')" },
     ],
   });
 
@@ -5890,6 +5892,7 @@ function renderInfo(_data) {
     red:     { bg: 'bg-red-50',     border: 'border-red-200',     text: 'text-red-700',     hover: 'hover:bg-red-100' },
     indigo:  { bg: 'bg-indigo-50',  border: 'border-indigo-200',  text: 'text-indigo-700',  hover: 'hover:bg-indigo-100' },
     slate:   { bg: 'bg-slate-50',   border: 'border-slate-200',   text: 'text-slate-600',   hover: 'hover:bg-slate-100' },
+    teal:    { bg: 'bg-teal-50',   border: 'border-teal-200',   text: 'text-teal-700',   hover: 'hover:bg-teal-100' },
   };
 
   const hasVoice = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);

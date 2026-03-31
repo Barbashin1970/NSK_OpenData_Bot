@@ -924,6 +924,15 @@ def api_version():
     return {"version": __version__}
 
 
+@app.get("/presentation", response_class=HTMLResponse, include_in_schema=False)
+def get_presentation() -> HTMLResponse:
+    """Презентация СИГМА — слайды."""
+    html_file = _STATIC / "presentation.html"
+    if not html_file.exists():
+        return HTMLResponse("<h1>presentation.html not found</h1>")
+    return HTMLResponse(html_file.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def get_ui() -> HTMLResponse:
     """Веб-интерфейс бота."""
