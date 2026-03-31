@@ -141,9 +141,9 @@ def _restore_from_zip(zip_bytes: bytes) -> dict:
 
                 table_name = name.replace(".json", "")
 
-                # Безопасность: только ts_* и topic_* таблицы
-                if not (table_name.startswith("ts_") or table_name.startswith("topic_")):
-                    result["errors"].append(f"Пропущена таблица {table_name}: недопустимый префикс")
+                # Безопасность: запрещаем системные таблицы
+                if table_name.startswith("information_") or table_name.startswith("pg_"):
+                    result["errors"].append(f"Пропущена таблица {table_name}: системная")
                     continue
 
                 try:
@@ -152,12 +152,14 @@ def _restore_from_zip(zip_bytes: bytes) -> dict:
                         continue
 
                     cols = list(data[0].keys())
-                    col_list = ", ".join(cols)
+                    # Экранируем имена колонок (E-mail, другие спецсимволы)
+                    quoted_cols = [f'"{c}"' for c in cols]
+                    col_list = ", ".join(quoted_cols)
                     placeholders = ", ".join(["?"] * len(cols))
 
                     # Создаём таблицу если не существует
                     if not _table_exists(conn, table_name):
-                        col_defs = ", ".join(f"{c} VARCHAR" for c in cols)
+                        col_defs = ", ".join(f'"{c}" VARCHAR' for c in cols)
                         conn.execute(f"CREATE TABLE {table_name} ({col_defs})")
 
                     # Очищаем и заливаем
