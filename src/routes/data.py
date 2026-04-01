@@ -1184,11 +1184,19 @@ def get_power_efficiency(
         log.error("power efficiency query error: %s", e)
         rows = []
 
+    # Fallback config из YAML — чтобы frontend мог рассчитать score для районов без raw-данных
+    from ..rule_engine import rules as _rules
+    cfg = _rules.get("power_rating_rules") or {}
+    fallback_cfg = cfg.get("fallback", {})
+    grades_cfg = cfg.get("grades", [])
+
     return {
         "operation": "POWER_EFFICIENCY",
         "days": days,
         "count": len(rows),
         "rows": rows,
+        "fallback": fallback_cfg,
+        "grades": grades_cfg,
     }
 
 

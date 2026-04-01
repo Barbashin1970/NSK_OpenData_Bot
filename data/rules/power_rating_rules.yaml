@@ -76,10 +76,12 @@ grades:
 # используется упрощённая формула.
 
 fallback:
-  outage_days_weight: 5.0     # штраф: (daysOut / analysis_days) × weight
-  clean_days_weight: 2.0      # бонус: (cleanDays / analysis_days) × weight
-  # Нагрузка (активных домов / дней с авариями)
-  high_load_thresholds:
-    - { above: 200, penalty: 1.5 }
-    - { above: 100, penalty: 1.0 }
-    - { above: 50,  penalty: 0.5 }
+  outage_days_weight: 3.0     # штраф: (daysOut / analysis_days) × weight
+  clean_days_weight: 1.5      # бонус: (cleanDays / analysis_days) × weight
+  # Штраф за КОЛИЧЕСТВО аварийных домов (главный фактор)
+  house_count_thresholds:
+    - { above: 500, penalty: 4.0 }   # > 500 домов → -4.0
+    - { above: 200, penalty: 3.0 }   # > 200 → -3.0
+    - { above: 100, penalty: 2.0 }   # > 100 → -2.0
+    - { above: 50,  penalty: 1.0 }   # > 50 → -1.0
+    - { above: 20,  penalty: 0.5 }   # > 20 → -0.5

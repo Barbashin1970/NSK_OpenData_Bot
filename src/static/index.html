@@ -4580,20 +4580,29 @@ async function _showPowerRating() {
       let eff = effMap[d.district] || null;
       const daysOut = d.days_with_outages || 0;
       if (!eff && daysOut >= 0) {
-        // Fallback: score из district history (без детализации по часам)
+        // Fallback: score из YAML-конфига (editable в Студии)
+        const fb = effData.fallback || {};
+        const gradesCfg = effData.grades || [];
         const cleanDays = Math.max(0, 30 - daysOut);
-        const cleanRatio = cleanDays / 30;
+        const cleanRatio = 30 > 0 ? cleanDays / 30 : 0;
         const houses = d.active_houses || 0;
-        // Базовый score: 10 - штраф за дни + бонус за чистые
-        let fallbackScore = 10.0 - (daysOut / 30) * 3.0 + cleanRatio * 1.5;
-        // Штраф за количество аварийных домов (основной фактор)
-        if (houses > 500) fallbackScore -= 4.0;
-        else if (houses > 200) fallbackScore -= 3.0;
-        else if (houses > 100) fallbackScore -= 2.0;
-        else if (houses > 50) fallbackScore -= 1.0;
-        else if (houses > 20) fallbackScore -= 0.5;
+        const daysWeight = parseFloat(fb.outage_days_weight || 3.0);
+        const cleanWeight = parseFloat(fb.clean_days_weight || 1.5);
+        let fallbackScore = 10.0 - (30 > 0 ? daysOut / 30 : 0) * daysWeight + cleanRatio * cleanWeight;
+        // Штраф за количество аварийных домов (из YAML)
+        const houseThresholds = (fb.house_count_thresholds || [
+          {above:500,penalty:4},{above:200,penalty:3},{above:100,penalty:2},{above:50,penalty:1},{above:20,penalty:0.5}
+        ]).sort((a,b) => b.above - a.above);
+        for (const t of houseThresholds) {
+          if (houses > t.above) { fallbackScore -= parseFloat(t.penalty); break; }
+        }
         fallbackScore = Math.max(0, Math.min(10, +fallbackScore.toFixed(1)));
-        const grade = fallbackScore >= 8 ? 'A' : fallbackScore >= 6 ? 'B' : fallbackScore >= 4 ? 'C' : fallbackScore >= 2 ? 'D' : 'F';
+        // Грейд из YAML (пороги editable в Студии)
+        let grade = 'F';
+        for (const g of gradesCfg) {
+          if (fallbackScore >= parseFloat(g.threshold || 0)) { grade = g.grade; break; }
+        }
+        if (!gradesCfg.length) grade = fallbackScore >= 8 ? 'A' : fallbackScore >= 6 ? 'B' : fallbackScore >= 4 ? 'C' : fallbackScore >= 2 ? 'D' : 'F';
         eff = {
           district: d.district,
           score: fallbackScore,
@@ -4686,7 +4695,11 @@ async function _showPowerRating() {
     }).join('');
 
     // Общая оценка города
-    const cityGrade = avgScore >= 8 ? 'A' : avgScore >= 6 ? 'B' : avgScore >= 4 ? 'C' : avgScore >= 2 ? 'D' : 'F';
+    // Грейд города — из YAML grades
+    const _gradesCfg = effData.grades || [];
+    let cityGrade = 'F';
+    for (const g of _gradesCfg) { if (avgScore >= parseFloat(g.threshold || 0)) { cityGrade = g.grade; break; } }
+    if (!_gradesCfg.length) cityGrade = avgScore >= 8 ? 'A' : avgScore >= 6 ? 'B' : avgScore >= 4 ? 'C' : avgScore >= 2 ? 'D' : 'F';
     const cityGc = gradeColors[cityGrade];
 
     el.innerHTML = `
