@@ -352,6 +352,10 @@ def query_current(district_filter: str | None = None) -> list[dict]:
 
     Интент ТЗ §5: «Текущее качество воздуха по районам».
     SQL: AVG(aqi) GROUP BY district за последний снимок (< 1 ч).
+
+    Если у последнего снимка отсутствует метео (Open-Meteo Forecast периодически
+    отдаёт null), берём последнее непустое значение temp/wind/humidity по этой
+    же станции за 24 часа — чтобы UI не пустовал.
     """
     init_ecology_tables()
     conn = _get_conn()
@@ -363,6 +367,16 @@ def query_current(district_filter: str | None = None) -> list[dict]:
             params.append(f"%{district_filter.split()[0]}%")
         where_sql = "WHERE " + " AND ".join(wheres)
         sql = f"""
+            WITH last_weather AS (
+                SELECT station_id,
+                       MAX_BY(temperature_c, measured_at) FILTER (WHERE temperature_c IS NOT NULL) AS temp_fb,
+                       MAX_BY(wind_speed_ms, measured_at) FILTER (WHERE wind_speed_ms IS NOT NULL) AS wind_fb,
+                       MAX_BY(humidity_pct,  measured_at) FILTER (WHERE humidity_pct  IS NOT NULL) AS hum_fb,
+                       MAX_BY(measured_at,   measured_at) FILTER (WHERE temperature_c IS NOT NULL) AS weather_at
+                FROM fact_measurements
+                WHERE measured_at >= strftime(NOW() - INTERVAL 24 HOUR, '%Y-%m-%dT%H:%M:%S')
+                GROUP BY station_id
+            )
             SELECT
                 s.district,
                 s.address,
@@ -370,13 +384,16 @@ def query_current(district_filter: str | None = None) -> list[dict]:
                 ROUND(f.pm10, 1)          AS pm10,
                 ROUND(f.no2,  1)          AS no2,
                 f.aqi,
-                ROUND(f.temperature_c, 1) AS temperature_c,
-                ROUND(f.wind_speed_ms, 1) AS wind_speed_ms,
-                ROUND(f.humidity_pct, 0)  AS humidity_pct,
+                ROUND(COALESCE(f.temperature_c, lw.temp_fb), 1) AS temperature_c,
+                ROUND(COALESCE(f.wind_speed_ms, lw.wind_fb), 1) AS wind_speed_ms,
+                ROUND(COALESCE(f.humidity_pct,  lw.hum_fb),  0) AS humidity_pct,
+                CASE WHEN f.temperature_c IS NULL AND lw.temp_fb IS NOT NULL
+                     THEN lw.weather_at ELSE NULL END AS weather_fallback_at,
                 f.source,
                 f.measured_at
             FROM fact_measurements f
             JOIN dim_stations s ON f.station_id = s.station_id
+            LEFT JOIN last_weather lw ON lw.station_id = f.station_id
             {where_sql}
             ORDER BY f.aqi DESC NULLS LAST, s.district
         """
