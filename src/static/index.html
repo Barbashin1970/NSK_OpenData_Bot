@@ -4826,12 +4826,11 @@ async function _showPowerRating() {
       const rank = i < 3 ? ['🥇','🥈','🥉'][i] : `${i+1}`;
       const pctBar = Math.round(r.active_houses / maxOutage * 100);
       const m = e?.metrics || {};
-      // clean_days = дни, когда НЕТ ни активных, ни плановых отключений
-      // Используем days_with_any_outage (active OR planned), а не days_with_outages
-      // (active only) — иначе расходится с per-day отчётом, где день "чистый"
-      // iff active=0 AND planned=0 (видно в столбиках графика)
-      const daysAnyOut = r.days_with_any_outage ?? r.days_with_outages ?? 0;
-      const cleanDays = Math.max(0, 30 - daysAnyOut);
+      // Грейд A-F считается на active-only (плановые ремонты не штраф).
+      // Подпись 'дней без аварий' — тоже active-only, чтобы соответствовать
+      // формуле грейда. Строгий показатель 'чистых дней' (active=0 AND planned=0)
+      // виден в KPI отчёта и в столбиках графика, тут не дублируем.
+      const daysNoBreakdown = Math.max(0, 30 - (r.days_with_outages || 0));
 
       return `
         <tr class="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer"
@@ -4844,7 +4843,7 @@ async function _showPowerRating() {
               <span class="${gc.bg} ${gc.text} ${gc.border} border text-xs font-bold w-7 h-7 rounded-lg flex items-center justify-center">${e?.grade || '—'}</span>
               <div>
                 <div class="text-sm font-medium text-slate-700">${esc(r.district)}</div>
-                <div class="text-[10px] text-slate-400">${score}/10 · ${cleanDays > 0 ? `<span class="text-emerald-600">${cleanDays} чистых дн.</span>` : '<span class="text-red-500">нет чистых дней</span>'}${m.resolved_same_day > 0 ? ` · устранено за день: ${m.resolved_same_day}` : ''}</div>
+                <div class="text-[10px] text-slate-400">${score}/10 · ${daysNoBreakdown > 0 ? `<span class="text-emerald-600">${daysNoBreakdown} дн. без аварий</span>` : '<span class="text-red-500">аварии каждый день</span>'}${m.resolved_same_day > 0 ? ` · устранено за день: ${m.resolved_same_day}` : ''}</div>
               </div>
             </div>
           </td>
