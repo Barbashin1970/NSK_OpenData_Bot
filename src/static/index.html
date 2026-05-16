@@ -2693,6 +2693,9 @@ async function _showEcoReport(districtFilter) {
           </div>
         </div>
 
+        <!-- Рейтинг районов A-F (вынесли наверх для видимости) -->
+        ${_renderEcoDistrictsRanking(ecoRanking, districtFilter)}
+
         <!-- AQI Chart -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
           <div class="flex items-center gap-2 mb-3">
@@ -2763,7 +2766,6 @@ async function _showEcoReport(districtFilter) {
           </div>
         </div>
 
-        ${_renderEcoDistrictsRanking(ecoRanking, districtFilter)}
       </div>`;
   } catch (e) {
     if (e.name === 'AbortError') return;
@@ -5487,6 +5489,10 @@ function renderEcology(data) {
               <button onclick="setQuery('прогноз погоды на неделю')"
                 class="text-xs px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-colors whitespace-nowrap font-medium">
                 📅 Прогноз
+              </button>
+              <button onclick="_showEcoReport()"
+                class="text-xs px-3 py-1.5 bg-violet-50 border border-violet-200 rounded-xl text-violet-700 hover:bg-violet-100 hover:border-violet-300 transition-colors whitespace-nowrap font-medium">
+                🏆 Рейтинг районов
               </button>
               <button onclick="_showEcoReport()"
                 class="text-xs px-3 py-1.5 bg-sky-50 border border-sky-200 rounded-xl text-sky-700 hover:bg-sky-100 hover:border-sky-300 transition-colors whitespace-nowrap font-medium">
