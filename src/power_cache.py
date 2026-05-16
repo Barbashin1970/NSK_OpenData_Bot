@@ -525,9 +525,14 @@ def query_power_history_by_district(
     utility_filter: str | None = None,
     days: int = 30,
 ) -> list[dict]:
-    """Агрегированная история по районам (суммируем по дням).
+    """Агрегированная история по районам.
 
-    Возвращает: district, active_houses, planned_houses, days_with_outages
+    Возвращает на каждый район:
+      - active_houses, planned_houses — СУММА по снимкам (legacy, "снежный ком")
+      - planned_avg_daily — среднее число домов в плане в любой момент
+        (рассчитано как SUM(planned)/SUM(snapshots), усреднено по периоду)
+      - planned_now — текущее число домов в плане (последний снимок per utility)
+      - days_with_outages — кол-во дней с активными авариями
     """
     rows = query_power_history(utility_filter=utility_filter, days=days)
     by_dist: dict[str, dict] = {}
@@ -537,22 +542,73 @@ def query_power_history_by_district(
             by_dist[dist] = {
                 "district": dist,
                 "active_houses": 0, "planned_houses": 0,
+                "_planned_sum": 0, "_snap_sum": 0,
                 "_days": set(),
             }
         by_dist[dist]["active_houses"] += int(r.get("active_houses") or 0)
         by_dist[dist]["planned_houses"] += int(r.get("planned_houses") or 0)
+        # Для среднего числа домов в плане: SUM(planned)/SUM(snapshots) — это
+        # средняя загрузка плана в произвольный момент за период.
+        # Если в день 48 снимков с одинаковыми 100 домами → SUM=4800, snaps=48, avg=100.
+        snaps = int(r.get("snapshots") or 0)
+        if snaps > 0:
+            by_dist[dist]["_planned_sum"] += int(r.get("planned_houses") or 0)
+            by_dist[dist]["_snap_sum"] += snaps
         if int(r.get("active_houses") or 0) > 0:
             by_dist[dist]["_days"].add(r["day"])
+
+    # "Сейчас": последний снимок per district из power_outages
+    planned_now_by_dist = _query_planned_now_by_district(utility_filter=utility_filter)
+
     result = []
     for d in by_dist.values():
+        avg_planned = int(d["_planned_sum"] / d["_snap_sum"]) if d["_snap_sum"] > 0 else 0
         result.append({
             "district": d["district"],
             "active_houses": d["active_houses"],
-            "planned_houses": d["planned_houses"],
+            "planned_houses": d["planned_houses"],            # legacy SUM
+            "planned_avg_daily": avg_planned,                 # NEW: среднее в плане
+            "planned_now": planned_now_by_dist.get(d["district"], 0),  # NEW: сейчас
             "days_with_outages": len(d["_days"]),
         })
     result.sort(key=lambda x: x["active_houses"], reverse=True)
     return result
+
+
+def _query_planned_now_by_district(utility_filter: str | None = None) -> dict[str, int]:
+    """Возвращает {district: houses} из самого свежего снимка power_outages.
+
+    Берёт строки с MAX(scraped_at), которые group_type='planned' и district != 'all'.
+    """
+    init_power_table()
+    conn = _get_conn()
+    try:
+        wheres = ["group_type = 'planned'", "district != 'all'"]
+        params: list = []
+        if utility_filter:
+            wheres.append("utility ILIKE ?")
+            params.append(f"%{utility_filter}%")
+        where = "WHERE " + " AND ".join(wheres)
+        sql = f"""
+            WITH latest AS (
+                SELECT MAX(scraped_at) AS ts
+                FROM power_outages
+                {where}
+            )
+            SELECT district, SUM(houses) AS h
+            FROM power_outages
+            {where}
+              AND scraped_at = (SELECT ts FROM latest)
+            GROUP BY district
+        """
+        cur = conn.execute(sql, params + params)
+        return {row[0]: int(row[1] or 0) for row in cur.fetchall()}
+    except Exception as e:
+        log.debug("_query_planned_now_by_district: %s", e)
+        return {}
+    finally:
+        try: conn.close()
+        except: pass
 
 
 def query_power_efficiency(days: int = 30) -> list[dict]:

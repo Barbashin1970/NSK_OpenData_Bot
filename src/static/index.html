@@ -4692,7 +4692,14 @@ async function _showPowerRating() {
               <span class="text-xs font-semibold ${r.active_houses > 100 ? 'text-red-600' : 'text-blue-600'} w-10 text-right">${r.active_houses}</span>
             </div>
           </td>
-          <td class="py-3 px-3 text-right text-xs text-amber-600 w-16">${r.planned_houses}</td>
+          <td class="py-3 px-3 text-right text-xs w-20">
+            <div class="text-amber-600 font-semibold">${(r.planned_now ?? 0).toLocaleString('ru-RU')}</div>
+            <div class="text-[9px] text-slate-400">сейчас</div>
+          </td>
+          <td class="py-3 px-3 text-right text-xs w-20">
+            <div class="text-amber-500">${(r.planned_avg_daily ?? 0).toLocaleString('ru-RU')}</div>
+            <div class="text-[9px] text-slate-400">ср/день</div>
+          </td>
           <td class="py-3 px-3 text-right text-xs text-slate-500 w-16">${r.days_with_outages} дн.</td>
         </tr>`;
     }).join('');
@@ -4765,7 +4772,8 @@ async function _showPowerRating() {
                 <th class="px-3 py-2 w-10">#</th>
                 <th class="px-3 py-2">Район</th>
                 <th class="px-3 py-2 w-1/4">Аварийных домов</th>
-                <th class="px-3 py-2 text-right w-16">Плановых</th>
+                <th class="px-3 py-2 text-right w-20">Плановых сейчас</th>
+                <th class="px-3 py-2 text-right w-20">Ср./день</th>
                 <th class="px-3 py-2 text-right w-16">Дней</th>
               </tr>
             </thead>
