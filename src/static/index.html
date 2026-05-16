@@ -4664,7 +4664,10 @@ async function _showPowerRating() {
       const rank = i < 3 ? ['🥇','🥈','🥉'][i] : `${i+1}`;
       const pctBar = Math.round(r.active_houses / maxOutage * 100);
       const m = e?.metrics || {};
-      const cleanDays = m.clean_days ?? 0;
+      // clean_days считаем ВСЕГДА из days_with_outages (history) — efficiency endpoint
+      // читает только raw power_outages, без архива, и даёт неконсистентное значение
+      // (баг: 30 - total_days_in_raw → "29 чистых" у всех когда snapshots уже в архиве)
+      const cleanDays = Math.max(0, 30 - (r.days_with_outages || 0));
 
       return `
         <tr class="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer"

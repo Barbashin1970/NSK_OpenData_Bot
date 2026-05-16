@@ -605,6 +605,30 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
                 dist_data[district][day] = {"hours": {}, "dow": int(dow)}
             dist_data[district][day]["hours"][int(hour)] = int(houses)
 
+        # ── Дополнение из архива ─────────────────────────────────────────────
+        # power_outages хранит только последние снимки (TTL ~7-10 дней),
+        # старые дни уже в power_daily_archive. Без этого clean_days считается
+        # неверно (был баг "29 чистых" у всех районов).
+        archive_cutoff = cutoff[:10]  # YYYY-MM-DD
+        archive_sql = """
+            SELECT district, day, active_houses
+            FROM power_daily_archive
+            WHERE day >= ?
+              AND active_houses > 0
+              AND district != 'all'
+        """
+        try:
+            arch_cursor = conn.execute(archive_sql, [archive_cutoff])
+            for district, day, _ah in arch_cursor.fetchall():
+                if district not in dist_data:
+                    dist_data[district] = {}
+                # Если день уже из raw — оставляем (он точнее по часам).
+                # Если только из архива — помечаем как "архивный": hours={} но день учтён.
+                if day not in dist_data[district]:
+                    dist_data[district][day] = {"hours": {}, "dow": 0, "from_archive": True}
+        except Exception as e:
+            log.debug("query_power_efficiency: архив пропущен (%s)", e)
+
         # Считаем метрики для каждого района
         results = []
         for district, day_map in dist_data.items():
