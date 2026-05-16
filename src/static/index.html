@@ -2183,6 +2183,153 @@ async function _showRisksView() {
 // ─── Skeleton UI — мгновенные заглушки пока грузятся данные ───────────────────
 const _skeletonPulse = 'animate-pulse bg-slate-200 rounded';
 
+function _renderEcoDistrictsRanking(ranking, currentDistrict) {
+  if (!ranking || !ranking.length) return '';
+
+  // Сортировка: лучший (топ score) → худший
+  const sorted = [...ranking].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  const gradeColors = {
+    A: { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+    B: { bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-300' },
+    C: { bg: 'bg-yellow-100',  text: 'text-yellow-700',  border: 'border-yellow-200' },
+    D: { bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border-orange-200' },
+    F: { bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-200' },
+  };
+
+  // Цвет AQI бара по тяжести: 25→зелёный, 50→жёлтый, 75→красный
+  const aqiColor = (aqi) => {
+    if (aqi <= 25) return '#34d399';   // emerald
+    if (aqi <= 35) return '#84cc16';   // lime
+    if (aqi <= 50) return '#f59e0b';   // amber
+    if (aqi <= 70) return '#f97316';   // orange
+    return '#ef4444';                   // red
+  };
+
+  const maxAqi = Math.max(50, ...sorted.map(r => r.aqi_avg || 0));
+  const bestAqi = Math.min(...sorted.filter(r => r.aqi_avg).map(r => r.aqi_avg));
+  const worstAqi = Math.max(...sorted.map(r => r.aqi_avg || 0));
+  const cityAvgAqi = sorted.length ? +(sorted.reduce((s,r) => s + (r.aqi_avg || 0), 0) / sorted.length).toFixed(1) : 0;
+  const cityAvgPm = sorted.length ? +(sorted.reduce((s,r) => s + (r.pm25_avg || 0), 0) / sorted.length).toFixed(1) : 0;
+  const totalCleanDays = sorted.reduce((s,r) => s + (r.days_clean || 0), 0);
+  const totalExceedDays = sorted.reduce((s,r) => s + (r.days_exceed || 0), 0);
+
+  const rowsHtml = sorted.map((r, i) => {
+    const gc = gradeColors[r.grade] || gradeColors.C;
+    const rank = i < 3 ? ['🥇','🥈','🥉'][i] : `${i+1}`;
+    const pctBar = Math.round((r.aqi_avg || 0) / maxAqi * 100);
+    const isCurrent = currentDistrict && currentDistrict === r.district;
+    return `
+      <tr class="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer ${isCurrent ? 'bg-sky-50/60' : ''}"
+          onclick="_showEcoReport('${r.district.replace(/'/g, "\\'")}')">
+        <td class="py-3 px-3 text-center w-10"><span class="text-sm">${rank}</span></td>
+        <td class="py-3 px-3">
+          <div class="flex items-center gap-2">
+            <span class="${gc.bg} ${gc.text} ${gc.border} border text-xs font-bold w-7 h-7 rounded-lg flex items-center justify-center">${r.grade}</span>
+            <div>
+              <div class="text-sm font-medium text-slate-700">${esc(r.district)}</div>
+              <div class="text-[10px] text-slate-400">
+                <span class="font-mono">${r.score}/10</span>
+                ${r.days_clean > 0 ? ` · <span class="text-emerald-600">${r.days_clean} чистых дн.</span>` : ''}
+                ${r.days_exceed > 0 ? ` · <span class="text-red-500">${r.days_exceed} с превыш.</span>` : ''}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td class="py-3 px-3 w-1/4">
+          <div class="flex items-center gap-2">
+            <div class="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+              <div class="h-full rounded-full" style="width:${pctBar}%;background:${aqiColor(r.aqi_avg)}"></div>
+            </div>
+            <span class="text-xs font-semibold w-10 text-right" style="color:${aqiColor(r.aqi_avg)}">${r.aqi_avg}</span>
+          </div>
+        </td>
+        <td class="py-3 px-3 text-right text-xs w-16">
+          <div class="text-slate-700 font-medium">${r.pm25_avg}</div>
+          <div class="text-[9px] text-slate-400">PM2.5 ср.</div>
+        </td>
+        <td class="py-3 px-3 text-right text-xs w-16">
+          <div class="text-slate-500">${r.pm25_max}</div>
+          <div class="text-[9px] text-slate-400">PM2.5 пик</div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  const bestDist = sorted[0]?.district || '';
+  const worstDist = sorted[sorted.length - 1]?.district || '';
+  const cityGrade = cityAvgAqi <= 25 ? 'A' : cityAvgAqi <= 35 ? 'B' : cityAvgAqi <= 50 ? 'C' : cityAvgAqi <= 70 ? 'D' : 'F';
+  const cityGc = gradeColors[cityGrade];
+
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="bg-gradient-to-r from-emerald-50 to-sky-50 border-b border-slate-200 px-5 py-4 flex items-center gap-4">
+        <span class="text-3xl">🏆</span>
+        <div class="flex-1">
+          <div class="font-semibold text-slate-800">Рейтинг районов по экологии</div>
+          <div class="text-xs text-slate-500">Анализ за 30 дней · сравнение всех районов города</div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-center">
+            <div class="${cityGc.bg} ${cityGc.text} ${cityGc.border} border text-2xl font-bold w-12 h-12 rounded-xl flex items-center justify-center">${cityGrade}</div>
+            <div class="text-[10px] text-slate-400 mt-1">Город</div>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-bold text-slate-700">${cityAvgAqi}<span class="text-sm text-slate-400"> AQI</span></div>
+            <div class="text-[10px] text-slate-400">Средний по городу</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI strip -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100 border-b border-slate-100">
+        <div class="px-4 py-3 text-center">
+          <div class="text-2xl font-bold text-emerald-600">${bestAqi.toFixed(1)}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Лучший AQI</div>
+        </div>
+        <div class="px-4 py-3 text-center">
+          <div class="text-2xl font-bold ${worstAqi > 50 ? 'text-red-600' : worstAqi > 35 ? 'text-amber-600' : 'text-slate-700'}">${worstAqi.toFixed(1)}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Худший AQI</div>
+        </div>
+        <div class="px-4 py-3 text-center">
+          <div class="text-2xl font-bold text-emerald-600">${totalCleanDays}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Чистых дней (сумма)</div>
+        </div>
+        <div class="px-4 py-3 text-center">
+          <div class="text-2xl font-bold ${totalExceedDays === 0 ? 'text-emerald-600' : 'text-red-600'}">${totalExceedDays}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Превышений (сумма)</div>
+        </div>
+      </div>
+
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-[10px] font-semibold uppercase text-slate-400 border-b border-slate-100">
+            <th class="px-3 py-2 w-10">#</th>
+            <th class="px-3 py-2">Район</th>
+            <th class="px-3 py-2 w-1/4">AQI среднее</th>
+            <th class="px-3 py-2 text-right w-16">PM2.5 ср.</th>
+            <th class="px-3 py-2 text-right w-16">PM2.5 пик</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+
+      <div class="px-5 py-3 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-400">
+        <span class="font-semibold text-slate-500">Грейд:</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> A: отлично</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-400"></span> B: хорошо</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-yellow-400"></span> C: удовл.</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-orange-400"></span> D: плохо</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-400"></span> F: критич.</span>
+        <span class="ml-2 font-semibold text-slate-500">AQI:</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span>≤25 отлично</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-lime-400"></span>≤35 хорошо</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400"></span>≤50 умер.</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-orange-400"></span>≤70 плохо</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span>&gt;70 критич.</span>
+      </div>
+    </div>`;
+}
+
 function _ecoReportSkeleton(distLabel) {
   const dl = distLabel ? ` · ${esc(distLabel)}` : '';
   return `
@@ -2300,10 +2447,12 @@ async function _showEcoReport(districtFilter) {
 
   try {
     const dq = districtFilter ? `&district=${encodeURIComponent(districtFilter)}` : '';
-    const [histR, excR, statusR] = await Promise.all([
+    const [histR, excR, statusR, ratingR] = await Promise.all([
       fetch('/ecology/history?days=30' + dq, { signal }),
       fetch('/ecology/aqi-exceedances?days=30&aqi_threshold=40' + dq, { signal }),
       fetch('/ecology/status' + (districtFilter ? '?district=' + encodeURIComponent(districtFilter) : ''), { signal }),
+      // Рейтинг районов — грузим всегда (не зависит от districtFilter)
+      fetch('/ecology/rating-districts?days=30', { signal }),
     ]);
     if (!histR.ok || !excR.ok || !statusR.ok) {
       const bad = [histR, excR, statusR].find(r => !r.ok);
@@ -2312,6 +2461,8 @@ async function _showEcoReport(districtFilter) {
     const hist    = await histR.json();
     const exc     = await excR.json();
     const status  = await statusR.json();
+    const ratingData = ratingR.ok ? await ratingR.json() : { rows: [] };
+    const ecoRanking = ratingData.rows || [];
     const rows    = hist.rows || [];
     const excRows = exc.hourly || [];
     const dailySummary = exc.daily_summary || [];
@@ -2611,6 +2762,8 @@ async function _showEcoReport(districtFilter) {
             </div>
           </div>
         </div>
+
+        ${_renderEcoDistrictsRanking(ecoRanking, districtFilter)}
       </div>`;
   } catch (e) {
     if (e.name === 'AbortError') return;

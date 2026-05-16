@@ -375,6 +375,34 @@ def get_aqi_exceedance_history(
     }
 
 
+@router.get(
+    "/ecology/rating-districts",
+    tags=["Экология"],
+    summary="Рейтинг районов по экологии за период (A-F)",
+    response_description="Сравнительная таблица всех районов: AQI, PM2.5, грейд A-F",
+)
+def get_ecology_rating_districts(
+    days: int = Query(30, ge=7, le=30, description="Глубина анализа в днях"),
+) -> dict:
+    """Рейтинг районов по качеству воздуха за период.
+
+    Для каждого района:
+      - score 0-10 + грейд A-F
+      - AQI: среднее, max, min
+      - PM2.5: среднее, max
+      - Дней: всего, чистых (AQI ≤ 35), с превышениями (AQI > 50)
+      - Температура и ветер за период (для контекста)
+    """
+    from ..ecology_cache import query_district_ecology_rating
+    rows = query_district_ecology_rating(days=days)
+    return {
+        "operation": "ECO_RATING_DISTRICTS",
+        "days": days,
+        "count": len(rows),
+        "rows": rows,
+    }
+
+
 @router.post(
     "/ecology/update",
     tags=["Экология"],

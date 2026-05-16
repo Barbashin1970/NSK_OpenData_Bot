@@ -1014,6 +1014,143 @@ def query_history(district_filter: str | None = None, days: int = 7) -> list[dic
         conn.close()
 
 
+def query_district_ecology_rating(days: int = 30) -> list[dict]:
+    """Рейтинг районов по экологии за N дней.
+
+    Возвращает для каждого района (отсортировано: лучший → худший):
+      - district
+      - aqi_avg, aqi_max, aqi_min — характеристики AQI за период
+      - pm25_avg, pm25_max
+      - days_total — кол-во дней с данными
+      - days_clean — дней с AQI <= 35 (хорошее качество)
+      - days_exceed — дней с AQI > 50 (плохое)
+      - score (0-10) — комплексный балл качества воздуха
+      - grade (A-F) — оценка
+      - temp_avg, wind_avg — для контекста
+
+    Логика score (10 = идеально, 0 = критично):
+      - Стартовый score = 10
+      - Штраф за средний AQI:
+          AQI <= 25 → 0
+          AQI <= 35 → -1
+          AQI <= 50 → -3
+          AQI <= 70 → -5
+          AQI >  70 → -7
+      - Штраф за дни с превышениями (AQI > 50): -0.2 за каждый
+      - Бонус за чистые дни (AQI <= 35): +0.1 за каждый
+      - Штраф за PM2.5 пик: PM2.5 > 35 мкг/м³ — -1; > 55 — -2
+    """
+    init_ecology_tables()
+    rows = query_history(days=days)
+    if not rows:
+        return []
+
+    # Группируем по району
+    by_dist: dict[str, dict] = {}
+    for r in rows:
+        dist = r.get("район")
+        if not dist:
+            continue
+        if dist not in by_dist:
+            by_dist[dist] = {
+                "district": dist,
+                "_aqi_vals": [], "_pm25_vals": [], "_pm25_max_vals": [],
+                "_temp_vals": [], "_wind_vals": [],
+                "days_total": 0, "days_clean": 0, "days_exceed": 0,
+            }
+        d = by_dist[dist]
+        aqi = r.get("aqi_ср")
+        pm25 = r.get("pm25_ср")
+        pm25_max = r.get("pm25_макс")
+        temp = r.get("темп_ср")
+        wind = r.get("ветер_ср")
+
+        d["days_total"] += 1
+        if aqi is not None:
+            d["_aqi_vals"].append(float(aqi))
+            if float(aqi) <= 35:
+                d["days_clean"] += 1
+            if float(aqi) > 50:
+                d["days_exceed"] += 1
+        if pm25 is not None:
+            d["_pm25_vals"].append(float(pm25))
+        if pm25_max is not None:
+            d["_pm25_max_vals"].append(float(pm25_max))
+        if temp is not None:
+            d["_temp_vals"].append(float(temp))
+        if wind is not None:
+            d["_wind_vals"].append(float(wind))
+
+    # Расчёт метрик и грейдов
+    result = []
+    for dist, d in by_dist.items():
+        aqi_vals = d["_aqi_vals"]
+        pm25_vals = d["_pm25_vals"]
+        pm25_max_vals = d["_pm25_max_vals"]
+
+        aqi_avg = round(sum(aqi_vals) / len(aqi_vals), 1) if aqi_vals else 0
+        aqi_max = round(max(aqi_vals), 1) if aqi_vals else 0
+        aqi_min = round(min(aqi_vals), 1) if aqi_vals else 0
+        pm25_avg = round(sum(pm25_vals) / len(pm25_vals), 1) if pm25_vals else 0
+        pm25_max = round(max(pm25_max_vals or pm25_vals or [0]), 1)
+        temp_avg = round(sum(d["_temp_vals"]) / len(d["_temp_vals"]), 1) if d["_temp_vals"] else None
+        wind_avg = round(sum(d["_wind_vals"]) / len(d["_wind_vals"]), 1) if d["_wind_vals"] else None
+
+        # Score — 4 компонента по 2.5 балла каждый = 10 макс.
+        # Узкие диапазоны для дифференциации близких значений.
+
+        # 1. AQI среднее: 20→2.5, 50→0 (диапазон 30 ед. для дифференциации)
+        s_aqi_avg = max(0, min(2.5, 2.5 * (50 - aqi_avg) / 30)) if aqi_avg else 2.5
+
+        # 2. AQI максимум за период: 30→2.5, 75→0
+        s_aqi_max = max(0, min(2.5, 2.5 * (75 - aqi_max) / 45)) if aqi_max else 2.5
+
+        # 3. PM2.5 пик: 10→2.5, 45→0
+        s_pm25 = max(0, min(2.5, 2.5 * (45 - pm25_max) / 35)) if pm25_max else 2.5
+
+        # 4. Доля чистых дней (AQI≤35) минус превышения: 100% → 2.5
+        days_total = max(d["days_total"], 1)
+        clean_pct = d["days_clean"] / days_total
+        exceed_pct = d["days_exceed"] / days_total
+        s_days = 2.5 * (clean_pct - exceed_pct * 0.5)
+        s_days = max(0, min(2.5, s_days))
+
+        score = round(s_aqi_avg + s_aqi_max + s_pm25 + s_days, 2)
+        score = max(0.0, min(10.0, score))
+
+        # Грейд
+        if score >= 8:
+            grade = "A"
+        elif score >= 6.5:
+            grade = "B"
+        elif score >= 5:
+            grade = "C"
+        elif score >= 3:
+            grade = "D"
+        else:
+            grade = "F"
+
+        result.append({
+            "district": dist,
+            "score": score,
+            "grade": grade,
+            "aqi_avg": aqi_avg,
+            "aqi_max": aqi_max,
+            "aqi_min": aqi_min,
+            "pm25_avg": pm25_avg,
+            "pm25_max": pm25_max,
+            "temp_avg": temp_avg,
+            "wind_avg": wind_avg,
+            "days_total": d["days_total"],
+            "days_clean": d["days_clean"],
+            "days_exceed": d["days_exceed"],
+        })
+
+    # Сортировка: лучший AQI → худший (меньше AQI = лучше)
+    result.sort(key=lambda r: (r["aqi_avg"], -r["score"]))
+    return result
+
+
 def query_aqi_exceedance_history(
     aqi_threshold: int = 40,
     days: int = 30,
