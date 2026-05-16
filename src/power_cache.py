@@ -542,28 +542,51 @@ def query_power_history_by_district(
       - planned_avg_daily — среднее число домов в плане в любой момент
         (рассчитано как SUM(planned)/SUM(snapshots), усреднено по периоду)
       - planned_now — текущее число домов в плане (последний снимок per utility)
-      - days_with_outages — кол-во дней с активными авариями
+      - days_with_outages — кол-во дней с активными авариями (rounded avg > 0)
+      - days_with_any_outage — кол-во дней с любыми отключениями (active OR planned)
+        ВАЖНО: используется как (30 - days_with_any) для "чистых дней" в рейтинге,
+        иначе расходится с per-day отчётом, где день "чистый" iff active=0 AND planned=0
     """
     rows = query_power_history(utility_filter=utility_filter, days=days)
     by_dist: dict[str, dict] = {}
+    # (district, day) → {active_avg, planned_avg} — повторяет логику by_day,
+    # чтобы day-level "чистый" определялся одинаково в обоих представлениях
+    by_dist_day: dict[tuple, dict] = {}
+
     for r in rows:
         dist = r["district"]
         if dist not in by_dist:
             by_dist[dist] = {
                 "district": dist,
-                "_active_sum_avg": 0.0,   # Σ(houses_avg_per_day) — суммируется по дням
+                "_active_sum_avg": 0.0,
                 "_planned_sum_avg": 0.0,
                 "_days_seen": set(),
-                "_days_active": set(),
             }
         snaps = int(r.get("snapshots") or 0)
-        # Среднее за день по этой (район × utility) — добавляем к district
         if snaps > 0:
             by_dist[dist]["_active_sum_avg"] += int(r.get("active_houses") or 0) / snaps
             by_dist[dist]["_planned_sum_avg"] += int(r.get("planned_houses") or 0) / snaps
         by_dist[dist]["_days_seen"].add(r["day"])
-        if int(r.get("active_houses") or 0) > 0:
-            by_dist[dist]["_days_active"].add(r["day"])
+
+        # Day-level накопление (для clean_days, как в by_day)
+        key = (dist, r["day"])
+        if key not in by_dist_day:
+            by_dist_day[key] = {"active_avg": 0.0, "planned_avg": 0.0}
+        if snaps > 0:
+            by_dist_day[key]["active_avg"] += int(r.get("active_houses") or 0) / snaps
+            by_dist_day[key]["planned_avg"] += int(r.get("planned_houses") or 0) / snaps
+
+    # Считаем "дни с любыми отключениями" по той же логике, что и frontend chart:
+    # день считается "не-чистым", если rounded avg active > 0 ИЛИ rounded avg planned > 0
+    days_active_by_dist: dict[str, set] = {}
+    days_any_by_dist: dict[str, set] = {}
+    for (dist, day), v in by_dist_day.items():
+        a = int(round(v["active_avg"]))
+        p = int(round(v["planned_avg"]))
+        if a > 0:
+            days_active_by_dist.setdefault(dist, set()).add(day)
+        if a > 0 or p > 0:
+            days_any_by_dist.setdefault(dist, set()).add(day)
 
     # "Сейчас": последний снимок per district из power_outages
     now_active = _query_now_by_district(group_type="active", utility_filter=utility_filter)
@@ -571,24 +594,21 @@ def query_power_history_by_district(
 
     result = []
     for d in by_dist.values():
-        # Среднее в моменте по дням, где день = сумма всех (район×utility) avg
-        # Делим на кол-во дней в выборке → средняя дневная нагрузка
         days_seen = max(len(d["_days_seen"]), 1)
         avg_active = int(round(d["_active_sum_avg"] / days_seen))
         avg_planned = int(round(d["_planned_sum_avg"] / days_seen))
+        dist_name = d["district"]
         result.append({
-            "district": d["district"],
-            # legacy поля — теперь = active_now / planned_now (для совместимости)
-            "active_houses": now_active.get(d["district"], 0),
-            "planned_houses": now_planned.get(d["district"], 0),
-            # NEW: явные имена
+            "district": dist_name,
+            "active_houses": now_active.get(dist_name, 0),
+            "planned_houses": now_planned.get(dist_name, 0),
             "active_avg_daily": avg_active,
             "planned_avg_daily": avg_planned,
-            "active_now": now_active.get(d["district"], 0),
-            "planned_now": now_planned.get(d["district"], 0),
-            "days_with_outages": len(d["_days_active"]),
+            "active_now": now_active.get(dist_name, 0),
+            "planned_now": now_planned.get(dist_name, 0),
+            "days_with_outages": len(days_active_by_dist.get(dist_name, set())),
+            "days_with_any_outage": len(days_any_by_dist.get(dist_name, set())),
         })
-    # Сортируем по active_now — это самая значимая метрика
     result.sort(key=lambda x: x["active_now"], reverse=True)
     return result
 

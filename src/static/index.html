@@ -4826,10 +4826,12 @@ async function _showPowerRating() {
       const rank = i < 3 ? ['🥇','🥈','🥉'][i] : `${i+1}`;
       const pctBar = Math.round(r.active_houses / maxOutage * 100);
       const m = e?.metrics || {};
-      // clean_days считаем ВСЕГДА из days_with_outages (history) — efficiency endpoint
-      // читает только raw power_outages, без архива, и даёт неконсистентное значение
-      // (баг: 30 - total_days_in_raw → "29 чистых" у всех когда snapshots уже в архиве)
-      const cleanDays = Math.max(0, 30 - (r.days_with_outages || 0));
+      // clean_days = дни, когда НЕТ ни активных, ни плановых отключений
+      // Используем days_with_any_outage (active OR planned), а не days_with_outages
+      // (active only) — иначе расходится с per-day отчётом, где день "чистый"
+      // iff active=0 AND planned=0 (видно в столбиках графика)
+      const daysAnyOut = r.days_with_any_outage ?? r.days_with_outages ?? 0;
+      const cleanDays = Math.max(0, 30 - daysAnyOut);
 
       return `
         <tr class="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer"
