@@ -98,23 +98,53 @@ def _fetch_openmeteo_air_quality(station: dict) -> dict | None:
 
 
 def _fetch_openmeteo_weather(station: dict) -> dict | None:
-    """Запрашивает температуру, ветер, давление с Open-Meteo Forecast API."""
+    """Запрашивает температуру, ветер, давление с Open-Meteo Forecast API.
+
+    Запрашивает И current, И hourly — если current возвращает null-поля
+    (бывает после полудня UTC при определённых условиях), берём последний
+    непустой час из hourly как fallback. Это устраняет потерю метео ~70%.
+    """
     data = _get_with_retry(_OPENMETEO_WEATHER_URL, {
         "latitude":        station["latitude"],
         "longitude":       station["longitude"],
         "current":         "temperature_2m,wind_speed_10m,wind_direction_10m,relative_humidity_2m,surface_pressure",
+        "hourly":          "temperature_2m,wind_speed_10m,wind_direction_10m,relative_humidity_2m,surface_pressure",
         "wind_speed_unit": "ms",
         "timezone":        get_timezone(),
+        "past_hours":      3,
+        "forecast_hours":  1,
     })
-    if not data or "current" not in data:
+    if not data:
         return None
-    cur = data["current"]
+
+    cur = data.get("current", {}) or {}
+    hourly = data.get("hourly", {}) or {}
+
+    def _hourly_last(field: str):
+        """Возвращает последнее непустое значение из hourly[field]."""
+        vals = hourly.get(field, []) or []
+        for v in reversed(vals):
+            if v is not None:
+                return v
+        return None
+
+    # Приоритет: current → последний непустой час из hourly
+    temp     = cur.get("temperature_2m")        if cur.get("temperature_2m") is not None        else _hourly_last("temperature_2m")
+    wind_s   = cur.get("wind_speed_10m")        if cur.get("wind_speed_10m") is not None        else _hourly_last("wind_speed_10m")
+    wind_d   = cur.get("wind_direction_10m")    if cur.get("wind_direction_10m") is not None    else _hourly_last("wind_direction_10m")
+    humidity = cur.get("relative_humidity_2m")  if cur.get("relative_humidity_2m") is not None  else _hourly_last("relative_humidity_2m")
+    pressure = cur.get("surface_pressure")      if cur.get("surface_pressure") is not None      else _hourly_last("surface_pressure")
+
+    # Если все поля None — нет смысла возвращать
+    if all(v is None for v in (temp, wind_s, wind_d, humidity, pressure)):
+        return None
+
     return {
-        "temperature_c":     cur.get("temperature_2m"),
-        "wind_speed_ms":     cur.get("wind_speed_10m"),
-        "wind_direction_deg": cur.get("wind_direction_10m"),
-        "humidity_pct":      cur.get("relative_humidity_2m"),
-        "pressure_hpa":      cur.get("surface_pressure"),
+        "temperature_c":      temp,
+        "wind_speed_ms":      wind_s,
+        "wind_direction_deg": wind_d,
+        "humidity_pct":       humidity,
+        "pressure_hpa":       pressure,
         "source": "open-meteo-weather",
     }
 

@@ -4585,7 +4585,9 @@ async function _showPowerRating() {
         const gradesCfg = effData.grades || [];
         const cleanDays = Math.max(0, 30 - daysOut);
         const cleanRatio = 30 > 0 ? cleanDays / 30 : 0;
-        const houses = d.active_houses || 0;
+        // Используем active_avg_daily (среднее реальное число домов) вместо
+        // legacy active_houses (снежный ком SUM). Если нет — fallback на active_now.
+        const houses = d.active_avg_daily ?? d.active_now ?? 0;
         const daysWeight = parseFloat(fb.outage_days_weight || 3.0);
         const cleanWeight = parseFloat(fb.clean_days_weight || 1.5);
         let fallbackScore = 10.0 - (30 > 0 ? daysOut / 30 : 0) * daysWeight + cleanRatio * cleanWeight;
@@ -4618,19 +4620,24 @@ async function _showPowerRating() {
       }
       return {
         district: d.district,
-        active_houses: d.active_houses || 0,
-        planned_houses: d.planned_houses || 0,
+        // active_houses теперь = active_now (last snapshot), не "снежный ком" SUM
+        // d.active_houses оставлено для legacy-расчётов в fallback (выше)
+        active_houses: d.active_now ?? d.active_houses ?? 0,
+        active_avg_daily: d.active_avg_daily ?? 0,
+        planned_now: d.planned_now ?? 0,
+        planned_avg_daily: d.planned_avg_daily ?? 0,
+        planned_houses: d.planned_houses || 0,            // legacy SUM (не показываем)
         days_with_outages: daysOut,
         eff: eff,
       };
     }).sort((a, b) => {
-      // Главный критерий: меньше аварийных = лучше (предиктивный ремонт)
+      // Главный критерий: меньше аварийных СЕЙЧАС = лучше
       // При равенстве: выше score из efficiency
       return a.active_houses - b.active_houses || (b.eff?.score ?? 0) - (a.eff?.score ?? 0);
     });
 
     const totalActive = ranked.reduce((s, r) => s + r.active_houses, 0);
-    const totalPlanned = ranked.reduce((s, r) => s + r.planned_houses, 0);
+    const totalPlanned = ranked.reduce((s, r) => s + r.planned_now, 0);
     const avgScore = ranked.length ? +(ranked.reduce((s, r) => s + (r.eff?.score ?? 0), 0) / ranked.length).toFixed(1) : 0;
     const bestDist = ranked[0];  // уже отсортировано: первый = минимум аварийных
     // Худший: последний в рейтинге; если совпал с лучшим — берём следующего
