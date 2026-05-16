@@ -2211,8 +2211,9 @@ function _renderEcoDistrictsRanking(ranking, currentDistrict) {
   const worstAqi = Math.max(...sorted.map(r => r.aqi_avg || 0));
   const cityAvgAqi = sorted.length ? +(sorted.reduce((s,r) => s + (r.aqi_avg || 0), 0) / sorted.length).toFixed(1) : 0;
   const cityAvgPm = sorted.length ? +(sorted.reduce((s,r) => s + (r.pm25_avg || 0), 0) / sorted.length).toFixed(1) : 0;
-  const totalCleanDays = sorted.reduce((s,r) => s + (r.days_clean || 0), 0);
-  const totalExceedDays = sorted.reduce((s,r) => s + (r.days_exceed || 0), 0);
+  // Средние по районам — сумма "29×11=305" бессмысленна (период всего 30 дней)
+  const avgCleanDays = sorted.length ? Math.round(sorted.reduce((s,r) => s + (r.days_clean || 0), 0) / sorted.length) : 0;
+  const maxExceedDays = sorted.length ? Math.max(...sorted.map(r => r.days_exceed || 0)) : 0;
 
   const rowsHtml = sorted.map((r, i) => {
     const gc = gradeColors[r.grade] || gradeColors.C;
@@ -2291,12 +2292,12 @@ function _renderEcoDistrictsRanking(ranking, currentDistrict) {
           <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Худший AQI</div>
         </div>
         <div class="px-4 py-3 text-center">
-          <div class="text-2xl font-bold text-emerald-600">${totalCleanDays}</div>
-          <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Чистых дней (сумма)</div>
+          <div class="text-2xl font-bold text-emerald-600">${avgCleanDays}<span class="text-sm text-slate-400"> / 30</span></div>
+          <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Чистых дн. (ср. по р-нам)</div>
         </div>
         <div class="px-4 py-3 text-center">
-          <div class="text-2xl font-bold ${totalExceedDays === 0 ? 'text-emerald-600' : 'text-red-600'}">${totalExceedDays}</div>
-          <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Превышений (сумма)</div>
+          <div class="text-2xl font-bold ${maxExceedDays === 0 ? 'text-emerald-600' : 'text-red-600'}">${maxExceedDays}</div>
+          <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Превышений (макс. по р-ну)</div>
         </div>
       </div>
 
