@@ -5187,6 +5187,9 @@ async function _showPowerHistory(districtFilter) {
     const dayData = await dayR.json();
     const distData = await distR.json();
     const effData = await effR.json();
+    // Сбой чтения БД приходит как 200 с пустым списком — показываем ошибку,
+    // а не «за весь период отключений не было»
+    if (dayData.error) throw new Error(dayData.error);
     const rawDays = (dayData.rows || []).slice().sort((a, b) => a.day.localeCompare(b.day));
     const dists = distData.rows || [];
     const effRows = effData.rows || [];
@@ -5387,16 +5390,25 @@ async function _showPowerHistory(districtFilter) {
       </div>` : '';
 
     // ── District filter chips + период ──────────────────────────────────
-    const distChips = dists.length ? `
+    // Переключатель периода рендерится ВСЕГДА, даже если список районов пуст:
+    // раньше он жил внутри блока чипсов и исчезал вместе с ним, стоило
+    // запросу по районам вернуться пустым. Список районов берём из ответа, а
+    // если его нет — из конфига города, чтобы фильтр не пропадал совсем.
+    const distList = dists.length
+      ? dists.map(d => d.district)
+      : (_cityCfg?.districts || []).filter(d => d.val).map(d => d.val);
+    const distChips = `
       <div class="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-1.5">
-        <span class="text-[10px] text-slate-400 mr-1">Район:</span>
-        <button onclick="_showPowerHistory()" class="text-[10px] px-2.5 py-1 rounded-full border ${!districtFilter ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}  transition-colors">Весь город</button>
-        ${dists.map(d => `<button onclick="_showPowerHistory('${d.district.replace(/'/g, "\\'")}')" class="text-[10px] px-2.5 py-1 rounded-full border ${districtFilter === d.district ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'} transition-colors">${d.district.replace(/ район$/, '')}</button>`).join('')}
+        ${distList.length ? `
+          <span class="text-[10px] text-slate-400 mr-1">Район:</span>
+          <button onclick="_showPowerHistory()" class="text-[10px] px-2.5 py-1 rounded-full border ${!districtFilter ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}  transition-colors">Весь город</button>
+          ${distList.map(name => `<button onclick="_showPowerHistory('${name.replace(/'/g, "\\'")}')" class="text-[10px] px-2.5 py-1 rounded-full border ${districtFilter === name ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'} transition-colors">${name.replace(/ район$/, '')}</button>`).join('')}
+        ` : ''}
         <span class="ml-auto flex items-center gap-1.5">
           <span class="text-[10px] text-slate-400">Период:</span>
           ${_periodSelector('_setPowerHistoryPeriod')}
         </span>
-      </div>` : '';
+      </div>`;
 
     // ── Assemble ─────────────────────────────────────────────────────────
     const ts = meta.last_scraped ? String(meta.last_scraped).substring(0, 16).replace('T', ' ') : '—';

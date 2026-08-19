@@ -5,6 +5,7 @@
 """
 
 import logging
+import threading
 from typing import Any
 
 import duckdb
@@ -14,16 +15,49 @@ from .fetcher import load_meta, save_meta
 
 log = logging.getLogger(__name__)
 
+# Одно корневое соединение на файл БД, дальше — курсоры.
+#
+# DuckDB запрещает открывать один файл несколькими соединениями внутри одного
+# процесса: второй duckdb.connect() к тому же пути падает с
+#   Binder Error: Unique file handle conflict: Cannot attach "cache" —
+#   the database file ... is already attached by database "cache"
+# Страница шлёт запросы пачками (Promise.all), FastAPI выполняет sync-роуты в
+# threadpool — и часть из них разбивалась об этот конфликт. Роуты глушили
+# исключение и отдавали 200 с пустым списком, поэтому наружу это выглядело не
+# как ошибка, а как «данных нет»: пустой рейтинг, пропавшие фильтры, график
+# целиком из «чистых» дней.
+#
+# cursor() создаёт независимый дескриптор к уже открытой БД: у него свои
+# транзакции, close() закрывает только курсор, и параллельные запросы больше
+# не конфликтуют. Ключ — путь к файлу, поэтому переключение города через
+# /studio по-прежнему работает без перезапуска.
+_ROOT_CONNS: dict[str, duckdb.DuckDBPyConnection] = {}
+_ROOT_LOCK = threading.Lock()
+
 
 def _get_conn() -> duckdb.DuckDBPyConnection:
-    """Открывает соединение с DuckDB текущего активного города.
+    """Курсор к БД текущего активного города.
 
     Путь: data/cities/{city_id}/cache.db — каждый город изолирован.
-    Определяется при каждом вызове (не кэшируется), поэтому переключение
-    города через /studio работает без перезапуска сервера.
+    Вызывающий код закрывает курсор как обычное соединение; корневое
+    соединение живёт до конца процесса.
     """
     from .city_config import get_db_path
-    return duckdb.connect(str(get_db_path()))
+    path = str(get_db_path())
+
+    with _ROOT_LOCK:
+        root = _ROOT_CONNS.get(path)
+        if root is None:
+            root = duckdb.connect(path)
+            _ROOT_CONNS[path] = root
+        try:
+            return root.cursor()
+        except Exception as e:
+            # Корневое соединение могло быть закрыто извне — переоткрываем
+            log.warning("DuckDB: пересоздаю соединение к %s (%s)", path, e)
+            root = duckdb.connect(path)
+            _ROOT_CONNS[path] = root
+            return root.cursor()
 
 
 def table_name(topic: str) -> str:
