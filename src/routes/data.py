@@ -1140,9 +1140,13 @@ def get_power_history(
             columns = ["day", "active_houses", "planned_houses", "active_records", "planned_records"]
 
         meta = get_power_meta(utility_filter=utility, district_filter=district)
+        query_error = None
     except Exception as e:
+        # Пустой ответ и сбой чтения — разные вещи. Без этого флага UI считал
+        # ошибку отсутствием отключений и рисовал период целиком «чистым».
         log.error("power history query error: %s", e)
         rows, columns, meta = [], [], {}
+        query_error = str(e)
 
     # Фактическая глубина периода. Считается по всему городу: день без строк
     # по конкретному району означает отсутствие отключений, а не отсутствие
@@ -1157,6 +1161,7 @@ def get_power_history(
     return {
         "operation": "POWER_HISTORY",
         "days": days,
+        "error": query_error,
         "days_observed": len(observed),
         # Список нужен фронту, чтобы отличить чистый день от провала сбора
         "observed_days": observed if group_by != "district" else [],
