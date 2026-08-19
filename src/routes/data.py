@@ -1094,11 +1094,17 @@ def get_power_meta_endpoint() -> dict:
 @router.get(
     "/power/history",
     tags=["Данные"],
-    summary="История отключений ЖКХ по дням (до 30 дней)",
+    summary="История отключений ЖКХ по дням (до 365 дней)",
     response_description="Агрегированные данные: active/planned houses по дням, районам",
 )
 def get_power_history(
-    days: int = Query(30, ge=1, le=30, description="Количество дней истории"),
+    days: int = Query(
+        30, ge=1, le=365,
+        description=(
+            "Количество дней истории (1–365). Суточный архив хранится 365 дней, "
+            "но сбор прерывался — реальная глубина в поле `days_observed`."
+        ),
+    ),
     district: str | None = Query(None, description="Фильтр по району"),
     utility: str | None = Query(None, description="Фильтр по типу ресурса"),
     group_by: str = Query("day", description="Группировка: day | district"),
@@ -1138,9 +1144,24 @@ def get_power_history(
         log.error("power history query error: %s", e)
         rows, columns, meta = [], [], {}
 
+    # Фактическая глубина периода. Считается по всему городу: день без строк
+    # по конкретному району означает отсутствие отключений, а не отсутствие
+    # наблюдения, поэтому знаменатель нельзя брать из отфильтрованных строк.
+    try:
+        from ..power_cache import query_observed_days
+        observed = query_observed_days(days=days)
+    except Exception as e:
+        log.error("power observed days error: %s", e)
+        observed = []
+
     return {
-        "operation": "POWER_HISTORY_30D",
+        "operation": "POWER_HISTORY",
         "days": days,
+        "days_observed": len(observed),
+        # Список нужен фронту, чтобы отличить чистый день от провала сбора
+        "observed_days": observed if group_by != "district" else [],
+        "period_from": observed[0] if observed else None,
+        "period_to": observed[-1] if observed else None,
         "district": district,
         "utility": utility,
         "group_by": group_by,
@@ -1158,7 +1179,15 @@ def get_power_history(
     response_description="Оценки A-F по скорости устранения аварий, ночным/вечерним/выходным отключениям",
 )
 def get_power_efficiency(
-    days: int = Query(30, ge=1, le=30, description="Период анализа (дней)"),
+    days: int = Query(
+        30, ge=1, le=365,
+        description=(
+            "Период анализа (1–365). Внутридневные метрики (вечер/ночь/скорость "
+            "устранения) считаются только по дням с почасовыми снимками — это "
+            "последние 30 дней. Глубже доступны лишь суточные итоги из архива, "
+            "по ним считается доля чистых дней."
+        ),
+    ),
 ) -> dict:
     """Анализирует паттерны отключений внутри дня для оценки работы ремонтных бригад.
 
@@ -1190,9 +1219,16 @@ def get_power_efficiency(
     fallback_cfg = cfg.get("fallback", {})
     grades_cfg = cfg.get("grades", [])
 
+    from ..constants import POWER_HISTORY_DAYS
     return {
         "operation": "POWER_EFFICIENCY",
         "days": days,
+        # Наблюдённых дней — максимум по районам (у каждого свой ряд)
+        "days_observed": max(
+            (r.get("metrics", {}).get("days_observed") or 0 for r in rows), default=0
+        ),
+        # Окно почасовых снимков: внутридневные метрики глубже него не считаются
+        "hourly_window_days": min(days, POWER_HISTORY_DAYS),
         "count": len(rows),
         "rows": rows,
         "fallback": fallback_cfg,

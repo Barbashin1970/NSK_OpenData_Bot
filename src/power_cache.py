@@ -548,6 +548,8 @@ def query_power_history_by_district(
         иначе расходится с per-day отчётом, где день "чистый" iff active=0 AND planned=0
     """
     rows = query_power_history(utility_filter=utility_filter, days=days)
+    # Дни, за которые сборщик отработал хоть по одному району
+    days_observed_all = len({r["day"] for r in rows if r.get("day")})
     by_dist: dict[str, dict] = {}
     # (district, day) → {active_avg, planned_avg} — повторяет логику by_day,
     # чтобы day-level "чистый" определялся одинаково в обоих представлениях
@@ -608,6 +610,10 @@ def query_power_history_by_district(
             "planned_now": now_planned.get(dist_name, 0),
             "days_with_outages": len(days_active_by_dist.get(dist_name, set())),
             "days_with_any_outage": len(days_any_by_dist.get(dist_name, set())),
+            # Знаменатель для «чистых дней» на фронте — общегородской: день,
+            # в который у района нет строк, означает отсутствие отключений,
+            # а не отсутствие наблюдения (см. _query_observed_days).
+            "days_observed": days_observed_all,
         })
     result.sort(key=lambda x: x["active_now"], reverse=True)
     return result
@@ -658,6 +664,83 @@ def _query_planned_now_by_district(utility_filter: str | None = None) -> dict[st
     return _query_now_by_district("planned", utility_filter)
 
 
+# Минимум дней с почасовыми снимками, при котором внутридневные метрики
+# (вечерние/ночные аварии, устранение за день) считаются показательными.
+_MIN_HOUR_DAYS = 5
+
+
+def _excess_share(window_load: float, total_load: float, fair_share: float) -> float:
+    """Насколько нагрузка перекошена в окно сверх равномерного распределения.
+
+    0.0 — нагрузка размазана равномерно или окно недогружено;
+    1.0 — вся нагрузка сосредоточена в окне.
+
+    fair_share — доля суток, которую занимает окно (ночь 8ч → 8/24).
+    """
+    if total_load <= 0:
+        return 0.0
+    share = window_load / total_load
+    if share <= fair_share or fair_share >= 1:
+        return 0.0
+    return (share - fair_share) / (1 - fair_share)
+
+
+def _query_observed_days(conn, cutoff_iso: str) -> set:
+    """Множество дней периода, за которые сборщик вообще отработал.
+
+    Знаменатель для «чистых дней» — общегородской, а не по району. Строка в
+    архив пишется только при наличии отключения на портале, поэтому день без
+    строк по конкретному району означает, что у района отключений не было, а
+    вовсе не отсутствие данных. Считать наблюдённые дни по району = объявить
+    благополучные районы ненаблюдавшимися и обнулить им бонус.
+
+    А вот дни, когда данных нет НИ ПО ОДНОМУ району, — это простой сборщика
+    (в ряду есть многодневные провалы), и вот их из знаменателя надо убрать,
+    иначе авария сборщика засчитается городу как период без отключений.
+    """
+    observed: set = set()
+    day_cutoff = cutoff_iso[:10]
+    try:
+        cur = conn.execute(
+            "SELECT DISTINCT day FROM power_daily_archive WHERE day >= ? AND district != 'all'",
+            [day_cutoff],
+        )
+        observed.update(r[0] for r in cur.fetchall())
+    except Exception as e:
+        log.debug("_query_observed_days: архив недоступен (%s)", e)
+    try:
+        cur = conn.execute(
+            """
+            SELECT DISTINCT STRFTIME(CAST(scraped_at AS TIMESTAMP), '%Y-%m-%d')
+            FROM power_outages WHERE scraped_at >= ?
+            """,
+            [cutoff_iso],
+        )
+        observed.update(r[0] for r in cur.fetchall())
+    except Exception as e:
+        log.debug("_query_observed_days: raw недоступен (%s)", e)
+    return observed
+
+
+def query_observed_days(days: int = 30) -> list[str]:
+    """Отсортированный список дней периода, за которые сборщик отработал.
+
+    Нужен фронту, чтобы отличить «в этот день отключений не было» (строк нет,
+    но день наблюдался) от «в этот день сбор не работал» (провал в ряду).
+    Первое — чистый день, второе — дырка, и красить их одинаково нельзя.
+    """
+    init_power_table()
+    conn = _get_conn()
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        return sorted(_query_observed_days(conn, cutoff))
+    except Exception as e:
+        log.error("query_observed_days error: %s", e)
+        return []
+    finally:
+        conn.close()
+
+
 def query_power_efficiency(days: int = 30) -> list[dict]:
     """Оценка эффективности ремонтных бригад по районам.
 
@@ -690,7 +773,7 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
             FROM (
                 SELECT
                     district,
-                    STRFTIME(CAST(scraped_at AS TIMESTAMP), '%%Y-%%m-%%d') AS day,
+                    STRFTIME(CAST(scraped_at AS TIMESTAMP), '%Y-%m-%d') AS day,
                     EXTRACT(HOUR FROM CAST(scraped_at AS TIMESTAMP)) AS hour,
                     DAYOFWEEK(CAST(scraped_at AS TIMESTAMP)) AS dow,
                     scraped_at,
@@ -738,9 +821,35 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
                 # Если день уже из raw — оставляем (он точнее по часам).
                 # Если только из архива — помечаем как "архивный": hours={} но день учтён.
                 if day not in dist_data[district]:
-                    dist_data[district][day] = {"hours": {}, "dow": 0, "from_archive": True}
+                    # dow считаем из даты: DuckDB DAYOFWEEK даёт 0=вс…6=сб,
+                    # python weekday() — 0=пн…6=вс. Без пересчёта архивные дни
+                    # получали dow=0 (воскресенье) и все шли в «выходные».
+                    try:
+                        _wd = datetime.strptime(day, "%Y-%m-%d").weekday()
+                        _dow = (_wd + 1) % 7
+                    except ValueError:
+                        _dow = -1
+                    dist_data[district][day] = {"hours": {}, "dow": _dow, "from_archive": True}
         except Exception as e:
             log.debug("query_power_efficiency: архив пропущен (%s)", e)
+
+        # ── Дни наблюдения по районам ────────────────────────────────────────
+        # ВАЖНО: сбор данных прерывался (см. пропуски в power_daily_archive),
+        # поэтому «чистые дни» нельзя считать как (календарный период - дни с
+        # авариями) — так пропуски сборщика превращаются в чистые дни.
+        # Знаменатель = число дней, за которые у района вообще есть данные.
+        observed = _query_observed_days(conn, cutoff)
+
+        # Среднесуточное число аварийных домов по районам — считается из
+        # суточного архива и потому доступно на всю глубину, в отличие от
+        # почасовых снимков. Нужно, чтобы на длинном периоде было чем
+        # различать районы: без внутридневных метрик все получают базовый балл.
+        avg_houses: dict[str, int] = {}
+        try:
+            for r in query_power_history_by_district(days=days):
+                avg_houses[r["district"]] = int(r.get("active_avg_daily") or 0)
+        except Exception as e:
+            log.debug("query_power_efficiency: суточная нагрузка недоступна (%s)", e)
 
         # Считаем метрики для каждого района
         results = []
@@ -749,12 +858,24 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
             if total_days == 0:
                 continue
 
+            # Дни с почасовыми снимками — только по ним считаются внутридневные
+            # метрики (вечер/ночь/устранение). Архивные дни знают лишь суточный
+            # итог, включать их в знаменатель — занижать долю и завышать балл.
+            hour_days = sum(1 for info in day_map.values() if info["hours"])
+            hour_denom = max(hour_days, 1)
+            # На выборке в 1-2 дня доля «вечерних аварий» скачет между 0 и 1 и
+            # определяет грейд сильнее, чем реальная работа бригад. Ниже порога
+            # внутридневные компоненты не начисляем вовсе — балл считается по
+            # доле чистых дней, а неполнота честно видна в hour_days.
+            intraday_ok = hour_days >= _MIN_HOUR_DAYS
+
             evening_days = 0     # дни с авариями в 18-22
             night_days = 0       # дни с авариями в 22-06
             weekend_days = 0     # выходные с авариями
             resolved_same_day = 0  # утром появилось — к вечеру устранено
             total_house_hours = 0
             evening_house_hours = 0
+            night_house_hours = 0
             peak_houses = 0
 
             for day, info in day_map.items():
@@ -784,6 +905,7 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
                     evening_house_hours += sum(hours[h] for h in evening)
                 if has_night:
                     night_days += 1
+                    night_house_hours += sum(hours[h] for h in night)
 
                 # Резолюция в тот же день: есть утром, нет вечером
                 if has_morning and not has_evening and not has_night:
@@ -801,38 +923,67 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
 
             score = float(gen.get("base_score", 10.0))
 
+            # Внутридневные метрики — только по дням с почасовыми снимками,
+            # иначе на длинном периоде архивные дни размывают долю и балл
+            # уезжает вверх без всякого улучшения работы бригад.
+            #
+            # Считаем ДОЛЮ НАГРУЗКИ в окне, а не «был ли хоть один час».
+            # В городе-миллионнике хоть где-то ночью всегда что-то отключено,
+            # поэтому бинарный признак «ночная авария была» верен почти каждый
+            # день и районы не различает вовсе. Долю сравниваем с равномерным
+            # распределением (ночь — 8 часов из 24, вечер — 4): район, у
+            # которого нагрузка размазана ровно, штрафа не получает, штраф
+            # растёт по мере перекоса аварий на неудобное время.
+            evening_ratio = _excess_share(evening_house_hours, total_house_hours, 4 / 24) if intraday_ok else 0.0
+            night_ratio = _excess_share(night_house_hours, total_house_hours, 8 / 24) if intraday_ok else 0.0
+
             # Штраф за вечерние аварии
-            evening_ratio = evening_days / total_days if total_days > 0 else 0
             score -= evening_ratio * float(pen.get("evening_outages", {}).get("weight", 3.0))
 
             # Штраф за ночные аварии
-            night_ratio = night_days / total_days if total_days > 0 else 0
             score -= night_ratio * float(pen.get("night_outages", {}).get("weight", 4.0))
 
-            # Штраф за выходные аварии
+            # Штраф за выходные аварии — считается по всем дням с авариями:
+            # для этого достаточно суточного итога, почасовые данные не нужны
             weekend_ratio = weekend_days / total_days if total_days > 0 else 0
             score -= weekend_ratio * float(pen.get("weekend_outages", {}).get("weight", 1.5))
 
             # Бонус за быстрое устранение
-            if total_days > 0:
-                resolution_rate = resolved_same_day / total_days
-                score += resolution_rate * float(bon.get("same_day_resolution", {}).get("weight", 2.0))
+            resolution_rate = resolved_same_day / hour_denom if intraday_ok else 0.0
+            score += resolution_rate * float(bon.get("same_day_resolution", {}).get("weight", 2.0))
 
-            # Бонус за чистые дни
-            clean_days = max(0, days - total_days)
-            clean_ratio = clean_days / days if days > 0 else 0
+            # Бонус за чистые дни — от НАБЛЮДЁННЫХ дней, не от календарного
+            # периода: пропуск сборщика не должен считаться чистым днём
+            days_observed = len(observed) or total_days
+            clean_days = max(0, days_observed - total_days)
+            clean_ratio = clean_days / days_observed if days_observed > 0 else 0
             score += clean_ratio * float(bon.get("clean_days", {}).get("weight", 2.0))
 
-            # Штраф за высокую нагрузку (house-hours)
-            avg_house_hours = total_house_hours / total_days if total_days > 0 else 0
-            load_thresholds = pen.get("high_load", {}).get("thresholds", [
-                {"above": 200, "penalty": 1.5},
-                {"above": 100, "penalty": 1.0},
-                {"above": 50, "penalty": 0.5},
-            ])
-            for lt in sorted(load_thresholds, key=lambda x: x["above"], reverse=True):
-                if avg_house_hours > lt["above"]:
-                    score -= lt["penalty"]
+            # Штраф за нагрузку. При наличии почасовых данных — по house-hours
+            # (точнее, учитывает длительность). Без них — по среднесуточному
+            # числу аварийных домов из архива, иначе на длинном периоде
+            # штрафовать нечем и все районы получают одинаковый максимум.
+            avg_house_hours = total_house_hours / hour_denom if intraday_ok else 0
+            dist_avg_houses = avg_houses.get(district, 0)
+            if intraday_ok:
+                load_thresholds = pen.get("high_load", {}).get("thresholds", [
+                    {"above": 200, "penalty": 1.5},
+                    {"above": 100, "penalty": 1.0},
+                    {"above": 50, "penalty": 0.5},
+                ])
+                load_value = avg_house_hours
+            else:
+                load_thresholds = cfg.get("fallback", {}).get("house_count_thresholds", [
+                    {"above": 500, "penalty": 5.0},
+                    {"above": 200, "penalty": 4.0},
+                    {"above": 100, "penalty": 3.0},
+                    {"above": 50, "penalty": 1.5},
+                    {"above": 20, "penalty": 0.5},
+                ])
+                load_value = dist_avg_houses
+            for lt in sorted(load_thresholds, key=lambda x: float(x["above"]), reverse=True):
+                if load_value > float(lt["above"]):
+                    score -= float(lt["penalty"])
                     break
 
             score = max(
@@ -854,11 +1005,21 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
                 "metrics": {
                     "outage_days": total_days,
                     "clean_days": clean_days,
+                    "days_observed": days_observed,
+                    "hour_days": hour_days,
+                    "intraday_metrics": intraday_ok,
+                    "active_avg_daily": dist_avg_houses,
                     "evening_days": evening_days,
                     "night_days": night_days,
+                    "evening_share": round(
+                        evening_house_hours / total_house_hours, 3
+                    ) if total_house_hours else 0,
+                    "night_share": round(
+                        night_house_hours / total_house_hours, 3
+                    ) if total_house_hours else 0,
                     "weekend_days": weekend_days,
                     "resolved_same_day": resolved_same_day,
-                    "resolution_rate": round(resolved_same_day / total_days * 100) if total_days > 0 else 0,
+                    "resolution_rate": round(resolution_rate * 100),
                     "total_house_hours": total_house_hours,
                     "evening_house_hours": evening_house_hours,
                     "peak_houses": peak_houses,

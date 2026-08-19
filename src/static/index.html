@@ -2183,8 +2183,143 @@ async function _showRisksView() {
 // ─── Skeleton UI — мгновенные заглушки пока грузятся данные ───────────────────
 const _skeletonPulse = 'animate-pulse bg-slate-200 rounded';
 
-function _renderEcoDistrictsRanking(ranking, currentDistrict) {
+// ─── Период отчётов: 30 дней / вся накопленная глубина ────────────────────────
+// Суточные архивы (ecology_daily_archive, power_daily_archive) хранятся 365
+// дней, почасовые снимки — 30. Раньше UI жёстко просил days=30 и всё, что
+// накоплено глубже, пользователю не показывалось вообще.
+const _PERIOD_ALL = 365;
+const _PERIOD_OPTS = [
+  { v: 30,           label: '30 дней' },
+  { v: _PERIOD_ALL,  label: 'Всё время' },
+];
+let _periodDays = Number(localStorage.getItem('nsk_period_days')) || 30;
+if (!_PERIOD_OPTS.some(o => o.v === _periodDays)) _periodDays = 30;
+
+/** Кнопки выбора периода. onChange — имя глобальной функции-обработчика. */
+function _periodSelector(onChange) {
+  return `<div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-[10px] flex-shrink-0">
+    ${_PERIOD_OPTS.map(o => `<button onclick="${onChange}(${o.v})"
+      class="px-2.5 py-1 transition-colors ${_periodDays === o.v
+        ? 'bg-blue-600 text-white font-semibold'
+        : 'bg-white text-slate-600 hover:bg-slate-50'}">${o.label}</button>`).join('')}
+  </div>`;
+}
+
+function _pluralDays(n) {
+  const m = n % 10, c = n % 100;
+  if (c >= 11 && c <= 19) return 'дней';
+  if (m === 1) return 'день';
+  if (m >= 2 && m <= 4) return 'дня';
+  return 'дней';
+}
+
+/** Подпись периода: «за 30 дней» / «за всё время · 128 дней с данными». */
+function _periodLabel(daysObserved) {
+  if (_periodDays !== _PERIOD_ALL) return 'за 30 дней';
+  return daysObserved ? `за всё время · ${daysObserved} ${_pluralDays(daysObserved)} с данными` : 'за всё время';
+}
+
+function _setPeriod(v) {
+  _periodDays = v;
+  try { localStorage.setItem('nsk_period_days', String(v)); } catch (e) { /* private mode */ }
+}
+
+// ─── Адаптивный рендер столбиков по дням ──────────────────────────────────────
+// До _BAR_COMPACT_FROM дней рисуем крупно: значение над столбиком, число месяца
+// под ним. Дальше это разваливается — 150 столбиков по 24px уезжают на 3600px
+// горизонтального скролла, а подписи в 8px сливаются в шум. В компактном режиме
+// столбики жмутся во всю ширину без скролла, подписи дней убираются, а
+// ориентиром во времени служат метки месяцев и разделители. Цвет никуда не
+// девается — на длинном периоде он и есть основной канал: тренд читается как
+// смена окраски полосы, а отдельные пики остаются видны как одиночные штрихи.
+const _BAR_COMPACT_FROM = 46;
+const _MONTHS_SHORT = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+
+function _monthTicks(days) {
+  const ticks = [];
+  days.forEach((d, i) => {
+    const ym = String(d.day).slice(0, 7);
+    if (i === 0 || ym !== String(days[i - 1].day).slice(0, 7)) ticks.push({ i, ym });
+  });
+  return ticks;
+}
+
+/** Заполняет пропуски дат между первым и последним днём, помечая их noData.
+ *  Пропуск сбора — это не «день без событий»: он не должен ни красить столбик
+ *  в «чисто», ни попадать в знаменатели. */
+function _fillDayGaps(rows, keyFn) {
+  const key = keyFn || (r => r.day);
+  const withDay = rows.filter(r => key(r));
+  if (withDay.length < 2) return withDay;
+  const sorted = [...withDay].sort((a, b) => String(key(a)).localeCompare(String(key(b))));
+  const byDay = {};
+  sorted.forEach(r => { byDay[String(key(r)).slice(0, 10)] = r; });
+  const out = [];
+  const cur = new Date(String(key(sorted[0])).slice(0, 10) + 'T00:00:00Z');
+  const end = new Date(String(key(sorted[sorted.length - 1])).slice(0, 10) + 'T00:00:00Z');
+  let guard = 0;
+  while (cur <= end && guard++ < 800) {
+    const k = cur.toISOString().slice(0, 10);
+    out.push(byDay[k] || { day: k, noData: true });
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
+/**
+ * Рисует ряд столбиков по дням.
+ * spec: {
+ *   height   — высота области столбиков, px
+ *   bar(d,H) — html внутренностей столбика (стек сегментов снизу вверх)
+ *   value(d) — подпись над столбиком (только в крупном режиме)
+ *   valueCls(d), dateCls(d) — классы подписей
+ *   title(d) — tooltip
+ *   legend   — html легенды под графиком
+ * }
+ */
+function _renderDayBars(days, spec) {
+  if (!days || !days.length) return '<div class="text-sm text-slate-400 text-center py-4">Нет данных за период</div>';
+  const H = spec.height || 150;
+  const compact = days.length >= _BAR_COMPACT_FROM;
+  const ticks = _monthTicks(days);
+  const tickAt = new Set(ticks.map(t => t.i));
+
+  const barsHtml = days.map((d, i) => {
+    const sep = compact && tickAt.has(i) && i > 0 ? 'border-l border-slate-300' : '';
+    const top = compact ? '' :
+      `<span class="text-[9px] ${spec.valueCls ? spec.valueCls(d) : 'text-slate-400'} mb-0.5 leading-none">${spec.value ? spec.value(d) : ''}</span>`;
+    const bottom = compact ? '' :
+      `<span class="text-[8px] ${spec.dateCls ? spec.dateCls(d) : 'text-slate-400'} mt-0.5 leading-none whitespace-nowrap">${String(d.day).slice(8)}</span>`;
+    return `<div class="flex flex-col items-center ${compact ? 'flex-1 min-w-0' : 'flex-1 min-w-[18px]'} ${sep}" title="${spec.title(d)}">
+      ${top}
+      <div class="w-full flex flex-col justify-end">${spec.bar(d, H)}</div>
+      ${bottom}
+    </div>`;
+  }).join('');
+
+  // Метки месяцев вместо 150 подписей с числами
+  const axisHtml = compact ? `
+    <div class="relative h-4 mt-1 mx-1">
+      ${ticks.map(t => `<span class="absolute text-[9px] text-slate-400 whitespace-nowrap"
+        style="left:${(t.i / days.length * 100).toFixed(2)}%">${_MONTHS_SHORT[+t.ym.slice(5, 7) - 1]}</span>`).join('')}
+    </div>` : '';
+
+  return `
+    <div class="${compact ? '' : 'overflow-x-auto'} pb-2">
+      <div style="${compact ? '' : `min-width:${Math.max(days.length * 24, 300)}px;`} height:${H + 30}px"
+           class="flex items-end ${compact ? '' : 'gap-px'} px-1">
+        ${barsHtml}
+      </div>
+      ${axisHtml}
+      ${spec.legend || ''}
+    </div>`;
+}
+
+function _renderEcoDistrictsRanking(ranking, currentDistrict, observedDays) {
   if (!ranking || !ranking.length) return '';
+  // Знаменатель — реально наблюдённые дни (у каждого района свой ряд,
+  // берём максимум), а не длина периода: сбор прерывался
+  const obsDays = observedDays || Math.max(...ranking.map(r => r.days_total || 0), 1);
 
   // Сортировка: лучший (топ score) → худший
   const sorted = [...ranking].sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -2211,7 +2346,7 @@ function _renderEcoDistrictsRanking(ranking, currentDistrict) {
   const worstAqi = Math.max(...sorted.map(r => r.aqi_avg || 0));
   const cityAvgAqi = sorted.length ? +(sorted.reduce((s,r) => s + (r.aqi_avg || 0), 0) / sorted.length).toFixed(1) : 0;
   const cityAvgPm = sorted.length ? +(sorted.reduce((s,r) => s + (r.pm25_avg || 0), 0) / sorted.length).toFixed(1) : 0;
-  // Средние по районам — сумма "29×11=305" бессмысленна (период всего 30 дней)
+  // Средние по районам — суммировать по 11 районам бессмысленно
   const avgCleanDays = sorted.length ? Math.round(sorted.reduce((s,r) => s + (r.days_clean || 0), 0) / sorted.length) : 0;
   const maxExceedDays = sorted.length ? Math.max(...sorted.map(r => r.days_exceed || 0)) : 0;
 
@@ -2267,7 +2402,8 @@ function _renderEcoDistrictsRanking(ranking, currentDistrict) {
         <span class="text-3xl">🏆</span>
         <div class="flex-1">
           <div class="font-semibold text-slate-800">Рейтинг районов по экологии</div>
-          <div class="text-xs text-slate-500">Анализ за 30 дней · сравнение всех районов города</div>
+          <div class="text-xs text-slate-500">Анализ ${_periodLabel(obsDays)} · сравнение всех районов города</div>
+          <div class="mt-1.5">${_periodSelector('_setEcoReportPeriod')}</div>
         </div>
         <div class="flex items-center gap-3">
           <div class="text-center">
@@ -2292,7 +2428,7 @@ function _renderEcoDistrictsRanking(ranking, currentDistrict) {
           <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Худший AQI</div>
         </div>
         <div class="px-4 py-3 text-center">
-          <div class="text-2xl font-bold text-emerald-600">${avgCleanDays}<span class="text-sm text-slate-400"> / 30</span></div>
+          <div class="text-2xl font-bold text-emerald-600">${avgCleanDays}<span class="text-sm text-slate-400"> / ${obsDays}</span></div>
           <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Чистых дн. (ср. по р-нам)</div>
         </div>
         <div class="px-4 py-3 text-center">
@@ -2339,7 +2475,7 @@ function _ecoReportSkeleton(distLabel) {
         <div class="bg-gradient-to-r from-sky-50 to-emerald-50 border-b border-slate-200 px-5 py-4 flex items-center gap-3">
           <span class="text-2xl">🌍</span>
           <div class="flex-1">
-            <div class="font-semibold text-slate-800">Экологический отчёт за 30 дней${dl}</div>
+            <div class="font-semibold text-slate-800">Экологический отчёт ${_periodLabel(0)}${dl}</div>
             <div class="text-xs text-slate-500">Качество воздуха, погода, превышения AQI · ${_cityCfg?.city_name || 'город'}</div>
           </div>
           <div class="flex items-center gap-2 text-xs text-sky-500">
@@ -2378,7 +2514,7 @@ function _ecoReportSkeleton(distLabel) {
       <!-- Skeleton summary -->
       <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-slate-100">
-          <div class="font-semibold text-sm text-slate-800">📋 Сводка за 30 дней</div>
+          <div class="font-semibold text-sm text-slate-800">📋 Сводка ${_periodLabel(0)}</div>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100">
           ${['Ср. AQI','Ср. PM2.5','Ср. t°C','Дней AQI>40'].map(l => `
@@ -2397,7 +2533,7 @@ function _powerHistorySkeleton(districtFilter) {
     <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div class="px-5 py-3.5 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
         <div class="flex flex-col">
-          <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">История отключений ЖКХ · 30 дней</span>
+          <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">История отключений ЖКХ · ${_periodLabel(0)}</span>
           <div class="flex items-center gap-2 mt-1 text-xs text-sky-500">
             <div class="animate-spin w-3.5 h-3.5 border-2 border-sky-400 border-t-transparent rounded-full"></div>
             загрузка данных…
@@ -2428,10 +2564,14 @@ function _powerHistorySkeleton(districtFilter) {
     </div>`;
 }
 
-// ─── Ecology Report (30-day dashboard) ────────────────────────────────────────
+// ─── Ecology Report ───────────────────────────────────────────────────────────
 let _ecoReportAbort = null;
+let _ecoReportDistrict = null;  // запомненный фильтр — для смены периода
+
+function _setEcoReportPeriod(v) { _setPeriod(v); _showEcoReport(_ecoReportDistrict); }
 
 async function _showEcoReport(districtFilter) {
+  _ecoReportDistrict = districtFilter || null;
   const el = document.getElementById('resultArea');
   _pushView('ecoReport');
   el.className = 'fade-in';
@@ -2448,12 +2588,16 @@ async function _showEcoReport(districtFilter) {
 
   try {
     const dq = districtFilter ? `&district=${encodeURIComponent(districtFilter)}` : '';
+    const pd = _periodDays;
     const [histR, excR, statusR, ratingR] = await Promise.all([
-      fetch('/ecology/history?days=30' + dq, { signal }),
-      fetch('/ecology/aqi-exceedances?days=30&aqi_threshold=40' + dq, { signal }),
+      fetch(`/ecology/history?days=${pd}` + dq, { signal }),
+      // Почасовые превышения живут только в 30-дневном окне снимков —
+      // просить глубже бессмысленно, тепловая карта часов всё равно будет
+      // построена по последним 30 дням. Спрашиваем ровно то, что есть.
+      fetch(`/ecology/aqi-exceedances?days=30&aqi_threshold=40` + dq, { signal }),
       fetch('/ecology/status' + (districtFilter ? '?district=' + encodeURIComponent(districtFilter) : ''), { signal }),
       // Рейтинг районов — грузим всегда (не зависит от districtFilter)
-      fetch('/ecology/rating-districts?days=30', { signal }),
+      fetch(`/ecology/rating-districts?days=${pd}`, { signal }),
     ]);
     if (!histR.ok || !excR.ok || !statusR.ok) {
       const bad = [histR, excR, statusR].find(r => !r.ok);
@@ -2480,16 +2624,25 @@ async function _showEcoReport(districtFilter) {
       if (r['ветер_ср'] != null) byDay[d].wind.push(r['ветер_ср']);
       byDay[d].snapshots += (r['снимков'] || 0);
     }
-    const days = Object.values(byDay)
-      .map(d => ({
-        day: d.day,
-        pm25: d.pm25.length ? +(d.pm25.reduce((a,b)=>a+b,0)/d.pm25.length).toFixed(1) : null,
-        aqi:  d.aqi.length  ? Math.round(d.aqi.reduce((a,b)=>a+b,0)/d.aqi.length) : null,
-        temp: d.temp.length ? +(d.temp.reduce((a,b)=>a+b,0)/d.temp.length).toFixed(1) : null,
-        wind: d.wind.length ? +(d.wind.reduce((a,b)=>a+b,0)/d.wind.length).toFixed(1) : null,
-        snapshots: d.snapshots,
-      }))
-      .sort((a,b) => a.day.localeCompare(b.day));
+    // Пропуски сбора (в ряду есть многодневные провалы) достраиваем явно —
+    // иначе ось времени врёт: дни просто исчезают и график выглядит сплошным
+    const days = _fillDayGaps(
+      Object.values(byDay)
+        .map(d => ({
+          day: d.day,
+          pm25: d.pm25.length ? +(d.pm25.reduce((a,b)=>a+b,0)/d.pm25.length).toFixed(1) : null,
+          aqi:  d.aqi.length  ? Math.round(d.aqi.reduce((a,b)=>a+b,0)/d.aqi.length) : null,
+          temp: d.temp.length ? +(d.temp.reduce((a,b)=>a+b,0)/d.temp.length).toFixed(1) : null,
+          wind: d.wind.length ? +(d.wind.reduce((a,b)=>a+b,0)/d.wind.length).toFixed(1) : null,
+          snapshots: d.snapshots,
+        }))
+        .sort((a,b) => a.day.localeCompare(b.day))
+        // snapshots=0 — заглушка seed_history_placeholder, а не измерение.
+        // Показываем её как отсутствие данных, иначе в августе рисуется −10 °C
+        .map(d => d.snapshots > 0 ? d : { day: d.day, noData: true })
+    );
+    const ecoGapDays = days.filter(d => d.noData).length;
+    const ecoObserved = hist.days_observed || days.filter(d => !d.noData).length;
 
     // ── Stats ────────────────────────────────────────────────────────────────
     const realDays = days.filter(d => d.snapshots > 0);
@@ -2514,7 +2667,7 @@ async function _showEcoReport(districtFilter) {
         else parts.push({icon: '🔴', text: 'Неблагоприятная экологическая обстановка. Высокие концентрации загрязнителей, рекомендуется минимизировать пребывание на улице.', color: 'text-red-700', bg: 'bg-red-50'});
       }
       // Exceedances
-      if (excDays === 0) parts.push({icon: '✅', text: 'За 30 дней превышений AQI > 40 не было. Атмосфера города в отличном состоянии.', color: 'text-emerald-700', bg: 'bg-emerald-50'});
+      if (excDays === 0) parts.push({icon: '✅', text: `За ${_periodLabel(ecoObserved).replace(/^за /, '')} превышений AQI > 40 не было. Атмосфера города в отличном состоянии.`, color: 'text-emerald-700', bg: 'bg-emerald-50'});
       else if (excDays <= 3) parts.push({icon: '🔔', text: `Зафиксировано ${excDays} ${_pluralDays(excDays)} с превышением AQI > 40 — единичные эпизоды, не систематические.`, color: 'text-yellow-700', bg: 'bg-yellow-50'});
       else if (excDays <= 10) parts.push({icon: '⚠️', text: `${excDays} ${_pluralDays(excDays)} с повышенным AQI. Устойчивый паттерн — стоит отслеживать тренд.`, color: 'text-orange-700', bg: 'bg-orange-50'});
       else parts.push({icon: '🚨', text: `${excDays} ${_pluralDays(excDays)} с превышениями AQI — неблагоприятная тенденция. Рекомендован детальный анализ источников загрязнения.`, color: 'text-red-700', bg: 'bg-red-50'});
@@ -2529,7 +2682,6 @@ async function _showEcoReport(districtFilter) {
       if (avgWind != null && avgWind < 2) parts.push({icon: '🌫', text: `Слабый ветер (ср. ${avgWind} м/с) — повышенный риск накопления смога в котловине.`, color: 'text-slate-600', bg: 'bg-slate-50'});
       return parts;
     }
-    function _pluralDays(n) { const m = n % 10, c = n % 100; if (c >= 11 && c <= 19) return 'дней'; if (m === 1) return 'день'; if (m >= 2 && m <= 4) return 'дня'; return 'дней'; }
 
     const comments = _ecoComment();
 
@@ -2545,29 +2697,27 @@ async function _showEcoReport(districtFilter) {
     }
     function _dayLabel(d) { const dt = new Date(d + 'T00:00:00'); return dt.toLocaleDateString('ru-RU', {day:'numeric', month:'short'}); }
 
-    const barChartHtml = days.length ? `
-      <div class="overflow-x-auto pb-2">
-        <div style="min-width:${Math.max(days.length * 24, 300)}px; height:180px;" class="flex items-end gap-px px-1">
-          ${days.map(d => {
-            const h = d.aqi != null ? Math.max(4, Math.round(d.aqi / maxBarAqi * 150)) : 4;
-            const bg = _aqiBarColor(d.aqi);
-            const title = `${_dayLabel(d.day)}: AQI ${d.aqi ?? '—'}, PM2.5 ${d.pm25 ?? '—'} мкг/м³, ${d.temp ?? '—'}°C`;
-            return `<div class="flex flex-col items-center flex-1 min-w-[18px]" title="${title}">
-              <span class="text-[9px] text-slate-400 mb-0.5 leading-none">${d.aqi ?? ''}</span>
-              <div style="height:${h}px;background:${bg}" class="w-full rounded-t-sm transition-all"></div>
-              <span class="text-[8px] text-slate-400 mt-0.5 leading-none whitespace-nowrap">${d.day.slice(8)}</span>
-            </div>`;
-          }).join('')}
-        </div>
-        <div class="flex items-center gap-3 mt-2 px-1 text-[10px] text-slate-400">
-          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#34d399"></span>≤20</span>
-          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#4ade80"></span>21-40</span>
-          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#facc15"></span>41-60</span>
-          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#fb923c"></span>61-80</span>
-          <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#ef4444"></span>>80</span>
-          <span class="ml-auto">AQI по дням</span>
-        </div>
-      </div>` : '<div class="text-sm text-slate-400 text-center py-4">Нет данных за период</div>';
+    const barChartHtml = _renderDayBars(days, {
+      height: 150,
+      bar: (d, H) => {
+        if (d.noData) return `<div style="height:${H}px" class="w-full bg-slate-200 opacity-50"></div>`;
+        const h = d.aqi != null ? Math.max(4, Math.round(d.aqi / maxBarAqi * H)) : 4;
+        return `<div style="height:${h}px;background:${_aqiBarColor(d.aqi)}" class="w-full rounded-t-sm transition-all"></div>`;
+      },
+      value: d => d.noData ? '' : (d.aqi ?? ''),
+      title: d => d.noData
+        ? `${_dayLabel(d.day)}: данные не собирались`
+        : `${_dayLabel(d.day)}: AQI ${d.aqi ?? '—'}, PM2.5 ${d.pm25 ?? '—'} мкг/м³, ${d.temp ?? '—'}°C`,
+      legend: `<div class="flex flex-wrap items-center gap-3 mt-2 px-1 text-[10px] text-slate-400">
+        <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#34d399"></span>≤20</span>
+        <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#4ade80"></span>21-40</span>
+        <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#facc15"></span>41-60</span>
+        <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#fb923c"></span>61-80</span>
+        <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#ef4444"></span>&gt;80</span>
+        ${ecoGapDays > 0 ? `<span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#e2e8f0"></span>Нет данных (${ecoGapDays})</span>` : ''}
+        <span class="ml-auto">AQI по дням</span>
+      </div>`,
+    });
 
     // ── Temperature sparkline (SVG) ──────────────────────────────────────────
     const tempDays = days.filter(d => d.temp != null);
@@ -2577,12 +2727,23 @@ async function _showEcoReport(districtFilter) {
       const tMax = Math.max(...tempDays.map(d=>d.temp));
       const tRange = Math.max(tMax - tMin, 1);
       const svgW = 600, svgH = 100, pad = 20;
-      const pts = tempDays.map((d, i) => {
-        const x = pad + i / (tempDays.length - 1) * (svgW - pad * 2);
-        const y = pad + (1 - (d.temp - tMin) / tRange) * (svgH - pad * 2);
-        return {x, y, d};
+      // X — по позиции дня во всём ряду, а не по номеру точки: иначе провал
+      // сбора схлопывается и линия соединяет май с июнем как соседние дни
+      const lastIdx = Math.max(days.length - 1, 1);
+      const pts = [];
+      days.forEach((d, idx) => {
+        if (d.temp == null) return;
+        pts.push({
+          x: pad + idx / lastIdx * (svgW - pad * 2),
+          y: pad + (1 - (d.temp - tMin) / tRange) * (svgH - pad * 2),
+          idx, d,
+        });
       });
-      const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+      // Разрыв линии на пропусках: новый подпуть, если между точками дырка
+      const linePath = pts.map((p, i) => {
+        const brk = i === 0 || p.idx - pts[i - 1].idx > 1;
+        return `${brk ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+      }).join(' ');
       const zeroY = tMin < 0 && tMax > 0 ? pad + (1 - (0 - tMin) / tRange) * (svgH - pad * 2) : null;
       const dots = pts.filter((_, i) => i % Math.max(1, Math.floor(pts.length / 10)) === 0 || i === pts.length - 1)
         .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#3b82f6"/><text x="${p.x.toFixed(1)}" y="${(p.y - 8).toFixed(1)}" text-anchor="middle" fill="#64748b" font-size="9">${p.d.temp}°</text>`).join('');
@@ -2605,7 +2766,7 @@ async function _showEcoReport(districtFilter) {
       const maxH = Math.max(...hourBuckets);
       heatmapHtml = `
         <div class="mt-3">
-          <div class="text-xs font-semibold text-slate-600 mb-2">Часы превышений ${_termHint('AQI')} > 40 (суммарно за 30 дней)</div>
+          <div class="text-xs font-semibold text-slate-600 mb-2">Часы превышений ${_termHint('AQI')} > 40 (суммарно за последние ${exc.hourly_window_days || 30} дн.)</div>
           <div class="flex items-end gap-px" style="height:60px">
             ${hourBuckets.map((v, h) => {
               const ht = maxH > 0 ? Math.max(3, Math.round(v / maxH * 50)) : 3;
@@ -2636,8 +2797,9 @@ async function _showEcoReport(districtFilter) {
           <div class="bg-gradient-to-r from-sky-50 to-emerald-50 border-b border-slate-200 px-5 py-4 flex items-center gap-3">
             <span class="text-2xl">🌍</span>
             <div class="flex-1">
-              <div class="font-semibold text-slate-800">Экологический отчёт за 30 дней${distLabel ? ` · ${esc(distLabel)}` : ''}</div>
+              <div class="font-semibold text-slate-800">Экологический отчёт ${_periodLabel(ecoObserved)}${distLabel ? ` · ${esc(distLabel)}` : ''}</div>
               <div class="text-xs text-slate-500">Качество воздуха, погода, превышения AQI · ${_cityCfg?.city_name || 'город'}</div>
+              <div class="mt-1.5">${_periodSelector('_setEcoReportPeriod')}</div>
             </div>
             <div class="flex items-center gap-2">
               <select id="_ecoReportDistrictSelect" onchange="_showEcoReport(this.value || undefined)"
@@ -2695,7 +2857,7 @@ async function _showEcoReport(districtFilter) {
         </div>
 
         <!-- Рейтинг районов A-F (вынесли наверх для видимости) -->
-        ${_renderEcoDistrictsRanking(ecoRanking, districtFilter)}
+        ${_renderEcoDistrictsRanking(ecoRanking, districtFilter, ratingData.days_observed || ecoObserved)}
 
         <!-- AQI Chart -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -2732,7 +2894,7 @@ async function _showEcoReport(districtFilter) {
         <!-- 30-day KPI summary -->
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div class="px-5 py-3 border-b border-slate-100">
-            <div class="font-semibold text-sm text-slate-800">📋 Сводка за 30 дней</div>
+            <div class="font-semibold text-sm text-slate-800">📋 Сводка ${_periodLabel(ecoObserved)}</div>
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-slate-100">
             <div class="px-4 py-3 text-center">
@@ -4525,7 +4687,7 @@ const GROUP_LABELS = { active: 'Аварийное', planned: 'Плановое'
 function _powerTabBar(activeTab, meta) {
   const tabs = [
     { id: 'status',  label: 'Текущий статус',    icon: '📋', onclick: "askNow('отключения жкх')" },
-    { id: 'history', label: 'Отчёт за 30 дней',  icon: '📊', onclick: '_showPowerHistory()' },
+    { id: 'history', label: _periodDays === _PERIOD_ALL ? 'Отчёт за всё время' : 'Отчёт за 30 дней',  icon: '📊', onclick: '_showPowerHistory()' },
     { id: 'rating',  label: 'Рейтинг',           icon: '🏆', onclick: '_showPowerRating()' },
   ];
   const tabsHtml = tabs.map(t => {
@@ -4672,6 +4834,8 @@ function renderPower(data) {
 }
 
 // ─── POWER RATING — рейтинг качества ЖКХ по районам ──────────────────────────
+function _setPowerRatingPeriod(v) { _setPeriod(v); _showPowerRating(); }
+
 async function _showPowerRating() {
   const el = document.getElementById('resultArea');
   _pushView('powerRating');
@@ -4694,8 +4858,8 @@ async function _showPowerRating() {
 
   try {
     const [distR, effR] = await Promise.all([
-      fetch('/power/history?days=30&group_by=district'),
-      fetch('/power/efficiency?days=30'),
+      fetch(`/power/history?days=${_periodDays}&group_by=district`),
+      fetch(`/power/efficiency?days=${_periodDays}`),
     ]);
     if (!distR.ok || !effR.ok) throw new Error(`HTTP ${(distR.ok ? effR : distR).status}`);
     const distData = await distR.json();
@@ -4739,14 +4903,17 @@ async function _showPowerRating() {
         // Fallback: score из YAML-конфига (editable в Студии)
         const fb = effData.fallback || {};
         const gradesCfg = effData.grades || [];
-        const cleanDays = Math.max(0, 30 - daysOut);
-        const cleanRatio = 30 > 0 ? cleanDays / 30 : 0;
+        // Знаменатель — наблюдённые дни, а не длина периода: провал сбора
+        // не должен превращаться в «чистые дни» и завышать оценку района
+        const obs = d.days_observed || distData.days_observed || _periodDays;
+        const cleanDays = Math.max(0, obs - daysOut);
+        const cleanRatio = obs > 0 ? cleanDays / obs : 0;
         // Используем active_avg_daily (среднее реальное число домов) вместо
         // legacy active_houses (снежный ком SUM). Если нет — fallback на active_now.
         const houses = d.active_avg_daily ?? d.active_now ?? 0;
         const daysWeight = parseFloat(fb.outage_days_weight || 3.0);
         const cleanWeight = parseFloat(fb.clean_days_weight || 1.5);
-        let fallbackScore = 10.0 - (30 > 0 ? daysOut / 30 : 0) * daysWeight + cleanRatio * cleanWeight;
+        let fallbackScore = 10.0 - (obs > 0 ? daysOut / obs : 0) * daysWeight + cleanRatio * cleanWeight;
         // Штраф за количество аварийных домов (из YAML)
         const houseThresholds = (fb.house_count_thresholds || [
           {above:500,penalty:4},{above:200,penalty:3},{above:100,penalty:2},{above:50,penalty:1},{above:20,penalty:0.5}
@@ -4768,6 +4935,7 @@ async function _showPowerRating() {
           metrics: {
             outage_days: daysOut,
             clean_days: cleanDays,
+            days_observed: obs,
             evening_days: 0, night_days: 0, weekend_days: 0,
             resolved_same_day: 0, resolution_rate: 0,
             total_house_hours: 0, evening_house_hours: 0, peak_houses: 0,
@@ -4819,6 +4987,7 @@ async function _showPowerRating() {
     }
 
     const maxOutage = Math.max(1, ...ranked.map(r => r.active_houses));
+    const ratingObserved = distData.days_observed || effData.days_observed || _periodDays;
 
     const rowsHtml = ranked.map((r, i) => {
       const e = r.eff;
@@ -4831,7 +5000,9 @@ async function _showPowerRating() {
       // Подпись 'дней без аварий' — тоже active-only, чтобы соответствовать
       // формуле грейда. Строгий показатель 'чистых дней' (active=0 AND planned=0)
       // виден в KPI отчёта и в столбиках графика, тут не дублируем.
-      const daysNoBreakdown = Math.max(0, 30 - (r.days_with_outages || 0));
+      // Знаменатель — наблюдённые дни периода, не его календарная длина.
+      const obsR = m.days_observed || r.days_observed || ratingObserved;
+      const daysNoBreakdown = Math.max(0, obsR - (r.days_with_outages || 0));
 
       return `
         <tr class="hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer"
@@ -4889,7 +5060,8 @@ async function _showPowerRating() {
             <span class="text-3xl">🏆</span>
             <div class="flex-1">
               <div class="font-semibold text-slate-800">Рейтинг качества ЖКХ по районам</div>
-              <div class="text-xs text-slate-500">Анализ за 30 дней · данные ${_cityCfg?.city_name || 'города'}</div>
+              <div class="text-xs text-slate-500">Анализ ${_periodLabel(ratingObserved)} · данные ${_cityCfg?.city_name || 'города'}</div>
+              <div class="mt-1.5">${_periodSelector('_setPowerRatingPeriod')}</div>
             </div>
             <div class="flex items-center gap-3">
               <div class="text-center">
@@ -4962,7 +5134,11 @@ async function _showPowerRating() {
           <div class="text-[11px] text-slate-500 leading-relaxed space-y-1">
             <div>Оценка складывается из: <strong>количества аварийных отключений</strong>, <strong>скорости устранения</strong> (утро→вечер),
             <strong>времени суток</strong> (вечерние/ночные аварии — штраф), <strong>выходных аварий</strong> и <strong>доли чистых дней</strong> (бонус).</div>
-            <div>Данные обновляются каждые 30 мин. Клик по району → детальный отчёт за 30 дней.</div>
+            <div>Данные обновляются каждые 30 мин. Клик по району → детальный отчёт ${_periodLabel(ratingObserved)}.</div>
+            ${effData.hourly_window_days && effData.days > effData.hourly_window_days ? `
+            <div>Внутридневные метрики (вечер / ночь / скорость устранения) считаются по последним
+            ${effData.hourly_window_days} дням: почасовые снимки хранятся 30 дней, глубже в архиве
+            остаются только суточные итоги. Доля чистых дней и число аварийных дней — за весь период.</div>` : ''}
             <div class="mt-1"><button onclick="_showBudget()" class="text-blue-500 hover:text-blue-700">💰 Сколько город тратит на ЖКХ →</button></div>
           </div>
         </div>
@@ -4975,10 +5151,14 @@ async function _showPowerRating() {
   }
 }
 
-// ─── POWER HISTORY (30 дней) ──────────────────────────────────────────────────
+// ─── POWER HISTORY ────────────────────────────────────────────────────────────
 let _powerHistoryAbort = null;  // AbortController для отмены предыдущих запросов
+let _powerHistoryDistrict = null;  // запомненный фильтр — для смены периода
+
+function _setPowerHistoryPeriod(v) { _setPeriod(v); _showPowerHistory(_powerHistoryDistrict); }
 
 async function _showPowerHistory(districtFilter) {
+  _powerHistoryDistrict = districtFilter || null;
   const resultEl = document.getElementById('resultArea');
   if (!resultEl) return;
   _pushView('powerHistory');
@@ -4994,10 +5174,11 @@ async function _showPowerHistory(districtFilter) {
   resultEl.innerHTML = _powerHistorySkeleton(districtFilter);
 
   try {
+    const pd = _periodDays;
     const [dayR, distR, effR] = await Promise.all([
-      fetch(`/power/history?days=30&group_by=day${dq}`, { signal }),
-      fetch(`/power/history?days=30&group_by=district`, { signal }),
-      fetch('/power/efficiency?days=30', { signal }),
+      fetch(`/power/history?days=${pd}&group_by=day${dq}`, { signal }),
+      fetch(`/power/history?days=${pd}&group_by=district`, { signal }),
+      fetch(`/power/efficiency?days=${pd}`, { signal }),
     ]);
     if (!dayR.ok || !distR.ok || !effR.ok) {
       const bad = [dayR, distR, effR].find(r => !r.ok);
@@ -5011,30 +5192,47 @@ async function _showPowerHistory(districtFilter) {
     const effRows = effData.rows || [];
     const meta = dayData.power_meta || {};
 
-    // ── Заполняем пропущенные дни (зелёные — без отключений) ──────────
+    // ── Собираем ось дней ────────────────────────────────────────────────
+    // День без строк — это день без отключений (строка пишется только при
+    // наличии записи на портале), а вот многодневные провалы сбора — не то же
+    // самое, и красить их зелёным «чисто» нельзя. Различаем: внутри периода
+    // наблюдения отсутствие строки = чисто, за его пределами = нет данных.
     const dayMap = {};
     rawDays.forEach(d => { dayMap[d.day] = d; });
+    const observedSet = new Set(dayData.observed_days || []);
+    const hasObserved = observedSet.size > 0;
     const today = new Date();
+    const firstDay = rawDays.length ? rawDays[0].day : null;
+    const span = _periodDays === _PERIOD_ALL && firstDay
+      ? Math.min(400, Math.round((today - new Date(firstDay + 'T00:00:00')) / 86400000) + 1)
+      : _periodDays;
     const days = [];
-    for (let i = 29; i >= 0; i--) {
+    for (let i = span - 1; i >= 0; i--) {
       const dt = new Date(today);
       dt.setDate(dt.getDate() - i);
       const key = dt.toISOString().slice(0, 10);
-      days.push(dayMap[key] || { day: key, active_houses: 0, planned_houses: 0, active_records: 0, planned_records: 0 });
+      if (dayMap[key]) { days.push(dayMap[key]); continue; }
+      const collected = hasObserved ? observedSet.has(key) : true;
+      days.push({ day: key, active_houses: 0, planned_houses: 0,
+                  active_records: 0, planned_records: 0, noData: !collected });
     }
 
     // ── KPI ──────────────────────────────────────────────────────────────
-    const totalActive = days.reduce((s, d) => s + (d.active_houses || 0), 0);
-    const totalPlanned = days.reduce((s, d) => s + (d.planned_houses || 0), 0);
-    const daysWithActive = days.filter(d => d.active_houses > 0).length;
-    const cleanDays = days.filter(d => (d.active_houses || 0) === 0 && (d.planned_houses || 0) === 0).length;
-    const maxActive = Math.max(0, ...days.map(d => d.active_houses || 0));
+    // Знаменатели — только по дням, когда сбор работал
+    const obsDays = days.filter(d => !d.noData);
+    const gapDays = days.length - obsDays.length;
+    const totalActive = obsDays.reduce((s, d) => s + (d.active_houses || 0), 0);
+    const totalPlanned = obsDays.reduce((s, d) => s + (d.planned_houses || 0), 0);
+    const daysWithActive = obsDays.filter(d => d.active_houses > 0).length;
+    const cleanDays = obsDays.filter(d => (d.active_houses || 0) === 0 && (d.planned_houses || 0) === 0).length;
+    const maxActive = Math.max(0, ...obsDays.map(d => d.active_houses || 0));
     const avgActive = daysWithActive > 0 ? Math.round(totalActive / daysWithActive) : 0;
+    const daysObserved = dayData.days_observed || obsDays.length;
 
     const kpiHtml = `
       <div class="grid grid-cols-2 sm:grid-cols-5 divide-x divide-slate-100 border-b border-slate-100">
         <div class="px-4 py-3 text-center">
-          <div class="text-2xl font-bold text-emerald-600">${cleanDays}</div>
+          <div class="text-2xl font-bold text-emerald-600">${cleanDays}<span class="text-sm text-slate-400"> / ${daysObserved}</span></div>
           <div class="text-[10px] text-slate-500 mt-0.5 uppercase font-semibold">Чистых дней</div>
         </div>
         <div class="px-4 py-3 text-center">
@@ -5055,48 +5253,48 @@ async function _showPowerHistory(districtFilter) {
         </div>
       </div>`;
 
-    // ── Bar chart (active=red, planned=yellow, green=clean) ─────────────
-    const maxBar = Math.max(30, ...days.map(d => (d.active_houses || 0) + (d.planned_houses || 0)));
+    // ── Bar chart (active=red, planned=yellow, green=clean, grey=нет данных) ──
+    const maxBar = Math.max(30, ...obsDays.map(d => (d.active_houses || 0) + (d.planned_houses || 0)));
     const barChartHtml = `
       <div class="px-5 py-4">
-        <div class="text-xs font-semibold text-slate-600 mb-2">Домов без ресурсов по дням${districtFilter ? ` · ${districtFilter}` : ''}</div>
-        <div class="overflow-x-auto pb-2">
-          <div style="min-width:${Math.max(days.length * 24, 300)}px; height:180px;" class="flex items-end gap-px px-1">
-            ${days.map(d => {
-              const aH = d.active_houses || 0;
-              const pH = d.planned_houses || 0;
-              const total = aH + pH;
-              const isClean = total === 0;
-              const hA = total > 0 ? Math.max(2, Math.round(aH / maxBar * 150)) : 0;
-              const hP = total > 0 ? Math.max(0, Math.round(pH / maxBar * 150)) : 0;
-              const hGreen = isClean ? 150 : 0;
-              const label = isClean ? '' : total;
-              const title = isClean
-                ? `${d.day.slice(5)}: без отключений`
-                : `${d.day.slice(5)}: аварийных ${aH}, плановых ${pH}`;
-              return `<div class="flex flex-col items-center flex-1 min-w-[18px]" title="${title}">
-                <span class="text-[9px] ${isClean ? 'text-emerald-500 font-semibold' : 'text-slate-400'} mb-0.5 leading-none">${isClean ? '0' : label}</span>
-                <div class="w-full flex flex-col justify-end">
-                  ${hGreen > 0 ? `<div style="height:${hGreen}px" class="w-full bg-emerald-300 rounded-t-sm opacity-70"></div>` : ''}
-                  ${hP > 0 ? `<div style="height:${hP}px" class="w-full bg-amber-400 rounded-t-sm"></div>` : ''}
-                  ${hA > 0 ? `<div style="height:${hA}px" class="w-full bg-red-500 ${hP > 0 ? '' : 'rounded-t-sm'}"></div>` : ''}
-                </div>
-                <span class="text-[8px] ${isClean ? 'text-emerald-500 font-semibold' : 'text-slate-400'} mt-0.5 leading-none whitespace-nowrap">${d.day.slice(8)}</span>
-              </div>`;
-            }).join('')}
-          </div>
-          <div class="flex items-center gap-3 mt-2 px-1 text-[10px] text-slate-400">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="text-xs font-semibold text-slate-600">Домов без ресурсов по дням${districtFilter ? ` · ${districtFilter}` : ''}</div>
+          <div class="ml-auto text-[10px] text-slate-400">${_periodLabel(daysObserved)}</div>
+        </div>
+        ${_renderDayBars(days, {
+          height: 150,
+          bar: (d, H) => {
+            if (d.noData) return `<div style="height:${H}px" class="w-full bg-slate-200 opacity-50"></div>`;
+            const aH = d.active_houses || 0;
+            const pH = d.planned_houses || 0;
+            const total = aH + pH;
+            if (total === 0) return `<div style="height:${H}px" class="w-full bg-emerald-300 rounded-t-sm opacity-70"></div>`;
+            const hA = Math.max(2, Math.round(aH / maxBar * H));
+            const hP = Math.max(0, Math.round(pH / maxBar * H));
+            return `${hP > 0 ? `<div style="height:${hP}px" class="w-full bg-amber-400 rounded-t-sm"></div>` : ''}
+                    ${hA > 0 ? `<div style="height:${hA}px" class="w-full bg-red-500 ${hP > 0 ? '' : 'rounded-t-sm'}"></div>` : ''}`;
+          },
+          value: d => d.noData ? '' : ((d.active_houses || 0) + (d.planned_houses || 0)) || '0',
+          valueCls: d => (!d.noData && !((d.active_houses || 0) + (d.planned_houses || 0))) ? 'text-emerald-500 font-semibold' : 'text-slate-400',
+          dateCls: d => (!d.noData && !((d.active_houses || 0) + (d.planned_houses || 0))) ? 'text-emerald-500 font-semibold' : 'text-slate-400',
+          title: d => d.noData
+            ? `${d.day}: данные не собирались`
+            : (((d.active_houses || 0) + (d.planned_houses || 0)) === 0
+                ? `${d.day}: без отключений`
+                : `${d.day}: аварийных ${d.active_houses || 0}, плановых ${d.planned_houses || 0}`),
+          legend: `<div class="flex flex-wrap items-center gap-3 mt-2 px-1 text-[10px] text-slate-400">
             <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#6ee7b7"></span>Без отключений</span>
             <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#fbbf24"></span>Плановые</span>
             <span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#ef4444"></span>Аварийные</span>
-          </div>
-        </div>
+            ${gapDays > 0 ? `<span><span class="inline-block w-2 h-2 rounded-sm mr-0.5" style="background:#e2e8f0"></span>Нет данных (${gapDays} ${_pluralDays(gapDays)})</span>` : ''}
+          </div>`,
+        })}
       </div>`;
 
     // ── District ranking table ──────────────────────────────────────────
     const distTableHtml = dists.length ? `
       <div class="px-5 py-4 border-t border-slate-100">
-        <div class="text-xs font-semibold text-slate-600 mb-2">Рейтинг районов по отключениям (30 дней)</div>
+        <div class="text-xs font-semibold text-slate-600 mb-2">Рейтинг районов по отключениям · ${_periodLabel(daysObserved)}</div>
         <div class="overflow-x-auto">
           <table class="w-full text-xs">
             <thead>
@@ -5142,11 +5340,14 @@ async function _showPowerHistory(districtFilter) {
       <div class="px-5 py-4 border-t border-slate-100">
         <div class="flex items-center justify-between mb-3">
           <div class="text-xs font-semibold text-slate-600">Рейтинг ремонтных бригад по районам</div>
-          <div class="text-[10px] text-slate-400">Оценка за 30 дней</div>
+          <div class="text-[10px] text-slate-400">Оценка ${_periodLabel(daysObserved)}</div>
         </div>
         <div class="text-[10px] text-slate-400 mb-3 bg-slate-50 rounded-lg px-3 py-2">
           Анализ внутридневных паттернов: быстрое устранение (утро→вечер) повышает оценку,
           ночные и выходные аварии — снижают. Чем меньше жителей без ресурсов в вечернее и ночное время, тем выше рейтинг.
+          ${effData.hourly_window_days && effData.days > effData.hourly_window_days ? `
+          <div class="mt-1 text-slate-500">⏱ Внутридневные метрики считаются по последним ${effData.hourly_window_days} дням —
+          глубже почасовых снимков нет, в архиве остаются только суточные итоги. Доля чистых дней при этом взята за весь период.</div>` : ''}
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           ${effRows.map(e => {
@@ -5185,12 +5386,16 @@ async function _showPowerHistory(districtFilter) {
         </div>
       </div>` : '';
 
-    // ── District filter chips ───────────────────────────────────────────
+    // ── District filter chips + период ──────────────────────────────────
     const distChips = dists.length ? `
       <div class="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-1.5">
         <span class="text-[10px] text-slate-400 mr-1">Район:</span>
         <button onclick="_showPowerHistory()" class="text-[10px] px-2.5 py-1 rounded-full border ${!districtFilter ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}  transition-colors">Весь город</button>
         ${dists.map(d => `<button onclick="_showPowerHistory('${d.district.replace(/'/g, "\\'")}')" class="text-[10px] px-2.5 py-1 rounded-full border ${districtFilter === d.district ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'} transition-colors">${d.district.replace(/ район$/, '')}</button>`).join('')}
+        <span class="ml-auto flex items-center gap-1.5">
+          <span class="text-[10px] text-slate-400">Период:</span>
+          ${_periodSelector('_setPowerHistoryPeriod')}
+        </span>
       </div>` : '';
 
     // ── Assemble ─────────────────────────────────────────────────────────
@@ -5498,7 +5703,7 @@ function renderEcology(data) {
               </button>
               <button onclick="_showEcoReport()"
                 class="text-xs px-3 py-1.5 bg-sky-50 border border-sky-200 rounded-xl text-sky-700 hover:bg-sky-100 hover:border-sky-300 transition-colors whitespace-nowrap font-medium">
-                📊 Отчёт за 30 дней
+                📊 Отчёт ${_periodLabel(0)}
               </button>
               <span class="text-xs text-slate-400">⏱ ${metaTs}</span>
             </div>

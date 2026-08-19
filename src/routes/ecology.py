@@ -270,8 +270,12 @@ def get_ecology_history(
     days: int = Query(
         7,
         ge=1,
-        le=30,
-        description="Глубина истории в днях (1–30). Хранение: 30 дней снимков + 365 дней архив.",
+        le=365,
+        description=(
+            "Глубина истории в днях (1–365). Хранение: 30 дней почасовых снимков "
+            "+ 365 дней суточного архива. Реально доступная глубина ограничена "
+            "тем, сколько накоплено — см. поле `days_observed` в ответе."
+        ),
     ),
     district: str | None = Query(
         None,
@@ -304,10 +308,15 @@ def get_ecology_history(
     from ..ecology_cache import query_history
     rows = query_history(district_filter=district, days=days)
     cols = ["день", "район", "pm25_ср", "pm25_макс", "aqi_ср", "темп_ср", "ветер_ср", "снимков"]
+    observed = sorted({r["день"] for r in rows if r.get("день")})
     return {
         "operation": "ECO_HISTORY",
         "days": days,
         "district": district,
+        # Фактическая глубина: сбор прерывался, календарный период больше
+        "days_observed": len(observed),
+        "period_from": observed[0] if observed else None,
+        "period_to": observed[-1] if observed else None,
         "count": len(rows),
         "rows": [{k: r.get(k) for k in cols} for r in rows],
         "columns": cols,
@@ -329,8 +338,13 @@ def get_aqi_exceedance_history(
     days: int = Query(
         30,
         ge=1,
-        le=30,
-        description="Глубина истории в днях (1–30)",
+        le=365,
+        description=(
+            "Глубина истории в днях (1–365). ВНИМАНИЕ: почасовая детализация "
+            "живёт только в fact_measurements со сроком хранения 30 дней, "
+            "поэтому фактическое окно — не больше 30 дней независимо от запроса "
+            "(см. `hourly_window_days` в ответе)."
+        ),
     ),
     district: str | None = Query(
         None,
@@ -344,7 +358,11 @@ def get_aqi_exceedance_history(
     - построения графиков загрязнения по часам суток (паттерны утро/вечер)
     - анализа дней с плохим воздухом
     - прогнозной аналитики по паттернам
+
+    Суточный архив хранится 365 дней, но почасовая разбивка — только 30:
+    за пределами этого окна остаются лишь дневные агрегаты (`/ecology/history`).
     """
+    from ..constants import ECOLOGY_HISTORY_DAYS
     from ..ecology_cache import query_aqi_exceedance_history
     rows = query_aqi_exceedance_history(
         aqi_threshold=aqi_threshold, days=days, district_filter=district,
@@ -367,6 +385,8 @@ def get_aqi_exceedance_history(
         "operation": "AQI_EXCEEDANCE_HISTORY",
         "aqi_threshold": aqi_threshold,
         "days": days,
+        # Реальное окно почасовых данных — retention fact_measurements
+        "hourly_window_days": min(days, ECOLOGY_HISTORY_DAYS),
         "district": district,
         "total_records": len(rows),
         "days_exceeded": len(summary),
@@ -382,7 +402,14 @@ def get_aqi_exceedance_history(
     response_description="Сравнительная таблица всех районов: AQI, PM2.5, грейд A-F",
 )
 def get_ecology_rating_districts(
-    days: int = Query(30, ge=7, le=30, description="Глубина анализа в днях"),
+    days: int = Query(
+        30, ge=7, le=365,
+        description=(
+            "Глубина анализа в днях (7–365). Считается по суточному архиву, "
+            "поэтому доступна вся накопленная глубина; фактическое число дней "
+            "с данными по каждому району — в поле `days_total` строки."
+        ),
+    ),
 ) -> dict:
     """Рейтинг районов по качеству воздуха за период.
 
@@ -398,6 +425,8 @@ def get_ecology_rating_districts(
     return {
         "operation": "ECO_RATING_DISTRICTS",
         "days": days,
+        # Максимум наблюдённых дней среди районов — честный знаменатель для UI
+        "days_observed": max((r.get("days_total") or 0 for r in rows), default=0),
         "count": len(rows),
         "rows": rows,
     }
