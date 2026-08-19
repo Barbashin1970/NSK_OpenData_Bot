@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,64 @@ class RuleEngine:
     def __init__(self, rules_dir: Path = _RULES_DIR) -> None:
         self._dir   = rules_dir
         self._cache: dict[str, dict] = {}
+        self._synced = False
+
+    # ── Синхронизация с seed'ом по версии ─────────────────────────────────────
+
+    @staticmethod
+    def _ver_tuple(value: Any) -> tuple:
+        """'2.0' → (2, 0). Нечисловые части игнорируются."""
+        parts = []
+        for chunk in str(value or "0").split("."):
+            digits = "".join(c for c in chunk if c.isdigit())
+            parts.append(int(digits) if digits else 0)
+        return tuple(parts) or (0,)
+
+    def sync_from_seed(self) -> list[str]:
+        """Обновляет регламенты на Volume, если в поставке версия новее.
+
+        Регламенты живут в data/rules/ (Volume), чтобы правки из Студии
+        переживали редеплой. Из-за этого новая версия правил, приехавшая с
+        кодом в config/rules/, сама на прод не попадала: файл на Volume уже
+        существовал и молча побеждал. Схема расчёта при этом могла смениться —
+        и балл считался по новым весам, а грейды брались по старым порогам.
+
+        Сравниваем поле version: seed новее → копируем, сохраняя прежний файл
+        рядом как .bak. Равные версии не трогаем — там могут быть правки,
+        сделанные в Студии.
+        """
+        if self._dir == _RULES_DIR_SEED or not _RULES_DIR_SEED.exists():
+            return []
+        updated = []
+        self._dir.mkdir(parents=True, exist_ok=True)
+        for seed_path in sorted(_RULES_DIR_SEED.glob("*.yaml")):
+            vol_path = self._dir / seed_path.name
+            try:
+                if not vol_path.exists():
+                    shutil.copy2(seed_path, vol_path)
+                    updated.append(seed_path.stem)
+                    continue
+                with open(seed_path, encoding="utf-8") as fh:
+                    seed_ver = self._ver_tuple((yaml.safe_load(fh) or {}).get("version"))
+                with open(vol_path, encoding="utf-8") as fh:
+                    vol_ver = self._ver_tuple((yaml.safe_load(fh) or {}).get("version"))
+                if seed_ver > vol_ver:
+                    backup = vol_path.with_suffix(
+                        f".v{'.'.join(str(p) for p in vol_ver)}.bak"
+                    )
+                    shutil.copy2(vol_path, backup)
+                    shutil.copy2(seed_path, vol_path)
+                    updated.append(seed_path.stem)
+                    log.info(
+                        "rule_engine: %s обновлён %s → %s (старый сохранён в %s)",
+                        seed_path.stem, vol_ver, seed_ver, backup.name,
+                    )
+            except Exception as exc:
+                log.error("rule_engine.sync_from_seed: %s — %s", seed_path.name, exc)
+        if updated:
+            self._cache.clear()
+        self._synced = True
+        return updated
 
     # ── Основной API ──────────────────────────────────────────────────────────
 

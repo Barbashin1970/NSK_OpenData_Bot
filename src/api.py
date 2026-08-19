@@ -299,6 +299,24 @@ def _load_saved_api_keys() -> None:
 
 
 @app.on_event("startup")
+def _sync_rule_versions() -> None:
+    """Доставляет на Volume регламенты, версия которых в поставке новее.
+
+    Без этого правки схемы расчёта, приехавшие с кодом, не доходили до
+    прода: файл в data/rules/ уже существовал и молча побеждал.
+    """
+    try:
+        from .rule_engine import rules
+        updated = rules.sync_from_seed()
+        if updated:
+            logging.getLogger(__name__).info(
+                "rule_engine: обновлены регламенты %s", ", ".join(updated)
+            )
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"sync_rule_versions: {e}")
+
+
+@app.on_event("startup")
 def _seed_ecology_history() -> None:
     """При старте: сначала загружает seed из git, потом заглушки для остальных дней."""
     try:
