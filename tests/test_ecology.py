@@ -458,3 +458,51 @@ def test_api_ask_ecology_history(api_client):
     data = resp.json()
     assert data.get("topic") == "ecology"
     assert data.get("operation") == "ECO_HISTORY"
+
+
+# ── Заглушки в архиве ────────────────────────────────────────────────────────
+
+def test_purge_placeholder_rows():
+    """Строки-заглушки (snapshots=0) вычищаются, реальные данные остаются."""
+    from src.ecology_cache import purge_placeholder_rows, init_ecology_tables, _get_conn
+
+    init_ecology_tables()
+    conn = _get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO ecology_daily_archive
+                (day, district, pm25_avg, pm25_max, pm10_avg, aqi_avg,
+                 temp_avg, wind_avg, humidity_avg, snapshots)
+            VALUES ('1999-01-01', 'Тестовый район', 12.0, 18.0, 22.0, 42, -10.0, 3.5, 78.0, 0),
+                   ('1999-01-02', 'Тестовый район',  7.3, 11.0, 14.0, 31,   5.5, 2.1, 60.0, 8)
+            ON CONFLICT (day, district) DO UPDATE SET snapshots = EXCLUDED.snapshots
+            """
+        )
+    finally:
+        conn.close()
+
+    purge_placeholder_rows()
+
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT day, snapshots FROM ecology_daily_archive "
+            "WHERE district = 'Тестовый район' ORDER BY day"
+        ).fetchall()
+        assert [r[0] for r in rows] == ['1999-01-02'], "заглушка не удалена или задет реальный день"
+        assert rows[0][1] == 8
+        # Идемпотентность: повторный вызов ничего не ломает
+        assert purge_placeholder_rows() == 0
+        conn.execute("DELETE FROM ecology_daily_archive WHERE district = 'Тестовый район'")
+    finally:
+        conn.close()
+
+
+def test_rating_ignores_placeholders():
+    """Заглушки не попадают в рейтинг районов: у них нет ни одного измерения."""
+    from src.ecology_cache import query_district_ecology_rating
+    for row in query_district_ecology_rating(days=365):
+        assert row["days_total"] > 0
+        # Ни один район не может состоять из одних заглушек — их отсеивает фильтр
+        assert row["aqi_avg"] is not None

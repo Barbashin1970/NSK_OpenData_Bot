@@ -318,13 +318,25 @@ def _sync_rule_versions() -> None:
 
 @app.on_event("startup")
 def _seed_ecology_history() -> None:
-    """При старте: сначала загружает seed из git, потом заглушки для остальных дней."""
+    """При старте: загружает реальный seed из git и вычищает старые заглушки.
+
+    Раньше здесь же вызывался seed_history_placeholder(), заполнявший дни без
+    данных синтетикой — одинаковые во всех районах 12.0 мкг/м³ и −10 °C. Она
+    решала косметическую задачу (непустой график в новом городе), но платой
+    были выдуманные измерения в архиве: −10 °C посреди августа, испорченная
+    аналитика и занятые первичные ключи, из-за которых импорт настоящих данных
+    за те же сутки молча отбрасывался. Пропуск сбора теперь честно рисуется
+    как пропуск, поэтому подменять его нечем.
+    """
     try:
-        from .ecology_cache import load_ecology_seed, seed_history_placeholder
+        from .ecology_cache import load_ecology_seed, purge_placeholder_rows
+        log_ = logging.getLogger(__name__)
         loaded = load_ecology_seed()
         if loaded:
-            logging.getLogger(__name__).info(f"ecology seed: загружено {loaded} записей из git")
-        seed_history_placeholder(days=20, temp_c=-10.0)
+            log_.info(f"ecology seed: загружено {loaded} записей из git")
+        purged = purge_placeholder_rows()
+        if purged:
+            log_.info(f"ecology: удалено {purged} строк-заглушек из архива")
     except Exception as e:
         logging.getLogger(__name__).warning(f"seed_ecology_history: {e}")
 
