@@ -1031,6 +1031,19 @@ def query_history(district_filter: str | None = None, days: int = 7) -> list[dic
         conn.close()
 
 
+def _percentile(values: list[float], q: float) -> float:
+    """Перцентиль по линейной интерполяции. q в долях: 0.95 → P95."""
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    pos = q * (len(ordered) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(ordered) - 1)
+    return ordered[lo] + (ordered[hi] - ordered[lo]) * (pos - lo)
+
+
 def query_district_ecology_rating(days: int = 30) -> list[dict]:
     """Рейтинг районов по экологии за N дней.
 
@@ -1067,6 +1080,11 @@ def query_district_ecology_rating(days: int = 30) -> list[dict]:
     for r in rows:
         dist = r.get("район")
         if not dist:
+            continue
+        # snapshots=0 — строка-заглушка от seed_history_placeholder (одинаковые
+        # 12.0 мкг/м³ и −10 °C во всех районах). В рейтинг её пускать нельзя:
+        # она усредняет реальные различия и в летние сутки даёт зимнюю погоду.
+        if not (r.get("снимков") or 0):
             continue
         if dist not in by_dist:
             by_dist[dist] = {
@@ -1113,17 +1131,26 @@ def query_district_ecology_rating(days: int = 30) -> list[dict]:
         temp_avg = round(sum(d["_temp_vals"]) / len(d["_temp_vals"]), 1) if d["_temp_vals"] else None
         wind_avg = round(sum(d["_wind_vals"]) / len(d["_wind_vals"]), 1) if d["_wind_vals"] else None
 
+        # Пики за период — для score берём 95-й перцентиль, а не абсолютный
+        # максимум. Максимум растёт с длиной окна просто потому, что редкое
+        # событие успевает попасть в выборку: на 30 днях AQI-макс ≈ 55, на 150
+        # тех же данных ≈ 88, и рейтинг «ухудшался» от одного лишь расширения
+        # периода. Перцентиль от длины окна почти не зависит. В таблицу при
+        # этом отдаём настоящий максимум — он информативен для читателя.
+        aqi_p95 = _percentile(aqi_vals, 0.95) if aqi_vals else 0
+        pm25_p95 = _percentile(pm25_max_vals or pm25_vals, 0.95) if (pm25_max_vals or pm25_vals) else 0
+
         # Score — 4 компонента по 2.5 балла каждый = 10 макс.
         # Узкие диапазоны для дифференциации близких значений.
 
         # 1. AQI среднее: 20→2.5, 50→0 (диапазон 30 ед. для дифференциации)
         s_aqi_avg = max(0, min(2.5, 2.5 * (50 - aqi_avg) / 30)) if aqi_avg else 2.5
 
-        # 2. AQI максимум за период: 30→2.5, 75→0
-        s_aqi_max = max(0, min(2.5, 2.5 * (75 - aqi_max) / 45)) if aqi_max else 2.5
+        # 2. AQI пик за период (P95): 30→2.5, 75→0
+        s_aqi_max = max(0, min(2.5, 2.5 * (75 - aqi_p95) / 45)) if aqi_p95 else 2.5
 
-        # 3. PM2.5 пик: 10→2.5, 45→0
-        s_pm25 = max(0, min(2.5, 2.5 * (45 - pm25_max) / 35)) if pm25_max else 2.5
+        # 3. PM2.5 пик (P95): 10→2.5, 45→0
+        s_pm25 = max(0, min(2.5, 2.5 * (45 - pm25_p95) / 35)) if pm25_p95 else 2.5
 
         # 4. Доля чистых дней (AQI≤35) минус превышения: 100% → 2.5
         days_total = max(d["days_total"], 1)
@@ -1154,8 +1181,10 @@ def query_district_ecology_rating(days: int = 30) -> list[dict]:
             "aqi_avg": aqi_avg,
             "aqi_max": aqi_max,
             "aqi_min": aqi_min,
+            "aqi_p95": round(aqi_p95, 1),
             "pm25_avg": pm25_avg,
             "pm25_max": pm25_max,
+            "pm25_p95": round(pm25_p95, 1),
             "temp_avg": temp_avg,
             "wind_avg": wind_avg,
             "days_total": d["days_total"],

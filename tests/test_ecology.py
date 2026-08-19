@@ -382,9 +382,15 @@ def test_api_ecology_history_ok(api_client):
 
 
 def test_api_ecology_history_days_validation(api_client):
-    """GET /ecology/history?days=99 → 422 Unprocessable Entity."""
-    resp = api_client.get("/ecology/history", params={"days": 99})
-    assert resp.status_code == 422
+    """Потолок глубины истории — 365 дней (срок хранения суточного архива).
+
+    99 дней валидны: суточный архив живёт год, и отчёты умеют показывать
+    всю накопленную глубину, а не только 30 дней снимков.
+    """
+    assert api_client.get("/ecology/history", params={"days": 99}).status_code == 200
+    assert api_client.get("/ecology/history", params={"days": 365}).status_code == 200
+    assert api_client.get("/ecology/history", params={"days": 366}).status_code == 422
+    assert api_client.get("/ecology/history", params={"days": 0}).status_code == 422
 
 
 def test_api_ecology_update_ok(api_client, monkeypatch):

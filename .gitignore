@@ -9,6 +9,10 @@ data/ciinsu/config.json
 data/ciinsu/knowledge_base.json
 data/custom/
 data/feedback.json
+# Выгрузки Студии и копии БД перед восстановлением — артефакты, не код
+data/sigma-backup-*/
+*.db.before-restore-*
+*.db.bak*
 *.db
 *.duckdb
 
