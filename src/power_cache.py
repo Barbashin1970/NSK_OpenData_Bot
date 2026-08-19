@@ -669,20 +669,17 @@ def _query_planned_now_by_district(utility_filter: str | None = None) -> dict[st
 _MIN_HOUR_DAYS = 5
 
 
-def _excess_share(window_load: float, total_load: float, fair_share: float) -> float:
-    """Насколько нагрузка перекошена в окно сверх равномерного распределения.
+def _ramp(value: float, bad: float, good: float) -> float:
+    """Нормирует метрику в 0..1 между якорями «плохо» и «хорошо».
 
-    0.0 — нагрузка размазана равномерно или окно недогружено;
-    1.0 — вся нагрузка сосредоточена в окне.
-
-    fair_share — доля суток, которую занимает окно (ночь 8ч → 8/24).
+    0.0 при value = bad, 1.0 при value = good, линейно между, срез по краям.
+    Направление задают сами якоря: для метрик «чем меньше, тем лучше»
+    (число домов без ресурса) bad больше good.
     """
-    if total_load <= 0:
+    bad, good = float(bad), float(good)
+    if good == bad:
         return 0.0
-    share = window_load / total_load
-    if share <= fair_share or fair_share >= 1:
-        return 0.0
-    return (share - fair_share) / (1 - fair_share)
+    return max(0.0, min(1.0, (float(value) - bad) / (good - bad)))
 
 
 def _query_observed_days(conn, cutoff_iso: str) -> set:
@@ -916,80 +913,66 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
                     weekend_days += 1
 
             # ── Расчёт score (0-10) из YAML-регламента ──────────────────
+            # Накопительная модель: балл собирается из компонентов, а не
+            # вычитается из десятки. В прежней версии штрафы были мелкими,
+            # все районы упирались в потолок и получали один грейд, хотя
+            # доля дней без аварий различалась втрое.
             cfg = _rules.get("power_rating_rules")
-            pen = cfg.get("penalties", {})
-            bon = cfg.get("bonuses", {})
             gen = cfg.get("general", {})
+            sc = cfg.get("scoring", {})
 
-            score = float(gen.get("base_score", 10.0))
-
-            # Внутридневные метрики — только по дням с почасовыми снимками,
-            # иначе на длинном периоде архивные дни размывают долю и балл
-            # уезжает вверх без всякого улучшения работы бригад.
-            #
-            # Считаем ДОЛЮ НАГРУЗКИ в окне, а не «был ли хоть один час».
-            # В городе-миллионнике хоть где-то ночью всегда что-то отключено,
-            # поэтому бинарный признак «ночная авария была» верен почти каждый
-            # день и районы не различает вовсе. Долю сравниваем с равномерным
-            # распределением (ночь — 8 часов из 24, вечер — 4): район, у
-            # которого нагрузка размазана ровно, штрафа не получает, штраф
-            # растёт по мере перекоса аварий на неудобное время.
-            evening_ratio = _excess_share(evening_house_hours, total_house_hours, 4 / 24) if intraday_ok else 0.0
-            night_ratio = _excess_share(night_house_hours, total_house_hours, 8 / 24) if intraday_ok else 0.0
-
-            # Штраф за вечерние аварии
-            score -= evening_ratio * float(pen.get("evening_outages", {}).get("weight", 3.0))
-
-            # Штраф за ночные аварии
-            score -= night_ratio * float(pen.get("night_outages", {}).get("weight", 4.0))
-
-            # Штраф за выходные аварии — считается по всем дням с авариями:
-            # для этого достаточно суточного итога, почасовые данные не нужны
-            weekend_ratio = weekend_days / total_days if total_days > 0 else 0
-            score -= weekend_ratio * float(pen.get("weekend_outages", {}).get("weight", 1.5))
-
-            # Бонус за быстрое устранение
-            resolution_rate = resolved_same_day / hour_denom if intraday_ok else 0.0
-            score += resolution_rate * float(bon.get("same_day_resolution", {}).get("weight", 2.0))
-
-            # Бонус за чистые дни — от НАБЛЮДЁННЫХ дней, не от календарного
-            # периода: пропуск сборщика не должен считаться чистым днём
             days_observed = len(observed) or total_days
             clean_days = max(0, days_observed - total_days)
             clean_ratio = clean_days / days_observed if days_observed > 0 else 0
-            score += clean_ratio * float(bon.get("clean_days", {}).get("weight", 2.0))
-
-            # Штраф за нагрузку. При наличии почасовых данных — по house-hours
-            # (точнее, учитывает длительность). Без них — по среднесуточному
-            # числу аварийных домов из архива, иначе на длинном периоде
-            # штрафовать нечем и все районы получают одинаковый максимум.
-            avg_house_hours = total_house_hours / hour_denom if intraday_ok else 0
             dist_avg_houses = avg_houses.get(district, 0)
-            if intraday_ok:
-                load_thresholds = pen.get("high_load", {}).get("thresholds", [
-                    {"above": 200, "penalty": 1.5},
-                    {"above": 100, "penalty": 1.0},
-                    {"above": 50, "penalty": 0.5},
-                ])
-                load_value = avg_house_hours
-            else:
-                load_thresholds = cfg.get("fallback", {}).get("house_count_thresholds", [
-                    {"above": 500, "penalty": 5.0},
-                    {"above": 200, "penalty": 4.0},
-                    {"above": 100, "penalty": 3.0},
-                    {"above": 50, "penalty": 1.5},
-                    {"above": 20, "penalty": 0.5},
-                ])
-                load_value = dist_avg_houses
-            for lt in sorted(load_thresholds, key=lambda x: float(x["above"]), reverse=True):
-                if load_value > float(lt["above"]):
-                    score -= float(lt["penalty"])
-                    break
+            avg_house_hours = total_house_hours / hour_denom if intraday_ok else 0
 
+            rel_cfg = sc.get("reliability", {})
+            load_cfg = sc.get("load", {})
+            intra_cfg = sc.get("intraday", {})
+            w_rel = float(rel_cfg.get("weight", 4.0))
+            w_load = float(load_cfg.get("weight", 4.0))
+            w_intra = float(intra_cfg.get("weight", 2.0))
+
+            n_rel = _ramp(clean_ratio, rel_cfg.get("bad", 0.05), rel_cfg.get("good", 0.55))
+            n_load = _ramp(dist_avg_houses, load_cfg.get("bad", 200), load_cfg.get("good", 10))
+
+            # Внутридневные метрики — только по дням с почасовыми снимками.
+            # Доли считаем от аварийной НАГРУЗКИ (домо-часов), а не по признаку
+            # «была ли авария»: в миллионнике ночью почти всегда что-то
+            # отключено, и бинарный признак районы не различает вовсе.
+            parts = intra_cfg.get("parts", {})
+            evening_share = evening_house_hours / total_house_hours if total_house_hours else 0.0
+            night_share = night_house_hours / total_house_hours if total_house_hours else 0.0
+            weekend_ratio = weekend_days / total_days if total_days > 0 else 0.0
+
+            if intraday_ok:
+                p_night = parts.get("night_share", {})
+                p_even = parts.get("evening_share", {})
+                p_wend = parts.get("weekend_share", {})
+                n_intra = (
+                    _ramp(night_share, p_night.get("bad", 0.45), p_night.get("good", 0.18))
+                    + _ramp(evening_share, p_even.get("bad", 0.25), p_even.get("good", 0.04))
+                    + _ramp(weekend_ratio, p_wend.get("bad", 0.45), p_wend.get("good", 0.18))
+                ) / 3
+            else:
+                n_intra = None
+
+            if n_intra is None and cfg.get("fallback", {}).get("redistribute_intraday", True):
+                # Нет почасовых данных — вес intraday распределяем на остальные
+                # компоненты, чтобы шкала осталась 0-10 и грейды не съехали
+                total_w = w_rel + w_load
+                if total_w > 0:
+                    k = (w_rel + w_load + w_intra) / total_w
+                    w_rel, w_load = w_rel * k, w_load * k
+                w_intra, n_intra = 0.0, 0.0
+
+            score = w_rel * n_rel + w_load * n_load + w_intra * (n_intra or 0.0)
             score = max(
                 float(gen.get("min_score", 0.0)),
                 min(float(gen.get("max_score", 10.0)), round(score, 1)),
             )
+            resolution_rate = resolved_same_day / hour_denom if intraday_ok else 0.0
 
             # Grade из YAML
             grade = "F"
@@ -1022,7 +1005,19 @@ def query_power_efficiency(days: int = 30) -> list[dict]:
                     "resolution_rate": round(resolution_rate * 100),
                     "total_house_hours": total_house_hours,
                     "evening_house_hours": evening_house_hours,
+                    "avg_house_hours": round(avg_house_hours),
                     "peak_houses": peak_houses,
+                    # Разложение балла — чтобы в UI было видно, где район теряет
+                    "components": {
+                        "reliability": round(w_rel * n_rel, 2),
+                        "load": round(w_load * n_load, 2),
+                        "intraday": round(w_intra * (n_intra or 0.0), 2),
+                        "max": {
+                            "reliability": round(w_rel, 2),
+                            "load": round(w_load, 2),
+                            "intraday": round(w_intra, 2),
+                        },
+                    },
                 },
             })
 
