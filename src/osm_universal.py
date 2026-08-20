@@ -125,7 +125,20 @@ _OVERPASS_MIRRORS = [
     "https://lz4.overpass-api.de/api/interpreter",
     "https://z.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
 ]
+
+# Причина последнего отказа Overpass по темам — отдаётся в /osm/update, чтобы
+# «не обновилось» не приходилось выяснять по логам контейнера.
+_LAST_OVERPASS_ERRORS: dict[str, list[str]] = {}
+
+
+def last_overpass_errors(topic: str | None = None) -> dict[str, list[str]]:
+    """Ошибки последнего неудачного обращения к Overpass."""
+    if topic:
+        return {topic: _LAST_OVERPASS_ERRORS.get(topic, [])}
+    return dict(_LAST_OVERPASS_ERRORS)
 
 
 # ── Overpass fetch ────────────────────────────────────────────────────────
@@ -163,19 +176,34 @@ def fetch_osm_topic(
 );
 out center tags;"""
 
+    # Overpass требует идентификации клиента: запрос без User-Agent (а requests
+    # по умолчанию шлёт «python-requests/x.y») зеркала штатно отбивают кодом
+    # 406/429. Берём общий UA проекта — он называет систему и контакт.
+    from .constants import HEADERS
+    headers = {**HEADERS, "Accept": "application/json"}
+
     data = None
+    errors: list[str] = []
     for url in _OVERPASS_MIRRORS:
         try:
-            resp = requests.post(url, data={"data": query}, timeout=65)
+            resp = requests.post(url, data={"data": query}, headers=headers, timeout=65)
             resp.raise_for_status()
             data = resp.json()
             break
         except Exception as e:
-            log.debug("Overpass %s [%s]: %s", topic, url, e)
+            host = url.split("/")[2]
+            errors.append(f"{host}: {e}")
+            # WARNING, а не DEBUG: раньше причина отказа Overpass не попадала
+            # в лог, и наружу это выглядело как «данных нет» — темы молча
+            # оставались устаревшими месяцами, никто не видел почему.
+            log.warning("Overpass %s [%s]: %s", topic, host, e)
             continue
 
     if not data:
+        log.error("Overpass %s: все зеркала недоступны — %s", topic, "; ".join(errors))
+        _LAST_OVERPASS_ERRORS[topic] = errors
         return []
+    _LAST_OVERPASS_ERRORS.pop(topic, None)
 
     from .district_classifier import _point_in_polygon
 

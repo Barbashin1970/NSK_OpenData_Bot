@@ -1342,13 +1342,26 @@ def post_osm_update(
                 n = upsert_osm_topic(tid, rows)
                 results[tid] = {"rows": n, "success": True}
             else:
-                results[tid] = {"rows": 0, "success": False, "error": "empty response"}
+                # Пустой ответ почти всегда означает отказ зеркал, а не то, что
+                # объектов нет. Отдаём конкретную причину, иначе её приходится
+                # выяснять по логам контейнера.
+                from ..osm_universal import last_overpass_errors
+                why = last_overpass_errors(tid).get(tid) or []
+                results[tid] = {
+                    "rows": 0, "success": False,
+                    "error": "Overpass не отдал данные" if why else "пустой ответ Overpass",
+                    "mirrors": why,
+                }
         except Exception as e:
             results[tid] = {"rows": 0, "success": False, "error": str(e)}
         if len(topics_to_update) > 1:
             _time.sleep(5)
 
-    return {"updated": results}
+    ok = sum(1 for r in results.values() if r.get("success"))
+    return {
+        "updated": results,
+        "summary": {"total": len(results), "success": ok, "failed": len(results) - ok},
+    }
 
 
 # ── Cross-city emissions (любой город из статических данных) ──────────────
