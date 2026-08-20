@@ -949,6 +949,10 @@ async function _studioAuth() {
               <span id="rules-editor-version" class="ml-2 text-xs text-slate-400"></span>
             </div>
             <div class="flex gap-2">
+              <button id="rules-method-btn" onclick="showMethodology()"
+                      class="hidden text-xs px-3 py-1.5 rounded border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium">
+                📐 Методика
+              </button>
               <button onclick="rulesExport()"
                       class="text-xs px-3 py-1.5 rounded border border-slate-200 hover:bg-slate-50 text-slate-600">
                 ⬇ Экспорт YAML
@@ -968,6 +972,19 @@ async function _studioAuth() {
           <div id="rules-quick-params" class="hidden mb-4 bg-slate-50 rounded-xl p-4">
             <div class="text-xs text-slate-500 font-medium mb-3 uppercase tracking-wide">Ключевые параметры</div>
             <div id="rules-quick-fields" class="grid grid-cols-2 gap-x-6 gap-y-3"></div>
+            <div id="rules-quick-warn" class="mt-3"></div>
+          </div>
+
+          <!-- Методика расчёта -->
+          <div id="methodology-modal" class="hidden fixed inset-0 z-50 bg-slate-900/50 flex items-start justify-center overflow-y-auto p-6"
+               onclick="if(event.target===this) hideMethodology()">
+            <div class="bg-white rounded-2xl shadow-xl max-w-3xl w-full my-4">
+              <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white rounded-t-2xl">
+                <div class="font-semibold text-slate-800">📐 Методика расчёта рейтинга ЖКХ</div>
+                <button onclick="hideMethodology()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+              </div>
+              <div id="methodology-body" class="px-6 py-5 text-sm text-slate-700 leading-relaxed space-y-4"></div>
+            </div>
           </div>
 
           <!-- Вкладки: Quick / YAML -->
@@ -3648,18 +3665,33 @@ const LIFE_INDICES_QUICK = [
   { path: ['utility', 'snow_moderate_score'],   label: '❄️ Снег умеренный: штраф',            min: 0, max: 4, step: 1 },
 ];
 
-// Ключевые слайдеры для power_rating_rules (рейтинг ЖКХ)
+// Ключевые слайдеры для power_rating_rules (рейтинг ЖКХ), схема 2.0.
+// Балл собирается из трёх компонентов; веса задают вклад, якоря bad/good —
+// границы нормировки. hint у каждого поля объясняет последствие сдвига,
+// чтобы параметры не правились наугад.
 const POWER_RATING_QUICK = [
-  { path: ['penalties', 'evening_outages', 'weight'],    label: '🌆 Штраф: вечерние аварии',       min: 0, max: 6, step: 0.5 },
-  { path: ['penalties', 'night_outages', 'weight'],      label: '🌙 Штраф: ночные аварии',         min: 0, max: 6, step: 0.5 },
-  { path: ['penalties', 'weekend_outages', 'weight'],    label: '📅 Штраф: выходные аварии',       min: 0, max: 4, step: 0.5 },
-  { path: ['bonuses', 'same_day_resolution', 'weight'],  label: '⚡ Бонус: устранение за день',    min: 0, max: 4, step: 0.5 },
-  { path: ['bonuses', 'clean_days', 'weight'],            label: '✅ Бонус: чистые дни',            min: 0, max: 4, step: 0.5 },
-  { path: ['grades', 0, 'threshold'],                     label: '🅰️ Порог грейда A',               min: 5, max: 10, step: 0.5 },
-  { path: ['grades', 1, 'threshold'],                     label: '🅱️ Порог грейда B',               min: 3, max: 9,  step: 0.5 },
-  { path: ['grades', 2, 'threshold'],                     label: '©️ Порог грейда C',               min: 2, max: 7,  step: 0.5 },
-  { path: ['grades', 3, 'threshold'],                     label: '🅳 Порог грейда D',               min: 0, max: 5,  step: 0.5 },
-  { path: ['general', 'analysis_days'],                    label: '📊 Окно анализа (дней)',          min: 7, max: 90, step: 1 },
+  { path: ['scoring', 'reliability', 'weight'], label: '🛡 Вес: надёжность', min: 0, max: 10, step: 0.5,
+    hint: 'Сколько баллов из 10 даёт доля дней без аварий. Сумма трёх весов должна равняться 10, иначе шкала перестанет быть десятибалльной.' },
+  { path: ['scoring', 'load', 'weight'], label: '🏘 Вес: масштаб', min: 0, max: 10, step: 0.5,
+    hint: 'Сколько баллов даёт число домов без ресурса. Поднять — рейтинг сильнее наказывает за массовость аварий, а не за их частоту.' },
+  { path: ['scoring', 'intraday', 'weight'], label: '🌙 Вес: режим работы', min: 0, max: 10, step: 0.5,
+    hint: 'Вклад ночных, вечерних и выходных аварий. Считается только по последним 30 дням — глубже почасовых снимков нет.' },
+  { path: ['scoring', 'reliability', 'good'], label: '🛡 Надёжность: «отлично» (доля дней)', min: 0.2, max: 1, step: 0.05,
+    hint: 'При какой доле дней без аварий район получает полный балл за надёжность. Сейчас 0.55 — больше половины дней спокойные. Снизить = завысить оценки всем.' },
+  { path: ['scoring', 'load', 'bad'], label: '🏘 Масштаб: «критично» (домов/сут)', min: 50, max: 500, step: 10,
+    hint: 'Среднесуточное число домов без ресурса, при котором компонент обнуляется. Поднять — рейтинг станет мягче к крупным районам.' },
+  { path: ['scoring', 'load', 'good'], label: '🏘 Масштаб: «отлично» (домов/сут)', min: 0, max: 100, step: 5,
+    hint: 'Ниже этого значения компонент даёт полный балл. Сейчас 10 — единичные адреса.' },
+  { path: ['grades', 0, 'threshold'], label: '🅰️ Порог грейда A', min: 5, max: 10, step: 0.5,
+    hint: 'Откалиброван по наблюдаемому разбросу (128 дней): лучший район 8.2, худший 3.8. Поднять — грейд A станет редким.' },
+  { path: ['grades', 1, 'threshold'], label: '🅱️ Порог грейда B', min: 3, max: 9,  step: 0.5,
+    hint: 'Основная масса районов сейчас между B и A. Пороги обязаны убывать: A > B > C > D.' },
+  { path: ['grades', 2, 'threshold'], label: '©️ Порог грейда C', min: 2, max: 7,  step: 0.5,
+    hint: 'Ниже C оценка означает системную проблему, а не сезонный фон.' },
+  { path: ['grades', 3, 'threshold'], label: '🅳 Порог грейда D', min: 0, max: 5,  step: 0.5,
+    hint: 'D и F — резерв под настоящий провал: аварии почти каждый день при сотнях домов. В рабочем режиме город до них не доходит.' },
+  { path: ['general', 'analysis_days'], label: '📊 Окно анализа (дней)', min: 7, max: 90, step: 1,
+    hint: 'Период по умолчанию. На витрине пользователь сам выбирает 30 дней или всю глубину архива, этот параметр — стартовое значение.' },
 ];
 
 let _rulesCurrentName  = null;
@@ -3743,6 +3775,10 @@ async function loadRule(name) {
       qp.classList.add('hidden');
     }
 
+    // Кнопка «Методика» — пока только у рейтинга ЖКХ
+    document.getElementById('rules-method-btn')
+      .classList.toggle('hidden', name !== 'power_rating_rules');
+
     // Если активен preview — перерисовать дерево
     const previewActive = !document.getElementById('rules-view-preview').classList.contains('hidden');
     if (previewActive) renderRulesTree();
@@ -3762,21 +3798,190 @@ function renderQuickParams(parsed, fields) {
   const container = document.getElementById('rules-quick-fields');
   container.innerHTML = fields.map((f, i) => {
     const val = getNestedVal(parsed, f.path) ?? '';
+    // Параметр без значения — признак того, что регламент не содержит такого
+    // ключа: схема разошлась со слайдерами. Молча показывать пустой ползунок
+    // нельзя, аналитик решит, что параметр просто равен нулю.
+    const missing = (val === '' || val === null);
     return `
-      <label class="flex flex-col gap-1">
-        <span class="text-xs text-slate-500">${esc(f.label)}</span>
+      <label class="flex flex-col gap-1 ${missing ? 'opacity-60' : ''}">
+        <span class="text-xs text-slate-500 flex items-center gap-1">
+          ${esc(f.label)}
+          ${f.hint ? `<span class="qp-hint cursor-help text-blue-400 text-[10px] align-super"
+                            title="${esc(f.hint)}">?</span>` : ''}
+          ${missing ? '<span class="text-[10px] text-amber-600">нет в регламенте</span>' : ''}
+        </span>
         <div class="flex items-center gap-2">
           <input type="range" min="${f.min}" max="${f.max}" step="${f.step}" value="${val}"
-                 id="qp-range-${i}"
-                 oninput="document.getElementById('qp-num-${i}').value=this.value"
+                 id="qp-range-${i}" ${missing ? 'disabled' : ''}
+                 oninput="document.getElementById('qp-num-${i}').value=this.value; _quickParamsChanged()"
                  class="flex-1 accent-blue-600 h-1.5">
           <input type="number" min="${f.min}" max="${f.max}" step="${f.step}" value="${val}"
-                 id="qp-num-${i}"
-                 oninput="document.getElementById('qp-range-${i}').value=this.value"
+                 id="qp-num-${i}" ${missing ? 'disabled' : ''}
+                 oninput="document.getElementById('qp-range-${i}').value=this.value; _quickParamsChanged()"
                  class="w-14 text-xs border border-slate-200 rounded px-1 py-0.5 text-right">
         </div>
+        ${f.hint ? `<span class="text-[10px] text-slate-400 leading-snug">${esc(f.hint)}</span>` : ''}
       </label>`;
   }).join('');
+  _quickParamsChanged();
+}
+
+/** Проверки, которые нельзя нарушать: сумма весов и порядок порогов.
+ *  Считаются на лету, чтобы ошибка была видна до нажатия «Применить». */
+function _quickParamsChanged() {
+  const box = document.getElementById('rules-quick-warn');
+  if (!box || _rulesCurrentName !== 'power_rating_rules') { if (box) box.innerHTML = ''; return; }
+  const num = i => parseFloat((document.getElementById('qp-num-' + i) || {}).value);
+  const warns = [];
+
+  const wSum = [0, 1, 2].map(num).reduce((a, b) => a + (isNaN(b) ? 0 : b), 0);
+  if (Math.abs(wSum - 10) > 0.01) {
+    warns.push(`Сумма весов ${wSum.toFixed(1)} вместо 10 — шкала перестанет быть десятибалльной, ` +
+               `а пороги грейдов поедут вместе с ней.`);
+  }
+  const [gA, gB, gC, gD] = [6, 7, 8, 9].map(num);
+  if (!(gA > gB && gB > gC && gC > gD)) {
+    warns.push('Пороги грейдов должны строго убывать: A > B > C > D. Иначе часть грейдов станет недостижимой.');
+  }
+  const loadBad = num(4), loadGood = num(5);
+  if (!isNaN(loadBad) && !isNaN(loadGood) && loadBad <= loadGood) {
+    warns.push('У «масштаба» порог «критично» должен быть больше порога «отлично» — метрика обратная: чем меньше домов, тем лучше.');
+  }
+  box.innerHTML = warns.length
+    ? `<div class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
+         ${warns.map(w => `<div>⚠ ${esc(w)}</div>`).join('')}
+       </div>`
+    : `<div class="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+         ✓ Сумма весов 10, пороги грейдов убывают — шкала согласована
+       </div>`;
+}
+
+// ─── Методика расчёта рейтинга ЖКХ ───────────────────────────────────────────
+// Открывается кнопкой «Методика». Задача текста — чтобы аналитик, двигающий
+// ползунки, понимал: что в модели выведено из данных, что взято из практики
+// многокритериальной оценки, а что является управленческим решением. Последнее
+// названо прямо: подделывать под статистический вывод то, что им не является,
+// хуже, чем честно обозначить границу.
+function showMethodology() {
+  const p = _rulesParsed || {};
+  const sc = p.scoring || {};
+  const w = k => (sc[k] || {}).weight ?? '—';
+  const g = i => ((p.grades || [])[i] || {}).threshold ?? '—';
+
+  document.getElementById('methodology-body').innerHTML = `
+    <div>
+      <div class="font-semibold text-slate-800 mb-1">Что оценивается</div>
+      Состояние коммунальных сетей района по данным об отключениях с портала 051.
+      Балл 0–10 и грейд A–F. Оценка сравнительная: она ранжирует районы между собой,
+      а не измеряет абсолютное качество сетей.
+    </div>
+
+    <div>
+      <div class="font-semibold text-slate-800 mb-1">Как устроен балл</div>
+      Балл <b>собирается</b> из трёх компонентов, а не вычитается из десятки:
+      <div class="bg-slate-50 rounded-lg px-3 py-2 my-2 font-mono text-xs">
+        балл = ${w('reliability')} · надёжность + ${w('load')} · масштаб + ${w('intraday')} · режим
+      </div>
+      <ul class="list-disc pl-5 space-y-1">
+        <li><b>Надёжность</b> — доля дней без аварийных отключений.</li>
+        <li><b>Масштаб</b> — среднесуточное число домов без ресурса.</li>
+        <li><b>Режим работы</b> — доля аварийной нагрузки, приходящаяся на ночь, вечер и выходные.</li>
+      </ul>
+      Каждый компонент нормируется в диапазон 0…1 между якорями «плохо» и «хорошо»,
+      затем умножается на вес. Сумма весов равна 10, поэтому шкала остаётся десятибалльной.
+    </div>
+
+    <div>
+      <div class="font-semibold text-slate-800 mb-1">Использованные методы</div>
+      <table class="w-full text-xs border border-slate-200 rounded overflow-hidden">
+        <tbody>
+          <tr class="border-b border-slate-100">
+            <td class="px-2 py-1.5 font-medium w-1/3">Min-max нормализация</td>
+            <td class="px-2 py-1.5">Линейное приведение разнородных метрик (доли, дома, часы) к общей шкале 0…1
+            со срезом по краям. Стандартный приём подготовки признаков: без него компоненты
+            в разных единицах нельзя складывать.</td>
+          </tr>
+          <tr class="border-b border-slate-100">
+            <td class="px-2 py-1.5 font-medium">Взвешенная аддитивная свёртка</td>
+            <td class="px-2 py-1.5">Simple Additive Weighting — базовый метод многокритериальной оценки.
+            Выбран за прозрачность: вклад каждого критерия виден в разложении балла и проверяем вручную.</td>
+          </tr>
+          <tr class="border-b border-slate-100">
+            <td class="px-2 py-1.5 font-medium">Робастные порядковые статистики</td>
+            <td class="px-2 py-1.5">В экологическом рейтинге пик периода берётся как 95-й перцентиль, а не максимум:
+            математическое ожидание максимума растёт с объёмом выборки, поэтому оценка ухудшалась
+            от одного лишь расширения окна. Перцентиль от длины окна почти не зависит.</td>
+          </tr>
+          <tr class="border-b border-slate-100">
+            <td class="px-2 py-1.5 font-medium">Учёт пропусков наблюдений</td>
+            <td class="px-2 py-1.5">Знаменатели считаются по дням, когда сбор фактически работал (complete-case).
+            В ряду есть провал 17.05–05.06; без этой поправки простой сборщика засчитывался бы
+            районам как период без аварий.</td>
+          </tr>
+          <tr>
+            <td class="px-2 py-1.5 font-medium">Интенсивность вместо индикатора</td>
+            <td class="px-2 py-1.5">«Ночные аварии» считаются как доля нагрузки в домо-часах, а не как признак
+            «авария была». Бинарный признак верен почти в каждом дне у каждого района и потому
+            не обладает различающей способностью.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div>
+      <div class="font-semibold text-slate-800 mb-1">Что проверено на данных</div>
+      Накопленный ряд: <b>128 суток</b> наблюдений (27.03–19.08.2026), 10 районов, 5 типов ресурса,
+      плюс 30 суток почасовых снимков.
+      <ul class="list-disc pl-5 space-y-1 mt-1">
+        <li><b>Диагностика прежней модели.</b> Схема «10 минус штрафы» давала разброс 1.4 балла
+        при том, что доля дней без аварий различалась втрое (15.6% против 44.5%). Все районы
+        получали грейд A — рейтинг не различал их вовсе.</li>
+        <li><b>Проверка альтернатив.</b> Пересчёт с базой штрафа по медиане города и со сниженной
+        базой оставлял разброс тем же. Отсюда вывод: причина не в калибровке штрафов,
+        а в том, что различающие компоненты имели малый вес.</li>
+        <li><b>Результат.</b> На той же выборке разброс стал 3.8–8.2, распределение A:4 B:5 C:1.
+        Худший район выделяется по нескольким независимым метрикам одновременно —
+        116 домов/сутки, 20 чистых дней из 128, наибольшая доля городской аварийной массы.</li>
+        <li><b>Устойчивость к длине окна.</b> Модель проверена на 30 сутках и на всей глубине.
+        Различие результатов объясняется сезоном (летняя ремонтная кампания), а не артефактом
+        расчёта: компоненты нормированы на число наблюдений.</li>
+      </ul>
+    </div>
+
+    <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+      <div class="font-semibold text-amber-900 mb-1">Что НЕ является статистическим выводом</div>
+      <b>Якоря «плохо»/«хорошо» и пороги грейдов — управленческое решение, а не результат расчёта.</b>
+      Данные говорят, в каком диапазоне лежат метрики; где именно провести границу между
+      «хорошо» и «плохо» — вопрос нормы, которую задаёт заказчик. Текущие значения подобраны так,
+      чтобы город в рабочем состоянии распределялся по A/B/C, а грейды D и F оставались резервом
+      под настоящий провал.
+      <div class="mt-1">Не проводились: проверка значимости различий между районами, валидация
+      на отложенной выборке, сопоставление с внешним эталоном качества сетей — такого эталона
+      в открытых данных нет.</div>
+    </div>
+
+    <div>
+      <div class="font-semibold text-slate-800 mb-1">Ограничения данных</div>
+      <ul class="list-disc pl-5 space-y-1">
+        <li>Почасовые снимки хранятся 30 суток, поэтому компонент «режим работы» считается по
+        последним 30 дням даже при выборе всей глубины. Остальные два — за весь период.</li>
+        <li>В ряду есть провал сбора 17.05–05.06 (18 суток). Он исключён из знаменателей и
+        показан на графиках как пропуск, а не как отсутствие аварий.</li>
+        <li>Отдельные крупные аварии дают заметный вклад: два дня июля формируют около четверти
+        всей аварийной массы периода. На коротком окне рейтинг чувствителен к таким событиям.</li>
+      </ul>
+    </div>
+
+    <div class="text-xs text-slate-500 border-t border-slate-200 pt-3">
+      Текущие пороги: A ≥ ${g(0)} · B ≥ ${g(1)} · C ≥ ${g(2)} · D ≥ ${g(3)}.
+      Все параметры редактируются на этой странице и вступают в силу после «Применить».
+      Полное описание с комментариями — в YAML ниже.
+    </div>`;
+  document.getElementById('methodology-modal').classList.remove('hidden');
+}
+
+function hideMethodology() {
+  document.getElementById('methodology-modal').classList.add('hidden');
 }
 
 function renderRulesTree() {
