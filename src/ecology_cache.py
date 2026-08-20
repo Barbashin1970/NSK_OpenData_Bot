@@ -325,14 +325,24 @@ def get_ecology_meta() -> dict:
         init_ecology_tables()
         conn = _get_conn()
         try:
-            last = conn.execute("SELECT MAX(measured_at) FROM fact_measurements").fetchone()[0] or ""
+            last = conn.execute(
+                "SELECT MAX_BY(measured_at, CAST(measured_at AS TIMESTAMPTZ)) FROM fact_measurements"
+            ).fetchone()[0] or ""
             total = conn.execute("SELECT COUNT(*) FROM fact_measurements").fetchone()[0]
+            # Покрытие районов — по последнему измерению КАЖДОЙ станции, а не по
+            # глобальному максимуму времени: неполный снимок Open-Meteo иначе
+            # срезает покрытие до числа станций, попавших именно в этот снимок.
             districts = conn.execute(
                 """
+                WITH latest AS (
+                    SELECT station_id
+                    FROM fact_measurements
+                    WHERE CAST(measured_at AS TIMESTAMPTZ) >= NOW() - INTERVAL 24 HOUR
+                    GROUP BY station_id
+                )
                 SELECT COUNT(DISTINCT s.district)
-                FROM fact_measurements f
-                JOIN dim_stations s ON f.station_id = s.station_id
-                WHERE f.measured_at = (SELECT MAX(measured_at) FROM fact_measurements)
+                FROM latest
+                JOIN dim_stations s ON s.station_id = latest.station_id
                 """
             ).fetchone()[0]
             return {
@@ -360,14 +370,30 @@ def query_current(district_filter: str | None = None) -> list[dict]:
     init_ecology_tables()
     conn = _get_conn()
     try:
-        wheres = ["f.measured_at = (SELECT MAX(measured_at) FROM fact_measurements)"]
+        # Последнее измерение берём ПО КАЖДОЙ СТАНЦИИ, а не по глобальному
+        # максимуму времени. Причины:
+        #  1. Open-Meteo периодически отдаёт неполный снимок — в него попадает
+        #     часть станций. При сравнении с единственным MAX остальные районы
+        #     просто исчезали из «качества воздуха сейчас» (наблюдали 5 из 11).
+        #  2. measured_at хранится строкой со смещением, и строковый MAX
+        #     при смешанных зонах врёт: '…04:53+00:00' лексикографически меньше
+        #     '…11:51+07:00', хотя это 11:53 против 11:51 — то есть позже.
+        #     Поэтому сравниваем как TIMESTAMPTZ.
+        wheres = ["f.measured_at = latest.measured_at"]
         params: list = []
         if district_filter:
             wheres.append("s.district ILIKE ?")
             params.append(f"%{district_filter.split()[0]}%")
         where_sql = "WHERE " + " AND ".join(wheres)
         sql = f"""
-            WITH last_weather AS (
+            WITH latest AS (
+                SELECT station_id,
+                       MAX_BY(measured_at, CAST(measured_at AS TIMESTAMPTZ)) AS measured_at
+                FROM fact_measurements
+                WHERE CAST(measured_at AS TIMESTAMPTZ) >= NOW() - INTERVAL 24 HOUR
+                GROUP BY station_id
+            ),
+            last_weather AS (
                 SELECT station_id,
                        MAX_BY(temperature_c, measured_at) FILTER (WHERE temperature_c IS NOT NULL) AS temp_fb,
                        MAX_BY(wind_speed_ms, measured_at) FILTER (WHERE wind_speed_ms IS NOT NULL) AS wind_fb,
@@ -392,6 +418,7 @@ def query_current(district_filter: str | None = None) -> list[dict]:
                 f.source,
                 f.measured_at
             FROM fact_measurements f
+            JOIN latest ON latest.station_id = f.station_id
             JOIN dim_stations s ON f.station_id = s.station_id
             LEFT JOIN last_weather lw ON lw.station_id = f.station_id
             {where_sql}
