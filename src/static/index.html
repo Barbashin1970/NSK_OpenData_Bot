@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Сигма — Открытые данные Новосибирска</title>
+  <title>СИМА — Открытые данные Новосибирска</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
   <link rel="icon" type="image/png" href="/static/img/sigma-cat-sm.png">
   <link rel="apple-touch-icon" href="/static/img/sigma-cat.png">
@@ -146,12 +146,12 @@
       <div class="flex items-center gap-3 min-w-0">
         <img src="/static/img/sigma-cat-sm.png"
              class="h-14 sm:h-20 w-auto object-contain flex-shrink-0 cursor-pointer active:scale-95 transition-transform"
-             alt="Сигма"
-             title="Что умеет Сигма?"
+             alt="СИМА"
+             title="Что умеет СИМА?"
              onclick="setQuery('что ты умеешь')"
              style="filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))">
         <div class="min-w-0">
-          <h1 class="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">Сигма</h1>
+          <h1 class="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">СИМА</h1>
           <p class="text-blue-300 text-xs sm:text-sm mt-0.5 sm:mt-1">Открытые данные — только спроси</p>
         </div>
       </div>
@@ -206,7 +206,7 @@
       <button
         id="micBtn"
         onclick="toggleVoice()"
-        title="Голосовой ввод — скажите «Сигма!» и ваш вопрос"
+        title="Голосовой ввод — скажите «Сима» (или «Сигма») и ваш вопрос"
         class="flex-shrink-0 w-12 sm:w-auto sm:px-4 py-3.5 bg-white/15 hover:bg-white/25 text-white text-xl rounded-2xl border border-white/20 transition-all active:scale-95"
       >🎙</button>
     </div>
@@ -273,7 +273,7 @@
       <canvas id="footerQR" width="140" height="140" style="image-rendering:pixelated"></canvas>
       <p class="text-[10px] text-slate-400">Откройте на смартфоне</p>
     </div>
-    <p class="font-medium text-slate-500">Фреймворк Сигма — Платформа интеграции данных городского управления <span id="footerVer" class="inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] text-slate-400 font-mono ml-1"></span></p>
+    <p class="font-medium text-slate-500">СИМА — система интеллектуального муниципального анализа <span id="footerVer" class="inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] text-slate-400 font-mono ml-1"></span></p>
     <p>
       <a href="/studio" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Данные ↗</a> ·
       <a href="/tasks" target="_blank" class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Задачи ↗</a> ·
@@ -6231,7 +6231,7 @@ function renderUnknown(data) {
               📝 Ваш вопрос сохранён в базе — аналитики Сигмы добавят ответ в словарь
             </div>
             <button onclick="_openFeedback()" class="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-full px-3 py-1.5 transition-colors whitespace-nowrap flex-shrink-0">
-              💬 Задать вопрос команде Сигма
+              💬 Задать вопрос команде СИМА
             </button>
           </div>
         </div>
@@ -6405,7 +6405,7 @@ function renderInfo(_data) {
 
   const hasVoice = ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const voiceHint = hasVoice
-    ? `<span class="inline-flex items-center gap-1.5 bg-white/60 border border-slate-200 rounded-full px-2.5 py-1 text-xs text-slate-600"><span>🎙</span> Скажите <b>«Сигма»</b> — и я услышу</span>`
+    ? `<span class="inline-flex items-center gap-1.5 bg-white/60 border border-slate-200 rounded-full px-2.5 py-1 text-xs text-slate-600"><span>🎙</span> Скажите <b>«Сима»</b> (или «Сигма») — и я услышу</span>`
     : `<span class="inline-flex items-center gap-1.5 bg-white/60 border border-slate-200 rounded-full px-2.5 py-1 text-xs text-slate-500">🎙 Голосовой ввод: Chrome / Safari</span>`;
 
   const sectionsHtml = sections.filter(Boolean).map(sec => {
@@ -6444,7 +6444,7 @@ function renderInfo(_data) {
       <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">${sectionsHtml}</div>
       <!-- Подпись -->
       <div class="px-4 pb-3 text-center text-[10px] text-slate-400">
-        Фреймворк Сигма · ЦИИ НГУ · rule-based, без AI в runtime · моделирование и прогнозирование
+        СИМА · ЦИИ НГУ · rule-based, без AI в runtime · моделирование и прогнозирование
       </div>
     </div>
   `;
