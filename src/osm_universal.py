@@ -132,6 +132,17 @@ _OVERPASS_MIRRORS = [
 # Причина последнего отказа Overpass по темам — отдаётся в /osm/update, чтобы
 # «не обновилось» не приходилось выяснять по логам контейнера.
 _LAST_OVERPASS_ERRORS: dict[str, list[str]] = {}
+# Диагностика последнего обращения: сколько объектов отдал Overpass, сколько
+# осталось после фильтров и какой запрос уходил. Без этого «не обновилось»
+# неотличимо от «объектов нет».
+_LAST_OVERPASS_STATS: dict[str, dict] = {}
+
+
+def last_overpass_stats(topic: str | None = None) -> dict:
+    """Диагностика последнего обращения к Overpass по темам."""
+    if topic:
+        return _LAST_OVERPASS_STATS.get(topic, {})
+    return dict(_LAST_OVERPASS_STATS)
 
 
 def last_overpass_errors(topic: str | None = None) -> dict[str, list[str]]:
@@ -202,8 +213,14 @@ out center tags;"""
     if not data:
         log.error("Overpass %s: все зеркала недоступны — %s", topic, "; ".join(errors))
         _LAST_OVERPASS_ERRORS[topic] = errors
+        _LAST_OVERPASS_STATS[topic] = {"mirrors_failed": errors, "query": query}
         return []
     _LAST_OVERPASS_ERRORS.pop(topic, None)
+    _LAST_OVERPASS_STATS[topic] = {
+        "elements": len(data.get("elements", [])),
+        "remark": data.get("remark"),   # Overpass кладёт сюда таймауты и ошибки запроса
+        "query": query,
+    }
 
     from .district_classifier import _point_in_polygon
 
@@ -302,6 +319,7 @@ out center tags;"""
 
         results.append(row)
 
+    _LAST_OVERPASS_STATS.setdefault(topic, {})["kept"] = len(results)
     log.info("OSM [%s]: загружено %d объектов (bbox %s)", topic, len(results), bbox_overpass)
     return results
 

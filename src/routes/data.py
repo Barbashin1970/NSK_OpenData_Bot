@@ -1345,12 +1345,19 @@ def post_osm_update(
                 # Пустой ответ почти всегда означает отказ зеркал, а не то, что
                 # объектов нет. Отдаём конкретную причину, иначе её приходится
                 # выяснять по логам контейнера.
-                from ..osm_universal import last_overpass_errors
+                from ..osm_universal import last_overpass_errors, last_overpass_stats
                 why = last_overpass_errors(tid).get(tid) or []
+                st = last_overpass_stats(tid)
                 results[tid] = {
                     "rows": 0, "success": False,
                     "error": "Overpass не отдал данные" if why else "пустой ответ Overpass",
                     "mirrors": why,
+                    "diagnostics": {
+                        "elements": st.get("elements"),
+                        "kept": st.get("kept"),
+                        "remark": st.get("remark"),
+                        "query": st.get("query"),
+                    },
                 }
         except Exception as e:
             results[tid] = {"rows": 0, "success": False, "error": str(e)}
