@@ -372,7 +372,8 @@ def admin_storage_stats():
         tables = []
         total_city_rows = 0
         try:
-            con = duckdb.connect(str(db_path), read_only=True)
+            from ..cache import _get_conn as _shared_conn
+            con = _shared_conn(db_path)
             for (tname,) in con.execute("SHOW TABLES").fetchall():
                 try:
                     row_count = con.execute(f"SELECT COUNT(*) FROM \"{tname}\"").fetchone()[0]

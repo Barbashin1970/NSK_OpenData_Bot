@@ -17,6 +17,7 @@ from pathlib import Path
 from .cache import table_exists
 from .fetcher import is_stale
 from .registry import list_topics
+from .cache import _get_conn  # единый пул соединений DuckDB
 
 log = logging.getLogger(__name__)
 
@@ -421,7 +422,7 @@ def _refresh_medical_isolated(profile: dict, city_id: str) -> int:
     eco_stations = profile.get("ecology_stations", [])
 
     # Проверяем stale
-    conn = duckdb.connect(str(db_path))
+    conn = _get_conn(db_path)
     try:
         conn.execute("""CREATE TABLE IF NOT EXISTS medical_meta (
             id INTEGER PRIMARY KEY DEFAULT 1, last_updated TIMESTAMP, total_rows INTEGER)""")
@@ -479,7 +480,7 @@ out center tags;"""
         return 0
 
     # Store
-    conn = duckdb.connect(str(db_path))
+    conn = _get_conn(db_path)
     try:
         conn.execute("""CREATE TABLE IF NOT EXISTS medical_facilities (
             osm_id TEXT PRIMARY KEY, name TEXT, facility_type TEXT, type_label TEXT,
@@ -511,7 +512,7 @@ def _refresh_cameras_isolated(profile: dict, city_id: str) -> int:
     eco_stations = profile.get("ecology_stations", [])
 
     # Проверяем stale (TTL 7 дней)
-    conn = duckdb.connect(str(db_path))
+    conn = _get_conn(db_path)
     try:
         conn.execute("""CREATE TABLE IF NOT EXISTS cameras_meta (
             id INTEGER PRIMARY KEY DEFAULT 1, last_updated TIMESTAMP, total_rows INTEGER)""")
@@ -553,7 +554,7 @@ out body;"""
     if not cameras:
         return 0
 
-    conn = duckdb.connect(str(db_path))
+    conn = _get_conn(db_path)
     try:
         conn.execute("""CREATE TABLE IF NOT EXISTS cameras (
             osm_id TEXT PRIMARY KEY, _lat DOUBLE, _lon DOUBLE,
@@ -666,7 +667,7 @@ def _refresh_ecology_isolated(profile: dict, city_id: str) -> int:
     if not records:
         return 0
 
-    conn = duckdb.connect(str(db_path))
+    conn = _get_conn(db_path)
     try:
         # Создаём таблицы если нет
         conn.execute("""CREATE TABLE IF NOT EXISTS dim_stations (

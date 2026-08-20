@@ -22,7 +22,8 @@ _TTL_DAYS = 7
 
 def _conn():
     from .city_config import get_db_path
-    return duckdb.connect(str(get_db_path()))
+    from .cache import _get_conn as _shared_conn
+    return _shared_conn()
 
 
 def _ensure_table() -> None:

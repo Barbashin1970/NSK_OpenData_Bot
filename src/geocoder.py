@@ -34,7 +34,8 @@ def _get_key() -> str | None:
 
 
 def _conn():
-    return duckdb.connect(str(_DB_PATH))
+    from .cache import _get_conn as _shared_conn
+    return _shared_conn(_DB_PATH)
 
 
 def _ensure_table() -> None:

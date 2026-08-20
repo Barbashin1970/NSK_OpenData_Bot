@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS unknown_queries (
 
 def _conn() -> duckdb.DuckDBPyConnection:
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    c = duckdb.connect(str(_DB_PATH))
+    from .cache import _get_conn as _shared_conn
+    c = _shared_conn(_DB_PATH)
     c.execute(_SEQ)
     c.execute(_CREATE_SQL)
     c.execute(_UNKNOWN_SQL)
