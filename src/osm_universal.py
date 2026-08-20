@@ -130,6 +130,11 @@ _TABLE_PREFIX = "topic_osm_"
 # нужно через GET /osm/diagnose — там пробный запрос считает объекты
 # именно в городе, а не абстрактно проверяет живость.
 _OVERPASS_MIRRORS = [
+    # Порядок = порядок проверки. Первым идёт зеркало, реально доступное из
+    # сети прода: по данным GET /osm/diagnose с Railway (Амстердам) основные
+    # немецкие инстансы отклоняют соединение, kumi.systems и private.coffee
+    # отвечают 500, японское и тайваньское недоступны — работает только это.
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass-api.de/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
     "https://z.overpass-api.de/api/interpreter",
@@ -137,8 +142,6 @@ _OVERPASS_MIRRORS = [
     "https://overpass.private.coffee/api/interpreter",
     "https://overpass.osm.jp/api/interpreter",
     "https://overpass.nchc.org.tw/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    "https://overpass.osm.rambler.ru/cgi/interpreter",
 ]
 
 # Причина последнего отказа Overpass по темам — отдаётся в /osm/update, чтобы
