@@ -138,6 +138,53 @@ _LAST_OVERPASS_ERRORS: dict[str, list[str]] = {}
 _LAST_OVERPASS_STATS: dict[str, dict] = {}
 
 
+def diagnose_overpass(timeout: int = 20) -> list[dict]:
+    """Проверяет каждое зеркало Overpass: доступность канала и живой ответ.
+
+    Нужно, чтобы отличать «сервер недоступен из нашей сети» от «сервер
+    ответил, но данных нет»: по логам эти случаи выглядели одинаково.
+    """
+    import time
+    import requests
+    from .constants import HEADERS
+
+    probe = '[out:json][timeout:15];node["amenity"="pharmacy"](54.98,82.88,55.00,82.92);out count;'
+    out = []
+    for url in _OVERPASS_MIRRORS:
+        host = url.split("/")[2]
+        row = {"mirror": host}
+        # 1. Сервисный статус — показывает лимиты и что канал вообще есть
+        t0 = time.time()
+        try:
+            r = requests.get(f"https://{host}/api/status", headers=HEADERS, timeout=timeout)
+            row["status_code"] = r.status_code
+            row["status_head"] = r.text[:160].replace("\n", " | ")
+        except Exception as e:
+            row["status_code"] = None
+            row["status_error"] = str(e)[:160]
+        row["status_ms"] = round((time.time() - t0) * 1000)
+
+        # 2. Минимальный реальный запрос — считает аптеки в одном квартале
+        t0 = time.time()
+        try:
+            r = requests.post(url, data={"data": probe},
+                              headers={**HEADERS, "Accept": "application/json"}, timeout=timeout)
+            row["probe_code"] = r.status_code
+            try:
+                js = r.json()
+                els = js.get("elements") or []
+                row["probe_count"] = (els[0].get("tags", {}).get("total") if els else None)
+                row["probe_remark"] = js.get("remark")
+            except Exception:
+                row["probe_body"] = r.text[:160]
+        except Exception as e:
+            row["probe_code"] = None
+            row["probe_error"] = str(e)[:160]
+        row["probe_ms"] = round((time.time() - t0) * 1000)
+        out.append(row)
+    return out
+
+
 def last_overpass_stats(topic: str | None = None) -> dict:
     """Диагностика последнего обращения к Overpass по темам."""
     if topic:
@@ -194,12 +241,24 @@ out center tags;"""
     headers = {**HEADERS, "Accept": "application/json"}
 
     data = None
+    used_mirror = None
+    raw_head = None
     errors: list[str] = []
     for url in _OVERPASS_MIRRORS:
         try:
             resp = requests.post(url, data={"data": query}, headers=headers, timeout=65)
             resp.raise_for_status()
             data = resp.json()
+            used_mirror = url.split("/")[2]
+            raw_head = resp.text[:300]
+            # Пустой ответ — не повод останавливаться: зеркало могло отдать 200
+            # с нулевой выдачей из-за перегрузки. Пробуем следующее.
+            if not data.get("elements"):
+                errors.append(f"{used_mirror}: 200, но elements=0")
+                log.warning("Overpass %s [%s]: 200, но 0 объектов — пробую следующее зеркало",
+                            topic, used_mirror)
+                data = None
+                continue
             break
         except Exception as e:
             host = url.split("/")[2]
@@ -211,14 +270,18 @@ out center tags;"""
             continue
 
     if not data:
-        log.error("Overpass %s: все зеркала недоступны — %s", topic, "; ".join(errors))
+        log.error("Overpass %s: ни одно зеркало не дало данных — %s", topic, "; ".join(errors))
         _LAST_OVERPASS_ERRORS[topic] = errors
-        _LAST_OVERPASS_STATS[topic] = {"mirrors_failed": errors, "query": query}
+        _LAST_OVERPASS_STATS[topic] = {
+            "mirrors_failed": errors, "query": query,
+            "last_mirror": used_mirror, "raw_head": raw_head,
+        }
         return []
     _LAST_OVERPASS_ERRORS.pop(topic, None)
     _LAST_OVERPASS_STATS[topic] = {
         "elements": len(data.get("elements", [])),
         "remark": data.get("remark"),   # Overpass кладёт сюда таймауты и ошибки запроса
+        "mirror": used_mirror,
         "query": query,
     }
 

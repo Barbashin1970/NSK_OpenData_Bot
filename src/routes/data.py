@@ -1286,6 +1286,48 @@ def post_power_update() -> dict:
     return result
 
 
+@router.get(
+    "/osm/diagnose",
+    tags=["Управление"],
+    summary="Проверить доступность зеркал Overpass из сети сервера",
+    response_description="По каждому зеркалу: код статуса, задержка, результат пробного запроса",
+)
+def get_osm_diagnose() -> dict:
+    """Отвечает на вопрос «канал закрыт или сервер молчит».
+
+    Для каждого зеркала: сервисный `/api/status` (лимиты и живость) и
+    минимальный реальный запрос — счётчик аптек в одном квартале. Если
+    статус отвечает, а пробный запрос даёт ноль — дело не в канале.
+    """
+    from ..osm_universal import diagnose_overpass
+    rows = diagnose_overpass()
+    reachable = sum(1 for r in rows if r.get("status_code") == 200)
+    working = sum(1 for r in rows if r.get("probe_count"))
+    return {
+        "mirrors": rows,
+        "summary": {
+            "total": len(rows),
+            "reachable": reachable,     # канал до зеркала есть
+            "returning_data": working,  # и данные реально приходят
+        },
+    }
+
+
+# Состояние фонового обновления OSM: /osm/update возвращает управление сразу,
+# иначе обход десяти тем с паузами не укладывается в таймаут edge-прокси
+# (наблюдали 502 от Railway) и клиент не узнаёт результат вовсе.
+_osm_job: dict = {"running": False, "started_at": None, "finished_at": None, "results": {}}
+
+
+@router.get(
+    "/osm/update/status",
+    tags=["Управление"],
+    summary="Статус фонового обновления OSM-данных",
+)
+def get_osm_update_status() -> dict:
+    return dict(_osm_job)
+
+
 @router.post(
     "/osm/update",
     tags=["Управление"],
@@ -1296,6 +1338,14 @@ def post_osm_update(
     topic: str | None = Query(
         None,
         description="ID OSM-темы. Если не указан — обновляются все OSM-темы.",
+    ),
+    background: bool = Query(
+        True,
+        description=(
+            "Обновлять в фоне и вернуть управление сразу. Обход всех тем идёт "
+            "с паузами между запросами к Overpass и не укладывается в таймаут "
+            "прокси. Результат — в GET /osm/update/status."
+        ),
     ),
 ) -> dict:
     """
@@ -1334,8 +1384,17 @@ def post_osm_update(
     eco_stations = profile.get("ecology_stations", [])
 
     topics_to_update = [topic] if topic and topic in OSM_TOPICS else list(OSM_TOPICS.keys())
-    results: dict = {}
-    for tid in topics_to_update:
+
+    def _run(tids: list[str]) -> dict:
+        out: dict = {}
+        for tid in tids:
+            out.update(_update_one(tid))
+            if len(tids) > 1:
+                _time.sleep(5)
+        return out
+
+    def _update_one(tid: str) -> dict:
+        results: dict = {}
         try:
             rows = fetch_osm_topic(tid, bbox_str, bb, boundaries, eco_stations)
             if rows:
@@ -1361,13 +1420,43 @@ def post_osm_update(
                 }
         except Exception as e:
             results[tid] = {"rows": 0, "success": False, "error": str(e)}
-        if len(topics_to_update) > 1:
-            _time.sleep(5)
+        return results
 
-    ok = sum(1 for r in results.values() if r.get("success"))
+    # Одна тема укладывается в таймаут прокси — отдаём результат сразу
+    if len(topics_to_update) == 1 or not background:
+        results = _run(topics_to_update)
+        ok = sum(1 for r in results.values() if r.get("success"))
+        return {
+            "updated": results,
+            "summary": {"total": len(results), "success": ok, "failed": len(results) - ok},
+        }
+
+    if _osm_job["running"]:
+        return {"status": "already_running", "started_at": _osm_job["started_at"],
+                "hint": "Прогресс — в GET /osm/update/status"}
+
+    def _job() -> None:
+        from datetime import datetime, timezone
+        _osm_job.update(running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                        finished_at=None, results={})
+        try:
+            for tid in topics_to_update:
+                _osm_job["results"].update(_update_one(tid))
+                _time.sleep(5)
+        except Exception as e:
+            log.error("osm update job: %s", e)
+            _osm_job["results"]["_error"] = str(e)
+        finally:
+            from datetime import datetime, timezone
+            _osm_job.update(running=False,
+                            finished_at=datetime.now(timezone.utc).isoformat())
+
+    threading.Thread(target=_job, daemon=True, name="osm-update").start()
     return {
-        "updated": results,
-        "summary": {"total": len(results), "success": ok, "failed": len(results) - ok},
+        "status": "started",
+        "topics": topics_to_update,
+        "estimated_seconds": len(topics_to_update) * 10,
+        "hint": "Прогресс и результат — в GET /osm/update/status",
     }
 
 
