@@ -120,13 +120,25 @@ _LEISURE_LABELS = {
 
 _TABLE_PREFIX = "topic_osm_"
 
+# Зеркала Overpass с ПЛАНЕТАРНЫМ покрытием.
+#
+# Важно при добавлении новых: часть публичных инстансов держит только
+# региональный экстракт. Так, overpass.osm.ch отвечает 200 и выглядит
+# исправным, но содержит лишь Швейцарию — по Новосибирску честно вернёт
+# ноль объектов. Такое зеркало хуже недоступного: оно молча выдаёт пустой
+# результат, который неотличим от «данных нет». Проверять новые адреса
+# нужно через GET /osm/diagnose — там пробный запрос считает объекты
+# именно в городе, а не абстрактно проверяет живость.
 _OVERPASS_MIRRORS = [
     "https://overpass-api.de/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
     "https://z.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.osm.ch/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.osm.jp/api/interpreter",
+    "https://overpass.nchc.org.tw/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.osm.rambler.ru/cgi/interpreter",
 ]
 
 # Причина последнего отказа Overpass по темам — отдаётся в /osm/update, чтобы
@@ -153,10 +165,13 @@ def diagnose_overpass(timeout: int = 20) -> list[dict]:
     for url in _OVERPASS_MIRRORS:
         host = url.split("/")[2]
         row = {"mirror": host}
-        # 1. Сервисный статус — показывает лимиты и что канал вообще есть
+        # 1. Сервисный статус — показывает лимиты и что канал вообще есть.
+        #    Путь к нему выводим из адреса интерпретатора: у части зеркал
+        #    он лежит не в корне (например, /osm/tools/overpass/api/…).
+        status_url = url.replace("/interpreter", "/status")
         t0 = time.time()
         try:
-            r = requests.get(f"https://{host}/api/status", headers=HEADERS, timeout=timeout)
+            r = requests.get(status_url, headers=HEADERS, timeout=timeout)
             row["status_code"] = r.status_code
             row["status_head"] = r.text[:160].replace("\n", " | ")
         except Exception as e:
