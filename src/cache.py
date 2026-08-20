@@ -35,15 +35,23 @@ _ROOT_CONNS: dict[str, duckdb.DuckDBPyConnection] = {}
 _ROOT_LOCK = threading.Lock()
 
 
-def _get_conn() -> duckdb.DuckDBPyConnection:
-    """Курсор к БД текущего активного города.
+def _get_conn(db_path: str | None = None) -> duckdb.DuckDBPyConnection:
+    """Курсор к БД города (или к произвольному файлу, если задан db_path).
 
-    Путь: data/cities/{city_id}/cache.db — каждый город изолирован.
+    Путь по умолчанию: data/cities/{city_id}/cache.db — каждый город изолирован.
     Вызывающий код закрывает курсор как обычное соединение; корневое
     соединение живёт до конца процесса.
+
+    ВАЖНО: любой доступ к DuckDB в проекте должен идти через эту функцию.
+    Прямой duckdb.connect() к файлу, уже открытому здесь, падает с
+    «Unique file handle conflict» — а поскольку такие вызовы обычно обёрнуты
+    в try/except, ошибка превращается в тихо пустой результат: метаданные
+    темы не читаются, и она вечно показывается устаревшей.
     """
-    from .city_config import get_db_path
-    path = str(get_db_path())
+    if db_path is None:
+        from .city_config import get_db_path
+        db_path = get_db_path()
+    path = str(db_path)
 
     with _ROOT_LOCK:
         root = _ROOT_CONNS.get(path)

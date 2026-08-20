@@ -22,6 +22,8 @@ from typing import Any
 
 import duckdb
 
+from .cache import _get_conn  # единый пул соединений DuckDB на весь процесс
+
 log = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -302,7 +304,7 @@ def upsert_osm_topic(
         db_path = get_db_path()
 
     table = _table_name(topic)
-    conn = duckdb.connect(str(db_path))
+    conn = _get_conn(db_path)
     try:
         conn.execute(f"""CREATE TABLE IF NOT EXISTS {table} (
             osm_id TEXT PRIMARY KEY,
@@ -363,7 +365,7 @@ def is_osm_topic_stale(topic: str, db_path: Path | str | None = None) -> bool:
 
     table = _table_name(topic)
     try:
-        conn = duckdb.connect(str(db_path))
+        conn = _get_conn(db_path)
         try:
             row = conn.execute(
                 f"SELECT last_updated FROM {table}_meta WHERE id = 1"
@@ -389,7 +391,7 @@ def osm_topic_available(topic: str, db_path: Path | str | None = None) -> bool:
         db_path = get_db_path()
     table = _table_name(topic)
     try:
-        conn = duckdb.connect(str(db_path))
+        conn = _get_conn(db_path)
         try:
             row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
             return row[0] > 0 if row else False
@@ -422,7 +424,7 @@ def query_osm_topic(
     # Убираем дубли
     select_cols = list(dict.fromkeys(select_cols))
 
-    conn = duckdb.connect(str(db_path))
+    conn = _get_conn(db_path)
     try:
         where = ""
         if district_filter:
@@ -454,7 +456,7 @@ def group_osm_topic(
         db_path = get_db_path()
     table = _table_name(topic)
     try:
-        conn = duckdb.connect(str(db_path))
+        conn = _get_conn(db_path)
         try:
             rows = conn.execute(f"""
                 SELECT district AS район, COUNT(*) AS количество
@@ -480,7 +482,7 @@ def count_osm_topic(
         db_path = get_db_path()
     table = _table_name(topic)
     try:
-        conn = duckdb.connect(str(db_path))
+        conn = _get_conn(db_path)
         try:
             where = ""
             if district_filter:
@@ -500,7 +502,7 @@ def get_osm_meta(topic: str, db_path: Path | str | None = None) -> dict:
         db_path = get_db_path()
     table = _table_name(topic)
     try:
-        conn = duckdb.connect(str(db_path))
+        conn = _get_conn(db_path)
         try:
             row = conn.execute(
                 f"SELECT last_updated, total_rows FROM {table}_meta WHERE id = 1"
