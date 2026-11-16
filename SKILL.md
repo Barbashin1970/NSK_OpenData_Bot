@@ -193,6 +193,7 @@ bot serve           # HTTP API → http://127.0.0.1:8000
 | `GET` | `/topics` | Список тем: статус кэша, кол-во строк, last_updated |
 | `POST` | `/update?topic=<id>` | Обновить одну тему или все 12 (без topic). Доступные ID: все 12 из таблицы выше |
 | `POST` | `/power/update` | Обновить отключения ЖКХ |
+| `GET` | `/power/forecast?district=...` | Прогноз загрузки ЖКХ на 2 недели: свободные и перегруженные дни, риск аварий, самопроверка правила. Ёмкость бригад — гипотеза (`config/rules/power_forecast_rules.yaml`). Ячейки «услуга × день» — только при заданном районе. Разбор: `docs/ZHKH-PROGNOZ-RAZBOR.md` |
 | `POST` | `/ecology/update` | Обновить экологию |
 | `POST` | `/cameras/update` | Обновить камеры (Overpass API, TTL 7 дней) |
 | `GET` | `/ecology/current` | Текущие измерения AQI/PM |
