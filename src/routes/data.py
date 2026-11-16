@@ -1092,6 +1092,49 @@ def get_power_meta_endpoint() -> dict:
 
 
 @router.get(
+    "/power/forecast",
+    tags=["Данные"],
+    summary="Прогноз загрузки ЖКХ на 2 недели: свободные и перегруженные дни, риск аварий",
+    response_description=(
+        "Правило по дню недели + гипотеза ёмкости бригад + самопроверка правила "
+        "на прошлых неделях (docs/ZHKH-PROGNOZ-RAZBOR.md)"
+    ),
+)
+def get_power_forecast(
+    district: str | None = Query(
+        None, description="Район, как в панели служащего (по первому слову); пусто — весь город",
+    ),
+    cells: bool | None = Query(
+        None,
+        description=(
+            "Отдавать ячейки «район × услуга × день». По умолчанию — только при "
+            "заданном районе: по городу это 700 ячеек, табло мэру они не нужны."
+        ),
+    ),
+) -> dict:
+    """Прогноз на текущих данных СИМА (суточный архив + снимки за 30 дней).
+
+    Ёмкость бригад — гипотеза из регламента `power_forecast_rules.yaml`
+    (численности бригад в данных нет); поле `hypothesis` это проговаривает,
+    поле `backtest` показывает, как правило угадывало на прошлых неделях.
+    """
+    from ..power_forecast import get_forecast
+    try:
+        fc = get_forecast(district=district or None)
+    except Exception as e:
+        # Сбой расчёта и «свободных дней нет» — разные вещи: отдаём ошибку явно
+        log.error("power forecast error: %s", e)
+        return {
+            "operation": "POWER_FORECAST", "error": str(e), "district": district,
+            "days": [], "cells": [], "free_windows": [], "overloads": [],
+            "risk": [], "capacity": [], "backtest": None,
+        }
+    if not (cells if cells is not None else bool(district)):
+        fc["cells"] = []
+    return fc
+
+
+@router.get(
     "/power/history",
     tags=["Данные"],
     summary="История отключений ЖКХ по дням (до 365 дней)",

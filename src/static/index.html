@@ -917,11 +917,11 @@ async function _loadRoleDashboardImpl(isRetry) {
 
   // ── Есть свежий кеш → мгновенный рендер ──────────────────────────────
   if (cached && (Date.now() - cached.ts < _DASH_TTL) && !isRetry) {
-    _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit);
+    _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit, false, cached.forecast);
     // Тихо обновляем в фоне, если кеш старше 2 минут
     if (Date.now() - cached.ts > 2 * 60 * 1000) {
       _fetchDashData().then(d => {
-        if (d) { _dashCache[cacheKey] = { ts: Date.now(), ...d }; _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit); }
+        if (d) { _dashCache[cacheKey] = { ts: Date.now(), ...d }; _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit, false, d.forecast); }
       }).catch(() => {});
     }
     return;
@@ -931,7 +931,7 @@ async function _loadRoleDashboardImpl(isRetry) {
   if (!isRetry) {
     // Если есть устаревший кеш — показать его пока грузятся свежие данные
     if (cached) {
-      _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit, true);
+      _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit, true, cached.forecast);
     } else {
       dashEl.innerHTML = `<div class="space-y-3 py-2">
         <div class="flex items-center gap-2 text-xs text-sky-500"><div class="animate-spin w-3 h-3 border-2 border-sky-400 border-t-transparent rounded-full"></div> Загрузка данных…</div>
@@ -945,7 +945,7 @@ async function _loadRoleDashboardImpl(isRetry) {
   try {
     const d = await _fetchDashData();
     _dashCache[cacheKey] = { ts: Date.now(), ...d };
-    _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit);
+    _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit, false, d.forecast);
 
     // Если AQI отсутствует — повторяем один раз через 5 с (экология могла ещё не загрузиться)
     const hasAqi = d.eco?.rows?.some(r => r.aqi != null);
@@ -968,23 +968,38 @@ async function _fetchDashData() {
   if (currentRole === 'official') {
     fetches.push(fetch('/transit/districts'));
   }
-  const results = await Promise.all(fetches);
+  // Прогноз ЖКХ на 2 недели (docs/ZHKH-PROGNOZ-RAZBOR.md): мэру — по городу,
+  // служащему с выбранным районом — по району (ячейки «услуга × день»).
+  // Сбой прогноза не должен ронять панель — ловим отдельно.
+  const fcDistrict = currentRole === 'official' ? _forecastDistrictParam(officialDistrict) : '';
+  const fcPromise = fetch('/power/forecast' + (fcDistrict ? '?district=' + encodeURIComponent(fcDistrict) : ''))
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+  const [results, forecast] = await Promise.all([Promise.all(fetches), fcPromise]);
   return {
     power:       results[0].ok ? await results[0].json() : null,
     eco:         results[1].ok ? await results[1].json() : null,
     risks:       results[2].ok ? await results[2].json() : null,
     trafficData: results[3]?.ok ? await results[3].json() : null,
     transit:     (currentRole === 'official' && results[4]?.ok) ? await results[4].json() : null,
+    forecast,
   };
 }
 
-async function _renderDashFromData(dashEl, power, eco, risks, trafficData, transit, isStale) {
+// Район для /power/forecast: подрайон (Академгородок) прогнозируется по
+// родительскому району, как и остальные блоки панели служащего.
+function _forecastDistrictParam(district) {
+  const sub = { 'Академгородок': 'Советский' };
+  const d = (district || '').trim();
+  return sub[d] || d;
+}
+
+async function _renderDashFromData(dashEl, power, eco, risks, trafficData, transit, isStale, forecast) {
   const staleIndicator = isStale
     ? '<div class="flex items-center gap-1.5 text-[10px] text-sky-500 mb-1"><div class="animate-spin w-2.5 h-2.5 border border-sky-400 border-t-transparent rounded-full"></div> обновление…</div>'
     : '';
   const dashContent = currentRole === 'mayor'
-    ? await renderMayorDashboard(power, eco, risks, trafficData)
-    : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData);
+    ? await renderMayorDashboard(power, eco, risks, trafficData, forecast)
+    : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData, forecast);
   dashEl.innerHTML = staleIndicator + dashContent;
   _restoreDashCollapse();
   // Скрыть info-карточку "панель загружается…" после рендера дашборда
@@ -1147,7 +1162,352 @@ function renderTrafficCompact(data) {
     </div>`;
 }
 
-function renderOfficialDashboard(power, eco, risks, transit, district, trafficData) {
+// ─── Прогноз ЖКХ на 2 недели (docs/ZHKH-PROGNOZ-RAZBOR.md, СЦ-ЖКХ-1/2) ───────
+// Правило по дню недели + гипотеза ёмкости бригад. Ёмкость — ГИПОТЕЗА
+// (численности бригад в данных нет), и блок обязан это говорить (Т-4),
+// а рядом показывать самопроверку правила на прошлых неделях (Т-5).
+const _FC_UTIL = {
+  electricity:      { short: 'Электро', icon: '⚡' },
+  heating:          { short: 'Тепло',   icon: '🔥' },
+  hot_water:        { short: 'ГВС',     icon: '🚿' },
+  cold_water_sewer: { short: 'ХВС',     icon: '💧' },
+  gas:              { short: 'Газ',     icon: '🔵' },
+};
+const _FC_DOW = ['', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+const _FC_MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const _FC_STATUS = {
+  free:     { label: 'свободно',    cls: 'bg-emerald-200 text-emerald-900' },
+  normal:   { label: 'обычно',      cls: 'bg-slate-100 text-slate-500' },
+  overload: { label: 'перегруз',    cls: 'bg-red-300 text-red-900' },
+  off:      { label: 'выходной',    cls: 'bg-white text-slate-300 border border-dashed border-slate-200' },
+  nodata:   { label: 'нет данных',  cls: 'bg-slate-200 text-slate-400' },
+};
+
+function _fcUtil(code) { return _FC_UTIL[code] || { short: code, icon: '•' }; }
+function _fcPct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
+function _fcShortDist(name) { return (name || '').replace(/ (район|округ)$/i, ''); }
+
+// ['2026-11-27','2026-11-30','2026-12-01'] → «27, 30 ноя, 1 дек»
+function _fcDays(list) {
+  const parts = [];
+  let curM = null, nums = [];
+  for (const iso of list) {
+    const [, m, d] = iso.split('-');
+    if (m !== curM && nums.length) { parts.push(nums.join(', ') + ' ' + _FC_MON[+curM - 1]); nums = []; }
+    curM = m;
+    nums.push(+d);
+  }
+  if (nums.length) parts.push(nums.join(', ') + ' ' + _FC_MON[+curM - 1]);
+  return parts.join(', ');
+}
+
+function _fcAccuracyLine(bt) {
+  const f = bt?.free?.regular, o = bt?.overload;
+  if (!f || !f.n) return 'Самопроверка: истории пока мало.';
+  const freeTxt = f.precision != null
+    ? `«свободно» сбылось в ${_fcPct(f.precision)} случаев, а в среднем свободны ${_fcPct(f.base_rate)} дней`
+    : 'свободных дней правило не называло';
+  const overTxt = o?.precision != null
+    ? `; «перегруз» — в ${_fcPct(o.precision)} при базе ${_fcPct(o.base_rate)}` : '';
+  return `Проверка на прошлых 4 неделях, прогноз за 2 недели: ${freeTxt}${overTxt}.`;
+}
+
+function _renderZhkhForecast(fc) {
+  if (!fc) return '';
+  window._fcLast = fc;   // для модалки «?» — она показывает параметры и самопроверку этого прогноза
+  const head = `
+    <div class="px-4 py-2.5 flex flex-wrap gap-2 justify-between items-center border-b border-slate-100 bg-slate-50">
+      <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">🔮 ЖКХ · прогноз на 2 недели${fc.district ? ' · ' + esc(_fcShortDist(fc.districts?.[0] || fc.district)) : ''}</span>
+      <span class="flex items-center gap-1.5">
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 cursor-help" title="${esc(fc.hypothesis || '')}">ёмкость бригад — гипотеза</span>
+        <button type="button" onclick="_showForecastHelp()" aria-label="Как работает прогноз"
+          class="w-6 h-6 rounded-full border border-slate-300 bg-white text-slate-600 text-xs font-bold hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700">?</button>
+      </span>
+    </div>`;
+  if (fc.error) {
+    return `<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">${head}
+      <div class="px-4 py-3 text-xs text-slate-500">Прогноз недоступен: ${esc(fc.error)}</div></div>`;
+  }
+  const days = fc.days || [];
+  if (!days.length) return '';
+  const foot = `
+    <div class="px-4 py-2 border-t border-slate-100 text-[10px] text-slate-400 leading-snug">
+      ${esc(_fcAccuracyLine(fc.backtest))}
+      <button type="button" class="underline decoration-dotted hover:text-blue-600" onclick="_showForecastHelp()">Как считается</button>
+    </div>`;
+
+  // ── Район: сетка «услуга × день» (СЦ-ЖКХ-2) ───────────────────────────
+  if (fc.district && (fc.cells || []).length) {
+    const byKey = {};
+    fc.cells.forEach(c => { byKey[c.utility_code + '|' + c.day] = c; });
+    const capBy = {};
+    (fc.capacity || []).forEach(c => { capBy[c.utility_code] = c.capacity; });
+    const riskBy = {};
+    (fc.risk || []).forEach(r => { riskBy[r.utility_code] = r; });
+    const codes = Object.keys(_FC_UTIL).filter(code => fc.cells.some(c => c.utility_code === code));
+    const cols = `grid-template-columns: 7.5rem repeat(${days.length}, minmax(1.6rem, 1fr))`;
+    const dayHead = days.map(d => `
+      <div class="text-center leading-tight ${d.workday ? 'text-slate-500' : 'text-slate-300'}">
+        <div class="text-[9px] uppercase">${_FC_DOW[d.dow]}</div>
+        <div class="text-[10px] font-semibold">${+d.day.slice(8)}</div>
+      </div>`).join('');
+    const rowsHtml = codes.map(code => {
+      const u = _fcUtil(code);
+      const cap = capBy[code];
+      const capTxt = cap != null ? `ёмкость ≈ ${Math.round(cap)} дом.` : 'работ мало';
+      const cellsHtml = days.map(d => {
+        const c = byKey[code + '|' + d.day];
+        const st = _FC_STATUS[c?.status] || _FC_STATUS.nodata;
+        const tip = c ? `${u.short}, ${_fcDays([d.day])}: ${st.label}` +
+          (c.p_planned != null ? ` · работы были в ${_fcPct(c.p_planned)} таких дней, в среднем ${c.load} дом.` : '') +
+          (c.capacity != null ? ` · ёмкость (гипотеза) ${c.capacity} дом.` : '') : st.label;
+        return `<div class="h-6 rounded ${st.cls}" title="${esc(tip)}"></div>`;
+      }).join('');
+      return `
+        <div class="pr-2 leading-tight">
+          <div class="text-[11px] text-slate-700">${u.icon} ${u.short}</div>
+          <div class="text-[9px] text-slate-400">${capTxt}</div>
+        </div>${cellsHtml}`;
+    }).join('');
+    const riskTxt = codes
+      .map(code => ({ code, r: riskBy[code] }))
+      .filter(x => x.r && x.r.p_emergency > 0)
+      .map(x => `${_fcUtil(x.code).icon} ${_fcUtil(x.code).short} ~${Math.round(x.r.expected_days)} дн.`)
+      .join(' · ');
+    const legend = ['free', 'normal', 'overload', 'off'].map(k =>
+      `<span class="inline-flex items-center gap-1"><span class="w-3 h-3 rounded ${_FC_STATUS[k].cls}"></span>${_FC_STATUS[k].label}</span>`).join('');
+    return `
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        ${head}
+        <div class="px-4 py-3 overflow-x-auto">
+          <div class="grid gap-1 items-center min-w-[34rem]" style="${cols}">
+            <div></div>${dayHead}
+            ${rowsHtml}
+          </div>
+          <div class="flex flex-wrap gap-3 mt-2 text-[10px] text-slate-500">${legend}</div>
+          <div class="mt-2 text-[11px] text-slate-600">
+            <span class="text-slate-400">Риск аварий на 2 недели (по частоте за 4 недели):</span>
+            ${riskTxt || 'аварий за последние 4 недели не было'}
+          </div>
+        </div>
+        ${foot}
+      </div>`;
+  }
+
+  // ── Город: полоса дней + где свободно, где плотно, где риск (СЦ-ЖКХ-1) ──
+  const strip = days.map(d => {
+    if (!d.workday) {
+      return `<div class="text-center rounded-lg py-1.5 bg-slate-50">
+        <div class="text-[9px] uppercase text-slate-300">${_FC_DOW[d.dow]}</div>
+        <div class="text-[10px] text-slate-300">${+d.day.slice(8)}</div>
+        <div class="text-[10px] text-slate-300 mt-0.5">вых</div><div class="text-[10px]">&nbsp;</div>
+      </div>`;
+    }
+    const tip = `${_fcDays([d.day])}: свободно ${d.free_regular} «район × услуга» с постоянными работами, перегруз ${d.overload}`;
+    return `<div class="text-center rounded-lg py-1.5 bg-slate-50" title="${esc(tip)}">
+      <div class="text-[9px] uppercase text-slate-400">${_FC_DOW[d.dow]}</div>
+      <div class="text-[10px] font-semibold text-slate-600">${+d.day.slice(8)}</div>
+      <div class="text-xs font-bold text-emerald-600 mt-0.5">${d.free_regular}</div>
+      <div class="text-[10px] font-bold ${d.overload ? 'text-red-500' : 'text-slate-300'}">${d.overload ? '▲' + d.overload : '·'}</div>
+    </div>`;
+  }).join('');
+
+  // Элемент списка: «Район · услуга» строкой, ниже — что ожидается
+  const item = (dist, code, body, tip) => {
+    const u = _fcUtil(code);
+    return `<div class="text-xs leading-snug"${tip ? ` title="${esc(tip)}"` : ''}>
+      <div class="text-slate-700">${esc(_fcShortDist(dist))} · ${u.icon} ${u.short}</div>${body}</div>`;
+  };
+  const more = (n) => n > 0 ? `<div class="text-[10px] text-slate-400">и ещё ${n}</div>` : '';
+
+  const fw = fc.free_windows || [];
+  const freeList = fw.slice(0, 5).map(w => item(w.district, w.utility_code,
+    `<div class="text-emerald-700">${w.days.length === fc.workdays ? 'все рабочие дни' : _fcDays(w.days)}` +
+    `<span class="text-slate-400"> · обычно работы в ${_fcPct(w.busy_share)} дней</span></div>`)).join('') + more(fw.length - 5);
+
+  const overGroups = {};
+  (fc.overloads || []).forEach(o => {
+    const k = o.district + '|' + o.utility_code;
+    (overGroups[k] = overGroups[k] || { ...o, days: [] }).days.push(o.day);
+  });
+  const og = Object.values(overGroups);
+  const overList = og.slice(0, 5).map(g => item(g.district, g.utility_code,
+    `<div class="text-red-600">${_fcDays(g.days)}</div>`,
+    `объём выше ёмкости (гипотеза ${g.capacity} дом.) в ${_fcPct(g.p_overload)} таких дней`)).join('') + more(og.length - 5);
+
+  const riskList = (fc.risk || []).filter(r => r.p_emergency > 0).slice(0, 3).map(r => item(r.district, r.utility_code,
+    `<div class="text-amber-700">~${Math.round(r.expected_days)} аварийных дн. из ${fc.params?.horizon_days || 14}</div>`)).join('');
+
+  return `
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      ${head}
+      <div class="px-4 py-3 space-y-3">
+        <div class="overflow-x-auto">
+          <div class="grid gap-1 min-w-[34rem]" style="grid-template-columns: repeat(${days.length}, minmax(0, 1fr))">${strip}</div>
+          <div class="text-[10px] text-slate-400 mt-1">Зелёное число — сколько «район × услуга» с постоянными работами ожидаются свободными; ▲ — сколько с перегрузом.</div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="space-y-1.5"><div class="text-[10px] uppercase tracking-wide text-slate-400">Свободные окна</div>${freeList || '<div class="text-xs text-slate-400">не ожидаются</div>'}</div>
+          <div class="space-y-1.5"><div class="text-[10px] uppercase tracking-wide text-slate-400">Ожидается перегруз</div>${overList || '<div class="text-xs text-slate-400">не ожидается</div>'}</div>
+          <div class="space-y-1.5"><div class="text-[10px] uppercase tracking-wide text-slate-400">Риск аварий</div>${riskList || '<div class="text-xs text-slate-400">аварий за 4 недели не было</div>'}</div>
+        </div>
+      </div>
+      ${foot}
+    </div>`;
+}
+
+// ─── Модалка «?» у прогноза: как работает + вопросы для разговора на демо ─────
+// Вопросы — продолжение discovery-интервью со зрителем (мэр, начальник района):
+// что ему важно в прогнозе и как он может на него влиять. Ответы по желанию
+// записываются в журнал «Жалобы и предложения» (POST /feedback).
+const _FC_QUESTIONS = [
+  'Что для вас важнее в этом прогнозе: свободные дни бригад, перегрузы, риск аварий или совпадение нескольких отключений в одном районе?',
+  'На какой срок вы планируете плановые работы: неделя, две, месяц, сезон?',
+  'Как вы можете повлиять на даты плановых работ: согласование, совещание с организациями, письмо — или никак?',
+  'Что вы сделаете, если увидите перегруз в районе на следующей неделе? Кому позвоните?',
+  'Сколько бригад реально работает у организаций в вашем районе? Если эти числа можно получить, ёмкость перестанет быть гипотезой.',
+  'Какая точность нужна, чтобы вы опирались на прогноз в решениях?',
+  'Какие данные есть у вас, но нет здесь: графики плановых работ, заявки жителей, наряды бригад?',
+  'Кто ещё должен видеть этот прогноз и в каком виде: табло, еженедельная сводка, сообщение?',
+];
+
+function _fcFormulaRow(label, formula, note) {
+  return `<div class="py-1.5">
+    <div class="text-[11px] text-slate-500">${label}</div>
+    <div class="font-mono text-[12px] text-slate-800 bg-slate-50 rounded px-2 py-1 mt-0.5 break-words">${formula}</div>
+    ${note ? `<div class="text-[11px] text-slate-500 mt-0.5">${note}</div>` : ''}
+  </div>`;
+}
+
+function _showForecastHelp() {
+  const fc = window._fcLast || {};
+  const p = fc.params || {};
+  const cap = p.capacity || {};
+  const pct = x => x == null ? '—' : Math.round(x * 100) + '%';
+  const num = x => String(x ?? '—').replace('.', ',');
+  const bt = fc.backtest || {};
+  const fr = bt.free?.regular || {}, ov = bt.overload || {};
+  const byU = bt.free?.by_utility || {};
+  const btRows = Object.entries(byU).map(([code, s]) => `
+    <tr class="border-t border-slate-100">
+      <td class="py-1 pr-2">${_fcUtil(code).icon} ${_fcUtil(code).short}</td>
+      <td class="py-1 pr-2 text-right">${pct(s.base_rate)}</td>
+      <td class="py-1 pr-2 text-right font-semibold">${pct(s.precision)}</td>
+      <td class="py-1 text-right">${pct(s.recall)}</td>
+    </tr>`).join('');
+  const where = fc.district ? esc(_fcShortDist(fc.districts?.[0] || fc.district)) + ' район' : 'весь город';
+
+  document.getElementById('fcHelpModal')?.remove();
+  const el = document.createElement('div');
+  el.id = 'fcHelpModal';
+  el.className = 'fixed inset-0 z-[9999]';
+  el.innerHTML = `
+    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="_closeForecastHelp()"></div>
+    <div class="absolute inset-x-0 bottom-0 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[44rem] max-w-full"
+         role="dialog" aria-modal="true" aria-labelledby="fcHelpTitle">
+      <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="bg-gradient-to-r from-slate-700 to-slate-900 px-5 py-4 text-white flex justify-between items-start gap-3">
+          <div>
+            <div id="fcHelpTitle" class="font-semibold text-sm">🔮 Как работает прогноз ЖКХ</div>
+            <div class="text-[11px] text-slate-300 mt-0.5">${where} · горизонт ${num(p.horizon_days)} дн. · история с ${esc(fc.history_from || '—')} · регламент v${esc(fc.rules_version || '—')}</div>
+          </div>
+          <button type="button" onclick="_closeForecastHelp()" aria-label="Закрыть" class="text-white/70 hover:text-white text-2xl leading-none">&times;</button>
+        </div>
+        <div class="overflow-y-auto px-5 py-4 space-y-5 text-sm text-slate-700">
+
+          <section>
+            <h4 class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Что показывает</h4>
+            <p class="leading-relaxed">Для каждого района и услуги на две недели вперёд: в какие рабочие дни у бригад, судя по истории, будет пусто, где ожидается перегруз и какой риск аварий. Это <strong>правило по дню недели, а не модель</strong>: модель появится, только если на прошлых неделях угадывает заметно лучше правила.</p>
+          </section>
+
+          <section>
+            <h4 class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Формулы</h4>
+            ${_fcFormulaRow('Объём работ за день', 'L(d) = Σ домов по снимкам ÷ число снимков, где отключение висело', 'Так же считает «Отчёт за всё время», поэтому цифры совпадают.')}
+            ${_fcFormulaRow('Опорные дни', `R = тот же день недели за последние ${num(p.history_weeks)} нед.`, 'Только рабочие дни, когда сборщик работал: простой сбора — не «день без работ».')}
+            ${_fcFormulaRow('Вероятность плановых работ', 'p = |{d ∈ R : L(d) > 0}| ÷ |R|')}
+            ${_fcFormulaRow('Ёмкость бригад — гипотеза', `C = P${Math.round((cap.quantile ?? 0.75) * 100)}( L(d) > 0, рабочие дни за ${num(cap.window_weeks)} нед. ) × ${num(cap.factor)}`, 'Численности бригад в данных нет. За ёмкость принят объём, с которым бригады справлялись в трёх из четырёх загруженных дней. Коэффициент правится в регламенте <code>power_forecast_rules</code> в Студии.')}
+            ${_fcFormulaRow('Доля перегруза', 'q = |{d ∈ R : L(d) > C}| ÷ |R|')}
+            ${_fcFormulaRow('Статус дня', `выходной — сб, вс, праздник · свободно — p ≤ ${num(p.free_max_share)} · перегруз — q ≥ ${num(cap.overload_share)} · иначе обычно`, 'Выходные свободными не предлагаются: цель — без сверхурочных.')}
+            ${_fcFormulaRow('Риск аварий', `r = дней с аварией ÷ наблюдённых дней за ${num(p.risk?.window_days)} сут.;  ожидается r × ${num(p.horizon_days)} дн.`)}
+          </section>
+
+          <section>
+            <h4 class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Насколько можно верить</h4>
+            <p class="leading-relaxed">Правило прогнали по прошлым неделям (${esc(bt.window_from || '—')} — ${esc(bt.window_to || '—')}) так, будто прогноз сделан за ${num(bt.horizon_weeks)} нед. до дня. Названные «свободными» дни оказались свободными в <strong>${pct(fr.precision)}</strong> случаев, а в среднем свободны ${pct(fr.base_rate)} дней. ${ov.precision != null
+              ? `«Перегруз» сбылся в <strong>${pct(ov.precision)}</strong> случаев, а тяжёлых дней в среднем ${pct(ov.base_rate)}.`
+              : `«Перегруз» правило на этих неделях не называло, а тяжёлых дней было ${pct(ov.base_rate)}.`}</p>
+            ${btRows ? `<table class="w-full text-[12px] mt-2">
+              <thead><tr class="text-slate-400 text-[11px]"><th class="text-left font-medium">Услуга</th><th class="text-right font-medium pr-2">свободно в среднем</th><th class="text-right font-medium pr-2">точность «свободно»</th><th class="text-right font-medium">полнота</th></tr></thead>
+              <tbody>${btRows}</tbody></table>` : ''}
+          </section>
+
+          <section>
+            <h4 class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Чего прогноз не знает</h4>
+            <ul class="list-disc pl-5 space-y-1 leading-relaxed">
+              <li>Численности бригад — поэтому ёмкость гипотеза.</li>
+              <li>Трудозатрат: считаются дома, а одна работа на фидере отключает сотни домов. Нужны поштучные работы с началом и концом — сайт 051 их публикует, сбор ещё не подключён.</li>
+              <li>Зимы: история с ${esc(fc.history_from || '—')}, декабря — февраля в ней пока нет.</li>
+              <li>Сутки считаются с 07:00 до 07:00 по Новосибирску, как в суточном архиве.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h4 class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Вопросы к вам</h4>
+            <p class="text-[12px] text-slate-500 mb-2">Ответы помогут сделать прогноз полезным для вашей работы. Заполнять необязательно — можно просто обсудить.</p>
+            <ol class="space-y-3">
+              ${_FC_QUESTIONS.map((q, i) => `
+                <li>
+                  <label for="fcQ${i}" class="block text-[13px] leading-snug"><span class="text-slate-400">${i + 1}.</span> ${esc(q)}</label>
+                  <textarea id="fcQ${i}" rows="2" class="mt-1 w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                </li>`).join('')}
+            </ol>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <input id="fcQName" type="text" maxlength="50" placeholder="Кто отвечает (необязательно)"
+                class="flex-1 min-w-[12rem] border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              <button type="button" onclick="_saveForecastAnswers()" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">Записать ответы</button>
+            </div>
+            <div id="fcQStatus" class="text-[12px] mt-1.5 text-slate-500">Ответы попадут в журнал «Жалобы и предложения» СИМА.</div>
+          </section>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  document.addEventListener('keydown', _fcHelpEsc);
+  el.querySelector('button[aria-label="Закрыть"]')?.focus();
+}
+
+function _fcHelpEsc(e) { if (e.key === 'Escape') _closeForecastHelp(); }
+
+function _closeForecastHelp() {
+  document.getElementById('fcHelpModal')?.remove();
+  document.removeEventListener('keydown', _fcHelpEsc);
+}
+
+async function _saveForecastAnswers() {
+  const status = document.getElementById('fcQStatus');
+  const answers = _FC_QUESTIONS
+    .map((q, i) => ({ q, a: (document.getElementById('fcQ' + i)?.value || '').trim() }))
+    .filter(x => x.a);
+  if (!answers.length) { status.textContent = 'Ответов пока нет — заполните хотя бы одно поле.'; return; }
+  const fc = window._fcLast || {};
+  const where = fc.district ? _fcShortDist(fc.districts?.[0] || fc.district) + ' район' : 'весь город';
+  const text = (`[Прогноз ЖКХ · демо · ${where}]\n` +
+    answers.map(x => `— ${x.q}\n${x.a}`).join('\n')).slice(0, 2000);
+  status.textContent = 'Записываю…';
+  try {
+    const r = await fetch('/feedback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, category: 'suggestion', source: 'zhkh_forecast_demo',
+        name: (document.getElementById('fcQName')?.value || '').trim(), city: _cityCfg?.city_name || '' }),
+    });
+    const d = await r.json().catch(() => ({}));
+    status.textContent = r.ok ? `Записано, № ${d.id}. Спасибо!` : `Не записалось: ${d.detail || r.status}`;
+  } catch (e) {
+    status.textContent = 'Не записалось: нет связи с сервером.';
+  }
+}
+
+function renderOfficialDashboard(power, eco, risks, transit, district, trafficData, forecast) {
   const d = district || '';  // '' = весь город
   const dShort = d.replace(/ (район|округ)$/i, '');
 
@@ -1380,10 +1740,11 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
         ${pwrBlock}
         ${ecoBlock}
       </div>
+      ${_renderZhkhForecast(forecast)}
     </div>`;
 }
 
-async function renderMayorDashboard(power, eco, risks, trafficData) {
+async function renderMayorDashboard(power, eco, risks, trafficData, forecast) {
   const pm = power?.power_meta || {};
   const activeH  = pm.active_houses  || 0;
   const plannedH = pm.planned_houses || 0;
@@ -1630,6 +1991,7 @@ async function renderMayorDashboard(power, eco, risks, trafficData) {
         ${ecoBlock}
         ${budgetBlock}
       </div>
+      ${_renderZhkhForecast(forecast)}
       ${taskBlock}
     </div>`;
 }
