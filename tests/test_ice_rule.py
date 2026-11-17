@@ -125,4 +125,5 @@ def test_сводка_прогноза_и_риск_сегодня_на_врем�
     led = [r for r in ec.query_risks(None) if r["id"] == "ice"]
     assert len(led) == 1 and led[0]["scenario"] == "Возможна гололедица"
     assert "мост" in led[0]["citizen"] and "эстакад" in led[0]["official"]
+    assert "ГОСТ Р 50597-2017, п. 3.4" in led[0]["official"]      # норма — аргумент для мэрии
     assert "чёрн" not in (led[0]["title"] + led[0]["citizen"] + led[0]["official"]).lower()
