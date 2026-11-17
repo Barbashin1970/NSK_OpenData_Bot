@@ -24,6 +24,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 from bisect import bisect_right
@@ -347,19 +349,26 @@ def build_forecast(
                 regular = cap is not None
                 if st == "free" and regular:
                     free_regular += 1
-                out_cells.append({
+                c = {
                     "day": t.isoformat(),
                     "district": dist,
                     "utility": util,
                     "utility_code": UTILITY_CODES[util],
                     "status": st,
                     "regular": regular,
-                    "p_planned": round(p_pl, 2) if p_pl is not None else None,
-                    "p_free": round(1 - p_pl, 2) if p_pl is not None else None,
-                    "p_overload": round(p_heavy, 2) if p_heavy is not None else None,
-                    "load": round(mean_load, 1) if mean_load is not None else None,
-                    "capacity": round(cap, 1) if cap is not None else None,
-                })
+                }
+                # Нет оценки — нет и величины: поля нет совсем, а не 0 и не строка
+                # «нет данных» (договор оракула РАГРАФ, 2026-11-17)
+                if p_pl is not None:
+                    c["p_planned"] = round(p_pl, 2)
+                    c["p_free"] = round(1 - p_pl, 2)
+                if p_heavy is not None:
+                    c["p_overload"] = round(p_heavy, 2)
+                if mean_load is not None:
+                    c["load"] = round(mean_load, 1)
+                if cap is not None:
+                    c["capacity"] = round(cap, 1)
+                out_cells.append(c)
         days_out.append({
             "day": t.isoformat(),
             "dow": t.isoweekday(),
@@ -373,7 +382,7 @@ def build_forecast(
     busy: dict[tuple[str, str], list[float]] = defaultdict(list)
     overloads: list[dict] = []
     for c in out_cells:
-        if c["p_planned"] is not None:
+        if "p_planned" in c:
             busy[(c["district"], c["utility"])].append(c["p_planned"])
         if c["status"] == "free" and c["regular"]:
             free_windows[(c["district"], c["utility"])].append({"day": c["day"], "p_free": c["p_free"]})
@@ -566,8 +575,116 @@ def _city_temperatures(days: int) -> dict[str, float]:
         conn.close()
 
 
+# ── Выпуски: что табло показало на самом деле ─────────────────────────────────
+# Самопроверка (шаг 10) пересчитывает прошлое нынешним кодом по нынешнему архиву — это
+# не то, что видел мэр. Проверка «обещано / сбылось» по выданному требует сохранять
+# каждый выпуск (замечание РАГРАФ 7, 2026-11-17). Выпуск — прогноз по городу: день
+# выпуска, версия регламента, ячейки с p и статусом. Тот же прогноз при повторном
+# расчёте — тот же выпуск; изменилось содержимое (досчитались вчерашние сутки, правка
+# регламента в Студии) — новый выпуск со своим моментом.
+_ISSUES_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS power_forecast_issues (
+        issue_id      VARCHAR PRIMARY KEY,
+        issued_at     VARCHAR,      -- момент выпуска, UTC: когда этот прогноз посчитан впервые
+        issue_day     VARCHAR,      -- «сегодня» по местному времени; горизонт — со следующих суток
+        rules_version VARCHAR,
+        estimator     VARCHAR,
+        params_json   VARCHAR,
+        history_to    VARCHAR,      -- последние наблюдённые сутки, на которых стоит прогноз
+        heating_on    BOOLEAN,
+        cells         INTEGER
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS power_forecast_issue_cells (
+        issue_id   VARCHAR,
+        day        VARCHAR,
+        district   VARCHAR,
+        utility    VARCHAR,
+        status     VARCHAR,
+        regular    BOOLEAN,
+        p_planned  DOUBLE,          -- NULL: оценки нет (выходной, нет опорных дней)
+        p_overload DOUBLE,
+        capacity   DOUBLE,
+        PRIMARY KEY (issue_id, day, district, utility)
+    )
+    """,
+)
+ISSUE_CELL_FIELDS = ("day", "district", "utility_code", "status", "regular", "p_planned", "p_overload", "capacity")
+_ISSUED: dict[str, str] = {}     # issue_id → issued_at: уже сохранённые этим процессом
+
+
+def issue_id_of(fc: dict) -> str:
+    """Идентификатор выпуска: день выпуска, версия регламента и отпечаток содержимого."""
+    body = [[c.get(k) for k in ISSUE_CELL_FIELDS] for c in fc["cells"]]
+    raw = json.dumps([fc["today"], fc["rules_version"], fc["estimator"], fc["params"], body],
+                     ensure_ascii=False, sort_keys=True, default=str)
+    return f"{fc['today']}.{fc['rules_version'] or '0'}.{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:10]}"
+
+
+def record_issue(fc: dict) -> dict[str, Any]:
+    """Сохраняет выпуск прогноза по городу (однажды) и возвращает его паспорт.
+
+    fc — ответ build_forecast(district=None) со всеми ячейками. Сбой записи не ломает
+    прогноз: паспорт отдаётся с issue_stored = False.
+    """
+    if not fc.get("cells"):
+        # пустой прогноз (нет истории) — не выпуск: величин в нём нет
+        return {"issue_id": None, "issued_at": None, "issue_stored": False}
+    iid = issue_id_of(fc)
+    if iid in _ISSUED:
+        return {"issue_id": iid, "issued_at": _ISSUED[iid], "issue_stored": True}
+    issued_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    from .cache import _get_conn
+    try:
+        conn = _get_conn()
+    except Exception as e:
+        log.warning("power_forecast: выпуск %s не сохранён — нет базы (%s)", iid, e)
+        return {"issue_id": iid, "issued_at": issued_at, "issue_stored": False}
+    try:
+        for ddl in _ISSUES_DDL:
+            conn.execute(ddl)
+        row = conn.execute("SELECT issued_at FROM power_forecast_issues WHERE issue_id = ?", [iid]).fetchone()
+        if row is None:
+            names = ("utility",) + ISSUE_CELL_FIELDS[3:]
+            cells = [[iid, c["day"], c["district"]] + [c.get(k) for k in names] for c in fc["cells"]]
+            regime = fc.get("regime") or {}
+            conn.execute("BEGIN TRANSACTION")
+            conn.execute(
+                "INSERT INTO power_forecast_issues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                [iid, issued_at, fc["today"], fc["rules_version"], fc["estimator"],
+                 json.dumps(fc["params"], ensure_ascii=False, sort_keys=True, default=str),
+                 fc.get("history_to"), regime.get("heating_on"), len(cells)],
+            )
+            for i in range(0, len(cells), 200):        # пачками: executemany в DuckDB ~1 с на 700 строк
+                part = cells[i:i + 200]
+                conn.execute(
+                    "INSERT INTO power_forecast_issue_cells VALUES "
+                    + ", ".join(["(?, ?, ?, ?, ?, ?, ?, ?, ?)"] * len(part)) + " ON CONFLICT DO NOTHING",
+                    [v for row in part for v in row],
+                )
+            conn.execute("COMMIT")
+            row = conn.execute("SELECT issued_at FROM power_forecast_issues WHERE issue_id = ?", [iid]).fetchone()
+        _ISSUED[iid] = str(row[0])
+        return {"issue_id": iid, "issued_at": _ISSUED[iid], "issue_stored": True}
+    except Exception as e:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        log.warning("power_forecast: выпуск %s не сохранён (%s)", iid, e)
+        return {"issue_id": iid, "issued_at": issued_at, "issue_stored": False}
+    finally:
+        conn.close()
+
+
 def get_forecast(district: str | None = None, today: date | None = None) -> dict[str, Any]:
-    """Прогноз на живых данных СИМА: суточный архив, снимки за 30 дней, температура."""
+    """Прогноз на живых данных СИМА: суточный архив, снимки за 30 дней, температура.
+
+    Каждый ответ несёт паспорт выпуска (issue_id, issued_at, rules_version). Выпуск —
+    прогноз по городу; прогноз района — его часть с тем же паспортом.
+    """
     from .power_cache import query_observed_days, query_power_history
     from .rule_engine import rules as _rules
 
@@ -585,4 +702,8 @@ def get_forecast(district: str | None = None, today: date | None = None) -> dict
     rows = query_power_history(days=need)
     observed = query_observed_days(days=need)
     temps = _city_temperatures(need) if str(p.get("estimator") or "eb_regime") != "weekday" else {}
-    return build_forecast(rows, observed, today, p, non_working_days(), district, temps)
+    holidays = non_working_days()
+    fc = build_forecast(rows, observed, today, p, holidays, district, temps)
+    city = fc if not district else build_forecast(rows, observed, today, p, holidays, None, temps)
+    fc.update(record_issue(city))
+    return fc

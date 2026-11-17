@@ -120,7 +120,7 @@ class TestГипотезаЁмкости:
         rows = make_rows(weekly) + make_rows(rare, utility=GAS)
         fc = build_forecast(rows, all_days(), TODAY)
         gas = cell(fc, NEXT_WED, utility=GAS)
-        assert gas["capacity"] is None and gas["regular"] is False
+        assert "capacity" not in gas and gas["regular"] is False      # нет оценки — нет поля
         assert not any(w["utility"] == GAS for w in fc["free_windows"])
 
     def test_объём_делится_на_снимки_с_плановой_записью(self):
@@ -270,14 +270,103 @@ class TestКалибровкаV2:
         assert fc["backtest"]["brier"] is not None
 
 
+class TestВыпуски:
+    """Замечание РАГРАФ 7 (17.11.2026): выданные прогнозы сохраняются, ответ несёт паспорт
+    выпуска — момент, версию регламента, идентификатор. Без этого «обещано / сбылось»
+    считается пересчётом нынешним кодом, а не по тому, что видел мэр."""
+
+    @pytest.fixture
+    def stend(self, tmp_path, monkeypatch):
+        import duckdb
+        import src.cache as cache
+        import src.power_cache as pc
+        import src.power_forecast as pf
+        from src.rule_engine import rules
+        db = str(tmp_path / "vypuski.duckdb")
+        monkeypatch.setattr(cache, "_get_conn", lambda *a, **k: duckdb.connect(db))
+        monkeypatch.setattr(pc, "query_power_history", lambda days=0: make_rows(weekly))
+        monkeypatch.setattr(pc, "query_observed_days", lambda days=0: all_days())
+        monkeypatch.setattr(pf, "_city_temperatures", lambda days: {})
+        monkeypatch.setattr(pf, "non_working_days", lambda: set())
+        monkeypatch.setattr(pf, "_ISSUED", {}, raising=False)
+        orig = rules.get
+        monkeypatch.setattr(rules, "get",
+                            lambda name: {"version": "1.1"} if name == "power_forecast_rules" else orig(name))
+        return db
+
+    @staticmethod
+    def vybrat(db, sql, args=()):
+        import duckdb
+        con = duckdb.connect(db)
+        try:
+            return con.execute(sql, list(args)).fetchall()
+        finally:
+            con.close()
+
+    def test_ячейка_без_оценки_без_поля_p(self):
+        """Договор оракула РАГРАФ: нет оценки — нет величины; не p = 0 и не строка."""
+        fc = build_forecast(make_rows(weekly), all_days(), TODAY)
+        sat = cell(fc, NEXT_SAT)
+        assert sat["status"] == "off" and not {"p_planned", "p_free", "p_overload", "load"} & set(sat)
+        gaps = {TODAY - timedelta(days=k) for k in (5, 12, 19, 26)}
+        fc1 = build_forecast(make_rows(weekly), all_days(skip=gaps), TODAY, V1)
+        nodata = cell(fc1, NEXT_WED)
+        assert nodata["status"] == "nodata" and "p_planned" not in nodata and "p_free" not in nodata
+        assert isinstance(cell(fc, NEXT_WED)["p_planned"], float)
+
+    def test_выпуск_сохраняется_и_отдаётся_в_ответе(self, stend):
+        from src.power_forecast import get_forecast
+        fc = get_forecast(today=TODAY)
+        assert fc["issue_id"].startswith("2026-11-16.1.1.") and fc["issue_stored"] is True
+        assert fc["issued_at"].endswith("Z") and fc["rules_version"] == "1.1"
+        meta = self.vybrat(stend, "SELECT issue_id, issued_at, issue_day, rules_version, estimator, cells "
+                                  "FROM power_forecast_issues")
+        rows = self.vybrat(stend, "SELECT status, p_planned FROM power_forecast_issue_cells WHERE issue_id = ?",
+                           [fc["issue_id"]])
+        assert meta == [(fc["issue_id"], fc["issued_at"], "2026-11-16", "1.1", "eb_regime", 70)]
+        assert len(rows) == 70                                    # 1 район × 5 услуг × 14 суток
+        assert all(p is None for st, p in rows if st in ("off", "nodata"))
+        assert all(p is not None for st, p in rows if st not in ("off", "nodata"))
+
+    def test_повторный_расчёт_тот_же_выпуск_новые_данные_новый(self, stend, monkeypatch):
+        import src.power_cache as pc
+        import src.power_forecast as pf
+        a = pf.get_forecast(today=TODAY)
+        b = pf.get_forecast(today=TODAY)
+        pf._ISSUED.clear()                                        # перезапуск: паспорт — из базы
+        c = pf.get_forecast(today=TODAY)
+        assert {(x["issue_id"], x["issued_at"]) for x in (a, b, c)} == {(a["issue_id"], a["issued_at"])}
+        sreda = TODAY - timedelta(days=5)                         # в прошлую среду были работы
+        extra = make_rows(lambda d: ((10.0 if d == sreda else None), False))
+        monkeypatch.setattr(pc, "query_power_history", lambda days=0: make_rows(weekly) + extra)
+        d = pf.get_forecast(today=TODAY)
+        assert d["issue_id"] != a["issue_id"]
+        assert self.vybrat(stend, "SELECT count(*) FROM power_forecast_issues") == [(2,)]
+        assert self.vybrat(stend, "SELECT count(*) FROM power_forecast_issue_cells") == [(140,)]
+
+    def test_выпуск_района_тот_же_что_у_города(self, stend):
+        """Табло района показывает часть выпуска по городу, а не отдельный выпуск."""
+        from src.power_forecast import get_forecast
+        city = get_forecast(today=TODAY)
+        dist = get_forecast(district="Советский", today=TODAY)
+        assert dist["issue_id"] == city["issue_id"] and dist["districts"] == [D1]
+        assert self.vybrat(stend, "SELECT count(*) FROM power_forecast_issues") == [(1,)]
+
+
 class TestЭндпоинт:
-    def test_power_forecast_отвечает_структурой(self):
+    def test_power_forecast_отвечает_структурой(self, monkeypatch):
         from fastapi.testclient import TestClient
+        import src.power_forecast as pf
         from src.api import app
+        # паспорт выпуска — подменой: проверка не пишет выпуски в рабочую базу разработчика
+        monkeypatch.setattr(pf, "record_issue", lambda fc: {
+            "issue_id": "2026-11-16.1.1.abc", "issued_at": "2026-11-16T03:00:00Z", "issue_stored": True},
+            raising=False)
         r = TestClient(app).get("/power/forecast")
         assert r.status_code == 200
         body = r.json()
         assert body["operation"] == "POWER_FORECAST"
-        for key in ("days", "free_windows", "overloads", "risk", "backtest", "hypothesis", "regime", "estimator"):
+        for key in ("days", "free_windows", "overloads", "risk", "backtest", "hypothesis", "regime", "estimator",
+                    "issue_id", "issued_at", "rules_version"):
             assert key in body
         assert body["cells"] == []            # по городу ячейки не отдаются
