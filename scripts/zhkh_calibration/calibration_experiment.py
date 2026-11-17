@@ -47,6 +47,10 @@ for F in mondays:
     b = Yh.loc[last8].mean().values                      # частота работ ячейки за 8 недель (любой день)
     last12 = [d for d in hist if d >= F - timedelta(weeks=12)]
     regular = (Yh.loc[last12].sum().values >= 5)
+    # v2 (как calibration_selection.py, EB4a4_режим): базовая частота — 8 недель в режиме дня
+    # выпуска, если таких дней не меньше 5, иначе все 8 недель
+    reg8 = [d for d in last8 if regime(d) == regime(F)]
+    b_reg = Yh.loc[reg8].mean().values if len(reg8) >= 5 else b
     for t_ in [d for d in wd_days if F <= d <= F + timedelta(days=13)]:
         y = Y.loc[t_].values; season = SEASON[t_.month]; reg = regime(t_)
         refs_all = [d for d in reversed(hist) if d.weekday() == t_.weekday()]
@@ -62,6 +66,8 @@ for F in mondays:
             for d in reversed(refs_all[:12]): z = beta * Y.loc[d].values + (1 - beta) * z
             P[f"TSB{str(beta)[1:]}"] = z
         P["CLIM"] = b
+        rr = [d for d in refs_all if regime(d) == reg][:4]       # v2: тот же день недели в режиме прогнозного дня
+        P["v2"] = ((Y.loc[rr].values.sum(axis=0) if rr else 0) + 4 * b_reg) / (len(rr) + 4)
         if "R4" not in P: continue
         for v, p in P.items():
             se = (p - y) ** 2
@@ -89,9 +95,10 @@ def brier(lst): return float(np.mean(lst)) if lst else float("nan")
 print("\nШкала Брайера (меньше — лучше) и выигрыш против текущего R4, по сезонам и режимам:")
 for key in [("season", "весна"), ("season", "лето"), ("season", "осень"), ("regime", "отопление"), ("regime", "без отопления")]:
     e = err[key]; base = brier(e["R4"])
-    row = "  ".join(f"{v}:{brier(e[v]):.4f}" for v in VARIANTS)
-    best = min(VARIANTS, key=lambda v: brier(e[v]))
+    row = "  ".join(f"{v}:{brier(e[v]):.4f}" for v in VARIANTS + ["v2"])
+    best = min(VARIANTS, key=lambda v: brier(e[v]))        # «лучший» — среди вариантов разведки, без v2
     print(f"  {key[1]:14s} n={len(e['R4']):5d} | лучший {best} ({brier(e[best]):.4f}) против R4 {base:.4f} | {row}")
+print("  (v2 — EB4a4 в пределах режима, как в calibration_selection.py; в выбор «лучшего» не входит)")
 
 print("\nБутстреп по неделям выпуска (2000 повторов): разница Брайера «лучший − R4», 90% интервал")
 rng = np.random.default_rng(7)
@@ -106,6 +113,66 @@ for season in ("весна", "лето", "осень"):
         diffs.append(sb / nb - s4 / n4)
     lo, hi = np.quantile(diffs, [0.05, 0.95])
     print(f"  {season:6s} недель {len(Fs):2d} | {best}: Δ = {np.mean(diffs):+.4f}  [{lo:+.4f}; {hi:+.4f}]  {'значимо' if hi < 0 else 'не отличимо от R4'}")
+
+# ── Замечание РАГРАФ № 9 (17.11.2026): горизонты соседних выпусков пересекаются ──────
+# Выпуск F прогнозирует F…F+13, выпуск F+7 — F+7…F+20: соседние недели выпуска делят
+# неделю прогнозных дней и не независимы, бутстреп по отдельным неделям сужает интервал.
+# Блочный бутстреп: скользящие блоки по 2 недели выпуска (старты 0…n−2, ceil(n/2) блоков
+# с возвращением, обрезка до n недель). Δ — по всей выборке; интервалы — 90% и 95%.
+BLOCK, N_REP = 2, 2000
+by_F = defaultdict(lambda: defaultdict(lambda: [0.0, 0]))       # F → вариант → [Σ кв. ошибок, n] по всем сезонам
+for (s, F), vv in weekly.items():
+    for v, (sq, n) in vv.items():
+        by_F[F][v][0] += sq; by_F[F][v][1] += n
+
+
+def delta(groups, Fs, va, vb):
+    sa = sum(groups[F][va][0] for F in Fs); na = sum(groups[F][va][1] for F in Fs)
+    sb = sum(groups[F][vb][0] for F in Fs); nb = sum(groups[F][vb][1] for F in Fs)
+    return sa / na - sb / nb
+
+
+def week_boot(groups, Fs, va, vb, rng):
+    out = [delta(groups, [Fs[i] for i in rng.choice(len(Fs), len(Fs), replace=True)], va, vb) for _ in range(N_REP)]
+    return np.quantile(out, [0.05, 0.95, 0.025, 0.975])
+
+
+def block_boot(groups, Fs, va, vb, rng):
+    n = len(Fs); starts = n - BLOCK + 1; k = -(-n // BLOCK)
+    if starts < 2:
+        return None                                     # блок один: интервал не определён
+    out = []
+    for _ in range(N_REP):
+        idx = [i for s0 in rng.integers(0, starts, k) for i in range(s0, s0 + BLOCK)][:n]
+        out.append(delta(groups, [Fs[i] for i in idx], va, vb))
+    return np.quantile(out, [0.05, 0.95, 0.025, 0.975])
+
+
+def fmt(q):
+    if q is None:
+        return "интервал не определён (один блок)"
+    tag = "значимо" if q[1] < 0 else ("хуже R4" if q[0] > 0 else "не отличимо от R4")
+    return f"90% [{q[0]:+.4f}; {q[1]:+.4f}]  95% [{q[2]:+.4f}; {q[3]:+.4f}]  {tag}"
+
+
+print(f"\nБутстреп, замечание РАГРАФ № 9: по неделям и блоками по {BLOCK} недели выпуска ({N_REP} повторов)")
+rng_w, rng_b = np.random.default_rng(8), np.random.default_rng(9)
+for season in ("весна", "лето", "осень", "все сезоны"):
+    if season == "все сезоны":
+        groups, Fs = by_F, sorted(by_F)
+        e = {v: [] for v in VARIANTS + ["v2"]}
+        for s in ("весна", "лето", "осень"):
+            for v in e: e[v].extend(err[("season", s)][v])
+    else:
+        groups = {F: weekly[(s, F)] for (s, F) in weekly if s == season}
+        Fs = sorted(groups); e = err[("season", season)]
+    best = min(VARIANTS, key=lambda v: brier(e[v]))
+    blocks = max(len(Fs) - BLOCK + 1, 0)
+    print(f"  {season:10s} недель выпуска {len(Fs):2d}, блоков-кандидатов {blocks}, в повторе {-(-len(Fs) // BLOCK)}")
+    for va in (best, "v2"):
+        d0 = delta(groups, Fs, va, "R4")
+        print(f"     {va + ' − R4':12s} Δ = {d0:+.4f} | по неделям: {fmt(week_boot(groups, Fs, va, 'R4', rng_w))}")
+        print(f"     {'':12s} {'':10s} | блоками:    {fmt(block_boot(groups, Fs, va, 'R4', rng_b))}")
 
 print("\nЛучший вариант по месяцам (так выглядела бы помесячная калибровка):")
 for m in sorted({k[1] for k in err if k[0] == "month"}):
