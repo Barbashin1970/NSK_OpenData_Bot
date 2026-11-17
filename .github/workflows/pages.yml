@@ -18,8 +18,8 @@ on:
       - "scripts/dlya_pages.py"
       - ".github/workflows/pages.yml"
   schedule:
-    - cron: "17 * * * *"        # снимок данных раз в час (GitHub может задержать запуск)
-  workflow_dispatch:
+    - cron: "17 * * * *"        # запасной ход: GitHub задерживает и пропускает плановые запуски
+  workflow_dispatch:            # основной ход — раз в час с Railway (src/pages_dispatch.py, Р-16)
 
 permissions:
   contents: read
