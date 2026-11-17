@@ -1209,7 +1209,19 @@ function _fcAccuracyLine(bt) {
     : 'свободных дней правило не называло';
   const overTxt = o?.precision != null
     ? `; «перегруз» — в ${_fcPct(o.precision)} при базе ${_fcPct(o.base_rate)}` : '';
-  return `Проверка на прошлых 4 неделях, прогноз за 2 недели: ${freeTxt}${overTxt}.`;
+  const cal = (bt.calibration || []).filter(c => c.n >= 20 && c.promised != null)
+    .map(c => `${Math.round(c.promised * 100)}→${Math.round(c.observed * 100)}`).join(' · ');
+  return `Проверка на прошлых 4 неделях, прогноз за 2 недели: ${freeTxt}${overTxt}.` +
+    (cal ? ` Уверенность «свободно», обещано → сбылось, %: ${cal}.` : '');
+}
+
+// Уверенность — с шагом 5%: четыре недели истории не дают точности «87%»
+function _fcConf(x) { return x == null ? null : Math.round(x * 20) * 5; }
+
+// Как часто сбывалась такая уверенность «свободно» на прошлых неделях (корзины самопроверки)
+function _fcObservedFree(bt, pFree) {
+  const c = (bt?.calibration || []).find(b => pFree >= b.from && (pFree < b.to || b.to >= 1));
+  return c && c.n >= 20 && c.observed != null ? c.observed : null;
 }
 
 function _renderZhkhForecast(fc) {
@@ -1219,6 +1231,8 @@ function _renderZhkhForecast(fc) {
     <div class="px-4 py-2.5 flex flex-wrap gap-2 justify-between items-center border-b border-slate-100 bg-slate-50">
       <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">🔮 ЖКХ · прогноз на 2 недели${fc.district ? ' · ' + esc(_fcShortDist(fc.districts?.[0] || fc.district)) : ''}</span>
       <span class="flex items-center gap-1.5">
+        ${fc.regime?.heating_on != null ? `<span class="text-[10px] px-1.5 py-0.5 rounded ${fc.regime.heating_on ? 'bg-orange-100 text-orange-800' : 'bg-sky-100 text-sky-800'} cursor-help"
+          title="${esc(`Режим по правилу: ${fc.regime.run_days} суток подряд ниже / выше +${fc.regime.threshold_c} °C (температура СИМА). Прогноз сравнивает с днями того же режима.`)}">${fc.regime.heating_on ? '🔥 отопление' : '☀️ без отопления'}${fc.regime.since ? ' с ' + _fcDays([fc.regime.since]) : ''}</span>` : ''}
         <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 cursor-help" title="${esc(fc.hypothesis || '')}">ёмкость бригад — гипотеза</span>
         <button type="button" onclick="_showForecastHelp()" aria-label="Как работает прогноз"
           class="w-6 h-6 rounded-full border border-slate-300 bg-white text-slate-600 text-xs font-bold hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700">?</button>
@@ -1258,10 +1272,20 @@ function _renderZhkhForecast(fc) {
       const cellsHtml = days.map(d => {
         const c = byKey[code + '|' + d.day];
         const st = _FC_STATUS[c?.status] || _FC_STATUS.nodata;
+        // В клетке — вероятность её статуса: у «свободно» — что работ не будет,
+        // у остальных рабочих дней — что будут. Шаг 5%, без ложной точности.
+        const isFree = c?.status === 'free', isOver = c?.status === 'overload';
+        // у «перегруза» — его собственная вероятность: доля последних таких дней,
+        // когда объём был выше ёмкости; у остальных — вероятность работ
+        const prob = c?.p_planned != null ? (isFree ? c.p_free : isOver ? c.p_overload : c.p_planned) : null;
+        const conf = _fcConf(prob);
+        const seen = c?.p_free != null && !isOver ? _fcObservedFree(fc.backtest, c.p_free) : null;
+        const seenTxt = seen != null ? ` (на прошлых неделях такая уверенность сбывалась в ${_fcPct(isFree ? seen : 1 - seen)})` : '';
         const tip = c ? `${u.short}, ${_fcDays([d.day])}: ${st.label}` +
-          (c.p_planned != null ? ` · работы были в ${_fcPct(c.p_planned)} таких дней, в среднем ${c.load} дом.` : '') +
+          (conf != null ? ` с вероятностью ${conf}%${seenTxt}` : '') +
+          (c.load != null && c.p_planned != null ? ` · в такие дни в среднем ${c.load} дом.` : '') +
           (c.capacity != null ? ` · ёмкость (гипотеза) ${c.capacity} дом.` : '') : st.label;
-        return `<div class="h-6 rounded ${st.cls}" title="${esc(tip)}"></div>`;
+        return `<div class="h-6 rounded ${st.cls} flex items-center justify-center text-[9px] font-semibold" title="${esc(tip)}">${conf != null ? conf : ''}</div>`;
       }).join('');
       return `
         <div class="pr-2 leading-tight">
@@ -1285,6 +1309,7 @@ function _renderZhkhForecast(fc) {
             ${rowsHtml}
           </div>
           <div class="flex flex-wrap gap-3 mt-2 text-[10px] text-slate-500">${legend}</div>
+          <div class="mt-1 text-[10px] text-slate-400">Число в клетке — вероятность, %: у «свободно» — что плановых работ не будет, у «перегруз» — что объём превысит ёмкость, у остальных дней — что работы будут. Шаг 5%.</div>
           <div class="mt-2 text-[11px] text-slate-600">
             <span class="text-slate-400">Риск аварий на 2 недели (по частоте за 4 недели):</span>
             ${riskTxt || 'аварий за последние 4 недели не было'}
@@ -1321,9 +1346,17 @@ function _renderZhkhForecast(fc) {
   const more = (n) => n > 0 ? `<div class="text-[10px] text-slate-400">и ещё ${n}</div>` : '';
 
   const fw = fc.free_windows || [];
+  const confRange = (ps) => {
+    const v = (ps || []).map(_fcConf).filter(x => x != null);
+    if (!v.length) return '';
+    const lo = Math.min(...v), hi = Math.max(...v);
+    return lo === hi ? `${lo}%` : `${lo}–${hi}%`;
+  };
   const freeList = fw.slice(0, 5).map(w => item(w.district, w.utility_code,
     `<div class="text-emerald-700">${w.days.length === fc.workdays ? 'все рабочие дни' : _fcDays(w.days)}` +
-    `<span class="text-slate-400"> · обычно работы в ${_fcPct(w.busy_share)} дней</span></div>`)).join('') + more(fw.length - 5);
+    `${confRange(w.p_free) ? ` · <strong>${confRange(w.p_free)}</strong>` : ''}` +
+    `<span class="text-slate-400"> · обычно работы в ${_fcPct(w.busy_share)} дней</span></div>`,
+    'Процент — уверенность, что плановых работ в эти дни не будет')).join('') + more(fw.length - 5);
 
   const overGroups = {};
   (fc.overloads || []).forEach(o => {
@@ -1396,6 +1429,34 @@ function _showForecastHelp() {
       <td class="py-1 text-right">${pct(s.recall)}</td>
     </tr>`).join('');
   const where = fc.district ? esc(_fcShortDist(fc.districts?.[0] || fc.district)) + ' район' : 'весь город';
+  const v2 = fc.estimator !== 'weekday';
+  const shr = p.shrinkage || {}, rgp = p.regime || {};
+  const rg = fc.regime || {};
+  const regimeNow = rg.heating_on == null ? 'режим неизвестен (нет температуры)'
+    : `сейчас: ${rg.heating_on ? 'отопление включено' : 'без отопления'}${rg.since ? ' с ' + _fcDays([rg.since]) : ''}`;
+  const calRows = (bt.calibration || []).filter(c => c.n > 0).map(c => `
+    <tr class="border-t border-slate-100">
+      <td class="py-1 pr-2">${Math.round(c.from * 100)}–${Math.round(c.to * 100)}%</td>
+      <td class="py-1 pr-2 text-right">${c.n}</td>
+      <td class="py-1 pr-2 text-right">${pct(c.promised)}</td>
+      <td class="py-1 text-right font-semibold">${pct(c.observed)}</td>
+    </tr>`).join('');
+  const formulas = v2 ? `
+            ${_fcFormulaRow('Объём работ за день', 'L(d) = Σ домов по снимкам ÷ число снимков, где висело плановое отключение', 'Так же считает «Отчёт за всё время», поэтому цифры совпадают.')}
+            ${_fcFormulaRow('Режим отопления', `включено после ${num(rgp.run_days)} суток подряд ниже +${num(rgp.threshold_c)} °C, выключено после ${num(rgp.run_days)} суток выше`, `${regimeNow}. Летом бригады раскапывают теплотрассы и чинят сети, зимой — внутри зданий: дни разных режимов не сравниваются.`)}
+            ${_fcFormulaRow('Опорные дни', `R = последние ${num(p.history_weeks)} таких же дня недели в том же режиме`, 'Только рабочие дни, когда сборщик работал: простой сбора — не «день без работ». Сразу после смены режима опоры берутся из прошлого такого же сезона.')}
+            ${_fcFormulaRow('Вероятность плановых работ', `p = (k + ${num(shr.strength)}·b) ÷ (n + ${num(shr.strength)})`, `k из n — сколько опорных дней были с работами; b — обычная частота работ района по услуге за ${num(shr.base_weeks)} нед. в том же режиме. Сглаживание не даёт четырём дням истории выдать 0% или 100%.`)}
+            ${_fcFormulaRow('Ёмкость бригад — гипотеза', `C = P${Math.round((cap.quantile ?? 0.75) * 100)}( L(d) > 0, рабочие дни за ${num(cap.window_weeks)} нед. ) × ${num(cap.factor)}`, 'Численности бригад в данных нет. За ёмкость принят объём, с которым бригады справлялись в трёх из четырёх загруженных дней; для тепла — только по дням того же режима. Коэффициент правится в регламенте <code>power_forecast_rules</code> в Студии.')}
+            ${_fcFormulaRow('Доля перегруза', 'q = доля последних 4 таких же дней, где L(d) > C')}
+            ${_fcFormulaRow('Статус дня', `выходной — сб, вс, праздник · свободно — p ≤ ${num(p.free_max_share)} (уверенность ≥ ${Math.round((1 - (p.free_max_share ?? 0.35)) * 100)}%) · перегруз — q ≥ ${num(cap.overload_share)} · иначе обычно`, 'Выходные свободными не предлагаются: цель — без сверхурочных. Порог — управленческий выбор: можно поднять уверенность и получить меньше, но надёжнее.')}
+            ${_fcFormulaRow('Риск аварий', `r = дней с аварией ÷ наблюдённых дней за ${num(p.risk?.window_days)} сут.;  ожидается r × ${num(p.horizon_days)} дн.`)}` : `
+            ${_fcFormulaRow('Объём работ за день', 'L(d) = Σ домов по снимкам ÷ число снимков, где висело плановое отключение', 'Так же считает «Отчёт за всё время», поэтому цифры совпадают.')}
+            ${_fcFormulaRow('Опорные дни', `R = тот же день недели за последние ${num(p.history_weeks)} нед.`, 'Только рабочие дни, когда сборщик работал: простой сбора — не «день без работ».')}
+            ${_fcFormulaRow('Вероятность плановых работ', 'p = |{d ∈ R : L(d) > 0}| ÷ |R|')}
+            ${_fcFormulaRow('Ёмкость бригад — гипотеза', `C = P${Math.round((cap.quantile ?? 0.75) * 100)}( L(d) > 0, рабочие дни за ${num(cap.window_weeks)} нед. ) × ${num(cap.factor)}`, 'Численности бригад в данных нет. Коэффициент правится в регламенте <code>power_forecast_rules</code> в Студии.')}
+            ${_fcFormulaRow('Доля перегруза', 'q = |{d ∈ R : L(d) > C}| ÷ |R|')}
+            ${_fcFormulaRow('Статус дня', `выходной — сб, вс, праздник · свободно — p ≤ ${num(p.free_max_share)} · перегруз — q ≥ ${num(cap.overload_share)} · иначе обычно`, 'Выходные свободными не предлагаются: цель — без сверхурочных.')}
+            ${_fcFormulaRow('Риск аварий', `r = дней с аварией ÷ наблюдённых дней за ${num(p.risk?.window_days)} сут.;  ожидается r × ${num(p.horizon_days)} дн.`)}`;
 
   document.getElementById('fcHelpModal')?.remove();
   const el = document.createElement('div');
@@ -1417,18 +1478,12 @@ function _showForecastHelp() {
 
           <section>
             <h4 class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Что показывает</h4>
-            <p class="leading-relaxed">Для каждого района и услуги на две недели вперёд: в какие рабочие дни у бригад, судя по истории, будет пусто, где ожидается перегруз и какой риск аварий. Это <strong>правило по дню недели, а не модель</strong>: модель появится, только если на прошлых неделях угадывает заметно лучше правила.</p>
+            <p class="leading-relaxed">Для каждого района и услуги на две недели вперёд: в какие рабочие дни у бригад, судя по истории, будет пусто, где ожидается перегруз и какой риск аварий. Это <strong>правило, а не модель</strong>: модель появится, только если на прошлых неделях угадывает заметно лучше правила.${v2 ? ' Число в клетке — вероятность: «свободно 85» значит, что из ста таких прогнозов примерно в 85 работ не было. Проверяется не один день, а серия — таблица «обещано / сбылось» ниже.' : ''}</p>
           </section>
 
           <section>
             <h4 class="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Формулы</h4>
-            ${_fcFormulaRow('Объём работ за день', 'L(d) = Σ домов по снимкам ÷ число снимков, где отключение висело', 'Так же считает «Отчёт за всё время», поэтому цифры совпадают.')}
-            ${_fcFormulaRow('Опорные дни', `R = тот же день недели за последние ${num(p.history_weeks)} нед.`, 'Только рабочие дни, когда сборщик работал: простой сбора — не «день без работ».')}
-            ${_fcFormulaRow('Вероятность плановых работ', 'p = |{d ∈ R : L(d) > 0}| ÷ |R|')}
-            ${_fcFormulaRow('Ёмкость бригад — гипотеза', `C = P${Math.round((cap.quantile ?? 0.75) * 100)}( L(d) > 0, рабочие дни за ${num(cap.window_weeks)} нед. ) × ${num(cap.factor)}`, 'Численности бригад в данных нет. За ёмкость принят объём, с которым бригады справлялись в трёх из четырёх загруженных дней. Коэффициент правится в регламенте <code>power_forecast_rules</code> в Студии.')}
-            ${_fcFormulaRow('Доля перегруза', 'q = |{d ∈ R : L(d) > C}| ÷ |R|')}
-            ${_fcFormulaRow('Статус дня', `выходной — сб, вс, праздник · свободно — p ≤ ${num(p.free_max_share)} · перегруз — q ≥ ${num(cap.overload_share)} · иначе обычно`, 'Выходные свободными не предлагаются: цель — без сверхурочных.')}
-            ${_fcFormulaRow('Риск аварий', `r = дней с аварией ÷ наблюдённых дней за ${num(p.risk?.window_days)} сут.;  ожидается r × ${num(p.horizon_days)} дн.`)}
+            ${formulas}
           </section>
 
           <section>
@@ -1436,7 +1491,11 @@ function _showForecastHelp() {
             <p class="leading-relaxed">Правило прогнали по прошлым неделям (${esc(bt.window_from || '—')} — ${esc(bt.window_to || '—')}) так, будто прогноз сделан за ${num(bt.horizon_weeks)} нед. до дня. Названные «свободными» дни оказались свободными в <strong>${pct(fr.precision)}</strong> случаев, а в среднем свободны ${pct(fr.base_rate)} дней. ${ov.precision != null
               ? `«Перегруз» сбылся в <strong>${pct(ov.precision)}</strong> случаев, а тяжёлых дней в среднем ${pct(ov.base_rate)}.`
               : `«Перегруз» правило на этих неделях не называло, а тяжёлых дней было ${pct(ov.base_rate)}.`}</p>
-            ${btRows ? `<table class="w-full text-[12px] mt-2">
+            ${calRows ? `<table class="w-full text-[12px] mt-2">
+              <thead><tr class="text-slate-400 text-[11px]"><th class="text-left font-medium">Уверенность «свободно»</th><th class="text-right font-medium pr-2">прогнозов</th><th class="text-right font-medium pr-2">обещано</th><th class="text-right font-medium">сбылось</th></tr></thead>
+              <tbody>${calRows}</tbody></table>
+              <p class="text-[11px] text-slate-500 mt-1">Если «обещано» и «сбылось» близки, проценту можно верить как проценту. Шкала Брайера (меньше — лучше): ${bt.brier != null ? String(bt.brier).replace('.', ',') : '—'}.${(bt.calibration || []).reduce((s, c) => s + c.n, 0) < 100 ? ' <strong>В районе прогнозов мало</strong> — надёжнее таблица по городу на табло мэра.' : ''}</p>` : ''}
+            ${btRows ? `<table class="w-full text-[12px] mt-3">
               <thead><tr class="text-slate-400 text-[11px]"><th class="text-left font-medium">Услуга</th><th class="text-right font-medium pr-2">свободно в среднем</th><th class="text-right font-medium pr-2">точность «свободно»</th><th class="text-right font-medium">полнота</th></tr></thead>
               <tbody>${btRows}</tbody></table>` : ''}
           </section>

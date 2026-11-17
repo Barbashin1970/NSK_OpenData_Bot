@@ -1,25 +1,31 @@
 """Прогноз загрузки ЖКХ на 1–2 недели: свободные и перегруженные дни, риск аварий.
 
-Версия 1 — правило, а не модель (docs/ZHKH-PROGNOZ-RAZBOR.md):
+Разборы: docs/ZHKH-PROGNOZ-RAZBOR.md (v1), docs/ZHKH-KALIBROVKA-RAZBOR.md (v2).
 
-* профиль дня недели по последним неделям: в какой доле таких дней в ячейке
-  «район × услуга» были плановые работы и в какой доле объём превышал ёмкость;
-* ёмкость бригад — ГИПОТЕЗА из регламента power_forecast_rules.yaml: численности
-  бригад в данных нет, за ёмкость принят процентиль объёма загруженных дней;
-* самопроверка: то же правило на прошлых неделях против факта — табло показывает,
-  насколько прогнозу можно верить.
+Оценщик вероятности плановых работ в ячейке «район × услуга × день» задаётся
+регламентом (`estimator`):
 
-Расчёт — чистая функция build_forecast() без обращения к БД (её проверяют тесты
-на синтетике); get_forecast() только собирает данные и регламенты.
+* ``eb_regime`` (v2, по умолчанию) — режим «отопление включено / выключено» по
+  температуре (n суток подряд ниже / выше порога). Опорные дни — тот же день недели
+  в том же режиме. Оценка сглаживается к частоте работ ячейки в этом режиме
+  (эмпирический Байес): ``p = (k + a·b) / (n + a)``. Вероятности откалиброваны:
+  «свободно 80%» сбывается примерно в 80% случаев (самопроверка это показывает).
+* ``weekday`` (v1) — тот же день недели за последние недели, ``p = k / n``.
 
-Сутки — как в суточном архиве: по UTC, то есть 07:00–07:00 по Новосибирску.
-Рабочие часы бригад (09–17 местного) целиком внутри одних суток.
+Ёмкость бригад — ГИПОТЕЗА: численности бригад в данных нет, за ёмкость принят
+процентиль объёма загруженных дней × коэффициент. Для услуг из
+``capacity.regime_utilities`` (тепло) ёмкость считается в пределах режима.
+
+Расчёт — чистая функция build_forecast() без обращения к БД; get_forecast() только
+собирает данные, температуру и регламенты. Сутки — как в суточном архиве (UTC,
+07:00–07:00 по Новосибирску); рабочие часы бригад целиком внутри одних суток.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+from bisect import bisect_right
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable
@@ -35,12 +41,15 @@ UTILITY_CODES: dict[str, str] = {
 }
 
 DEFAULT_PARAMS: dict[str, Any] = {
+    "estimator": "eb_regime",
     "horizon_days": 14,
     "history_weeks": 4,
-    "min_ref_days": 3,
-    "free_max_share": 0.25,
+    "min_ref_days": 3,               # только для estimator = weekday
+    "free_max_share": 0.35,
+    "shrinkage": {"strength": 4, "base_weeks": 8, "min_base_days": 5},
+    "regime": {"threshold_c": 8.0, "run_days": 5},
     "capacity": {"window_weeks": 12, "min_days": 5, "quantile": 0.75, "factor": 1.0,
-                 "overload_share": 0.5},
+                 "overload_share": 0.5, "regime_utilities": ["heating"]},
     "risk": {"window_days": 28},
     "backtest": {"window_days": 28, "min_lag_weeks": 2},
 }
@@ -50,14 +59,23 @@ HYPOTHESIS_NOTE = (
     "по услуге принят объём, с которым бригады справлялись в трёх из четырёх "
     "загруженных дней за последние недели (процентиль и коэффициент — в регламенте)."
 )
-METHOD_NOTE = (
-    "Правило, а не модель: тот же день недели за последние недели. «Свободно» — "
-    "плановые работы были не чаще чем в четверти таких дней; «перегруз» — объём "
-    "превышал ёмкость хотя бы в половине таких дней. Выходные и праздники как "
-    "свободные не предлагаются."
-)
+METHOD_NOTE = {
+    "eb_regime": (
+        "Правило, а не модель: тот же день недели в том же режиме отопления; оценка "
+        "сглажена к обычной частоте работ района по услуге. «Свободно» — вероятность "
+        "работ не выше порога; «перегруз» — объём превышал ёмкость хотя бы в половине "
+        "таких дней. Выходные и праздники как свободные не предлагаются."
+    ),
+    "weekday": (
+        "Правило, а не модель: тот же день недели за последние недели. «Свободно» — "
+        "плановые работы были не чаще порога; «перегруз» — объём превышал ёмкость "
+        "хотя бы в половине таких дней. Выходные и праздники как свободные не предлагаются."
+    ),
+}
 
 STATUSES = ("free", "normal", "overload", "off", "nodata")
+# Корзины уверенности «свободно» (1 − p) для самопроверки «обещано / сбылось»
+CONFIDENCE_BINS = ((0.9, 1.0001), (0.7, 0.9), (0.5, 0.7), (0.3, 0.5), (0.0, 0.3))
 
 
 def merge_params(raw: dict | None) -> dict[str, Any]:
@@ -81,6 +99,39 @@ def non_working_days() -> set[date]:
                 out.add(date.fromisoformat(str(entry["date"])))
         except Exception as exc:  # битая строка календаря не должна ронять прогноз
             log.warning("power_forecast: некорректная запись календаря %s: %s", entry, exc)
+    return out
+
+
+def heating_regime(temps: dict, threshold_c: float = 8.0, run_days: int = 5) -> dict[date, bool]:
+    """Режим «отопление включено» по суточным температурам.
+
+    Отопление включается со дня, следующего за последним днём серии из run_days суток
+    подряд со среднесуточной температурой ниже порога, и выключается так же после
+    серии выше порога. Пропуск в ряду температуры и ровно пороговое значение прерывают
+    серию. Дни до первой полной серии получают режим, на который эта серия указывает.
+    """
+    series = sorted((date.fromisoformat(str(d)[:10]), float(v)) for d, v in temps.items() if v is not None)
+    out: dict[date, bool] = {}
+    state: bool | None = None
+    pending: list[date] = []
+    cold = warm = 0
+    prev: date | None = None
+    for d, v in series:
+        if prev is not None and (d - prev).days != 1:
+            cold = warm = 0
+        prev = d
+        cold, warm = (cold + 1, 0) if v < threshold_c else (0, warm + 1) if v > threshold_c else (0, 0)
+        if state is None:
+            pending.append(d)
+        else:
+            out[d] = state                     # переключение действует со следующего дня
+        new = True if (state is not True and cold >= run_days) else \
+              False if (state is not False and warm >= run_days) else None
+        if new is not None:
+            if state is None:
+                out.update({x: new for x in pending})
+                pending = []
+            state = new
     return out
 
 
@@ -118,23 +169,28 @@ def build_forecast(
     params: dict | None = None,
     non_working: Iterable[date] = (),
     district: str | None = None,
+    temps: dict | None = None,
 ) -> dict[str, Any]:
     """Прогноз на horizon_days суток вперёд от завтрашнего дня.
 
     rows — строки «день × район × услуга» (формат query_power_history):
       day, district, utility, planned_houses, planned_records, active_records, snapshots.
     observed_days — дни, когда сборщик работал (query_observed_days). День без
-      строк, но наблюдённый, — день без отключений; ненаблюдённый — провал сбора,
-      он в расчёт не идёт.
-    today — сегодняшние сутки (UTC). Они неполные и в историю не входят.
+      строк, но наблюдённый, — день без отключений; ненаблюдённый — провал сбора.
+    today — сегодняшние сутки (по часовому поясу города). В историю не входят.
+    temps — {день: среднесуточная температура по городу}; нужна оценщику eb_regime.
+      Без неё режим неизвестен, и оценка сглаживается без учёта режима.
     """
     p = merge_params(params)
+    est = str(p.get("estimator") or "eb_regime")
+    use_eb = est != "weekday"
     hist_w = int(p["history_weeks"])
     min_ref = max(1, int(p["min_ref_days"]))   # 0 в регламенте дал бы деление на ноль
     free_max = float(p["free_max_share"])
     horizon = int(p["horizon_days"])
-    cap_p, risk_p, bt_p = p["capacity"], p["risk"], p["backtest"]
+    cap_p, risk_p, bt_p, shr, reg_p = p["capacity"], p["risk"], p["backtest"], p["shrinkage"], p["regime"]
     over_share = float(cap_p["overload_share"])
+    reg_utils = set(cap_p.get("regime_utilities") or [])
     holidays = set(non_working)
 
     # ── История по ячейкам ────────────────────────────────────────────────
@@ -158,54 +214,112 @@ def build_forecast(
         return d.weekday() < 5 and d not in holidays
 
     def load(d: date, dist: str, util: str) -> float | None:
-        """Объём плановых работ («домов в списке»); None — работ в этот день не было."""
+        """Объём плановых работ («домов в списке»); None — работ в этот день не было.
+
+        Делим на planned_records — число снимков, где висела ПЛАНОВАЯ запись
+        (одна строка на снимок), а не на все снимки пары (сверка 2026-11-17).
+        """
         r = cells.get((d.isoformat(), dist, util))
-        if not r or int(r.get("planned_records") or 0) <= 0:
+        n_planned = int((r or {}).get("planned_records") or 0)
+        if n_planned <= 0:
             return None
-        snaps = int(r.get("snapshots") or 0)
-        return int(r.get("planned_houses") or 0) / snaps if snaps else 0.0
+        return int(r.get("planned_houses") or 0) / n_planned
 
     def emergency(d: date, dist: str, util: str) -> bool:
         r = cells.get((d.isoformat(), dist, util))
         return bool(r and int(r.get("active_records") or 0) > 0)
 
     workdays_observed = [d for d in observed if workday(d)]
+
+    # ── Режим отопления по температуре ───────────────────────────────────────
+    regime_map = heating_regime(temps or {}, float(reg_p["threshold_c"]), int(reg_p["run_days"])) if use_eb else {}
+    regime_days = sorted(regime_map)
+
+    def regime(d: date) -> bool | None:
+        """Режим на дату; за пределами ряда — последний известный до неё."""
+        if not regime_days:
+            return None
+        i = bisect_right(regime_days, d) - 1
+        return regime_map[regime_days[max(i, 0)]]
+
+    # ── Опорные дни, базовая частота, оценка вероятности ──────────────────────
+    def refs_for(cutoff: date, wd: int, rg: bool | None, recent: bool = False) -> list[date]:
+        """Опорные дни: тот же день недели до cutoff.
+
+        Для вероятности работ (v2) — в том же режиме, сколь угодно далеко назад: сразу
+        после включения отопления это дни прошлого отопительного сезона. Для перегруза
+        и объёма (recent=True) и для v1 — последние недели независимо от режима:
+        «тяжёлый день» — свойство нынешней нагрузки, а не прошлой весны (замер
+        2026-11-17: ёмкость в режиме + последние недели дали подъём ×2,2 против ×1,8).
+        """
+        cand = [d for d in reversed(workdays_observed) if d < cutoff and d.weekday() == wd]
+        if use_eb and not recent:
+            return [d for d in cand if rg is None or regime(d) == rg][:hist_w]
+        lo = cutoff - timedelta(weeks=hist_w + 2)
+        return [d for d in cand if d >= lo][:hist_w]
+
+    base_cache: dict[tuple, list[date]] = {}
+
+    def base_days(cutoff: date, rg: bool | None) -> list[date]:
+        key = (cutoff, rg)
+        if key not in base_cache:
+            lo = cutoff - timedelta(weeks=int(shr["base_weeks"]))
+            days = [d for d in workdays_observed if lo <= d < cutoff]
+            same = [d for d in days if rg is None or regime(d) == rg]
+            base_cache[key] = same if len(same) >= int(shr["min_base_days"]) else days
+        return base_cache[key]
+
+    def estimate(refs: list[date], base: list[date], dist: str, util: str) -> float | None:
+        """Вероятность плановых работ; None — оценить не на чем."""
+        k = sum(load(d, dist, util) is not None for d in refs)
+        n = len(refs)
+        if not use_eb:
+            return k / n if n >= min_ref else None
+        if base:
+            b = sum(load(d, dist, util) is not None for d in base) / len(base)
+        elif n:
+            b = k / n
+        else:
+            return None
+        a = float(shr["strength"])
+        return (k + a * b) / (n + a)
+
     cap_cache: dict[tuple, float | None] = {}
 
-    def capacity_at(end: date, dist: str, util: str) -> float | None:
+    def capacity_at(end: date, dist: str, util: str, rg: bool | None) -> float | None:
         """Гипотеза ёмкости по данным строго до даты end (без подглядывания вперёд)."""
-        key = (end, dist, util)
+        in_regime = use_eb and rg is not None and UTILITY_CODES[util] in reg_utils
+        key = (end, dist, util, rg if in_regime else None)
         if key not in cap_cache:
             start = end - timedelta(weeks=int(cap_p["window_weeks"]))
-            loads = [v for d in workdays_observed if start <= d < end
+            loads = [v for d in workdays_observed
+                     if start <= d < end and (not in_regime or regime(d) == rg)
                      for v in (load(d, dist, util),) if v]
             cap_cache[key] = (_quantile(loads, float(cap_p["quantile"])) * float(cap_p["factor"])
                               if len(loads) >= int(cap_p["min_days"]) else None)
         return cap_cache[key]
 
-    def judge(refs: list[date], dist: str, util: str, cap: float | None) -> tuple[str, float, float, float]:
-        """Статус рабочего дня по опорным дням: (статус, p_работ, p_перегруза, средний объём)."""
+    def judge(p_pl: float, refs: list[date], dist: str, util: str, cap: float | None) -> tuple[str, float, float]:
+        """Статус рабочего дня: (статус, p_перегруза, средний объём по опорным дням)."""
         loads = [load(d, dist, util) for d in refs]
-        p_pl = sum(v is not None for v in loads) / len(loads)
-        p_heavy = (sum(v is not None and v > cap for v in loads) / len(loads)) if cap else 0.0
-        mean_load = sum(v or 0.0 for v in loads) / len(loads)
+        n = len(loads)
+        p_heavy = (sum(v is not None and v > cap for v in loads) / n) if (cap and n) else 0.0
+        mean_load = (sum(v or 0.0 for v in loads) / n) if n else 0.0
         if p_pl <= free_max:
             st = "free"
         elif cap and p_heavy >= over_share:
             st = "overload"
         else:
             st = "normal"
-        return st, p_pl, p_heavy, mean_load
+        return st, p_heavy, mean_load
 
-    # ── Опорные дни прогноза: тот же день недели, только рабочие и наблюдённые ─
-    ref_from = today - timedelta(weeks=hist_w + 2)
-    refs_by_weekday = {
-        wd: [d for d in reversed(workdays_observed) if d >= ref_from and d.weekday() == wd][:hist_w]
-        for wd in range(7)
-    }
-    capacity = {(dist, util): capacity_at(today, dist, util) for dist in scope for util in utils}
+    # ── Горизонт: режим сегодняшнего дня продлевается на две недели ─────────────
+    rg_now = regime(today - timedelta(days=1)) if use_eb else None
+    refs_by_weekday = {wd: refs_for(today, wd, rg_now) for wd in range(7)}
+    recent_by_weekday = {wd: refs_for(today, wd, rg_now, recent=True) for wd in range(7)}
+    base_now = base_days(today, rg_now) if use_eb else []
+    capacity = {(dist, util): capacity_at(today, dist, util, rg_now) for dist in scope for util in utils}
 
-    # ── Горизонт ──────────────────────────────────────────────────────────
     out_cells: list[dict] = []
     days_out: list[dict] = []
     for i in range(1, horizon + 1):
@@ -219,10 +333,12 @@ def build_forecast(
                 p_pl = p_heavy = mean_load = None
                 if not workday(t):
                     st = "off"
-                elif len(refs) < min_ref:
-                    st = "nodata"
                 else:
-                    st, p_pl, p_heavy, mean_load = judge(refs, dist, util, cap)
+                    p_pl = estimate(refs, base_now, dist, util)
+                    if p_pl is None:
+                        st = "nodata"
+                    else:
+                        st, p_heavy, mean_load = judge(p_pl, recent_by_weekday[t.weekday()], dist, util, cap)
                 counts[st] += 1
                 # «Регулярная» ячейка — где плановые работы идут постоянно и ёмкость
                 # оценена. Свободный день там и есть незанятая бригада; где работ
@@ -238,6 +354,7 @@ def build_forecast(
                     "status": st,
                     "regular": regular,
                     "p_planned": round(p_pl, 2) if p_pl is not None else None,
+                    "p_free": round(1 - p_pl, 2) if p_pl is not None else None,
                     "p_overload": round(p_heavy, 2) if p_heavy is not None else None,
                     "load": round(mean_load, 1) if mean_load is not None else None,
                     "capacity": round(cap, 1) if cap is not None else None,
@@ -251,23 +368,24 @@ def build_forecast(
             "free_regular": free_regular,
         })
 
-    free_windows: dict[tuple[str, str], list[str]] = defaultdict(list)
+    free_windows: dict[tuple[str, str], list[dict]] = defaultdict(list)
     busy: dict[tuple[str, str], list[float]] = defaultdict(list)
     overloads: list[dict] = []
     for c in out_cells:
         if c["p_planned"] is not None:
             busy[(c["district"], c["utility"])].append(c["p_planned"])
         if c["status"] == "free" and c["regular"]:
-            free_windows[(c["district"], c["utility"])].append(c["day"])
+            free_windows[(c["district"], c["utility"])].append({"day": c["day"], "p_free": c["p_free"]})
         elif c["status"] == "overload":
             overloads.append(c)
-    # Сначала окна там, где бригады обычно заняты: их свободный день — это
-    # действительно простаивающая бригада. Ячейка, свободная все дни подряд,
-    # говорит скорее о том, что работ там вообще мало.
+    # Сначала окна там, где бригады обычно заняты: их свободный день — действительно
+    # простаивающая бригада. Ячейка, свободная все дни подряд, говорит скорее о том,
+    # что работ там вообще мало.
     free_list = [
-        {"district": d, "utility": u, "utility_code": UTILITY_CODES[u], "days": ds,
+        {"district": d, "utility": u, "utility_code": UTILITY_CODES[u],
+         "days": [w["day"] for w in ws], "p_free": [w["p_free"] for w in ws],
          "busy_share": round(sum(busy[(d, u)]) / len(busy[(d, u)]), 2) if busy[(d, u)] else 0.0}
-        for (d, u), ds in free_windows.items()
+        for (d, u), ws in free_windows.items()
     ]
     free_list.sort(key=lambda x: (-x["busy_share"], -len(x["days"]), x["district"], x["utility_code"]))
     overloads.sort(key=lambda c: (-c["p_overload"], c["day"], c["district"]))
@@ -292,24 +410,29 @@ def build_forecast(
 
     # ── Самопроверка правила на прошлых неделях ──────────────────────────────
     # Для каждого прошедшего рабочего дня t — то же правило, «как если бы» прогноз
-    # был сделан за min_lag_weeks недель до t: опорные дни и ёмкость берутся только
-    # из данных до этой даты (худший горизонт табло, без подглядывания вперёд).
+    # был выпущен за min_lag_weeks недель до t: опорные дни, базовая частота, режим
+    # и ёмкость — только по данным до дня выпуска включительно.
     bt_from = today - timedelta(days=int(bt_p["window_days"]))
     lag = int(bt_p["min_lag_weeks"])
     free_by_util: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0, 0])   # tp, fp, fn, tn
     free_regular_conf = [0, 0, 0, 0]
     over_conf = [0, 0, 0, 0]
+    calib = [[0, 0.0, 0] for _ in CONFIDENCE_BINS]        # n, Σ обещанного, сбылось
+    sq_err, n_err = 0.0, 0
     bt_days = [d for d in workdays_observed if d >= bt_from]
     for t in bt_days:
-        issued = t - timedelta(weeks=lag)
-        refs = [t - timedelta(weeks=k) for k in range(lag, lag + hist_w)]
-        refs = [d for d in refs if d in observed_set and workday(d)]
-        if len(refs) < min_ref:
-            continue
+        cutoff = t - timedelta(weeks=lag) + timedelta(days=1)
+        rg = regime(cutoff - timedelta(days=1)) if use_eb else None
+        refs = refs_for(cutoff, t.weekday(), rg)
+        recent = refs_for(cutoff, t.weekday(), rg, recent=True)
+        base = base_days(cutoff, rg) if use_eb else []
         for dist in scope:
             for util in utils:
-                cap = capacity_at(issued, dist, util)
-                st, _, _, _ = judge(refs, dist, util, cap)
+                p_pl = estimate(refs, base, dist, util)
+                if p_pl is None:
+                    continue
+                cap = capacity_at(cutoff, dist, util, rg)
+                st, _, _ = judge(p_pl, recent, dist, util, cap)
                 actual = load(t, dist, util)
                 pred_free, act_free = st == "free", actual is None
                 idx = 0 if pred_free and act_free else 1 if pred_free else 2 if act_free else 3
@@ -318,6 +441,15 @@ def build_forecast(
                     free_regular_conf[idx] += 1
                     pred_over, act_over = st == "overload", actual is not None and actual > cap
                     over_conf[0 if pred_over and act_over else 1 if pred_over else 2 if act_over else 3] += 1
+                    p_free = 1 - p_pl
+                    for j, (lo, hi) in enumerate(CONFIDENCE_BINS):
+                        if lo <= p_free < hi:
+                            calib[j][0] += 1
+                            calib[j][1] += p_free
+                            calib[j][2] += int(act_free)
+                            break
+                    sq_err += (p_pl - (0.0 if act_free else 1.0)) ** 2
+                    n_err += 1
 
     backtest = {
         "window_from": bt_days[0].isoformat() if bt_days else None,
@@ -329,7 +461,33 @@ def build_forecast(
                            for code in UTILITY_CODES.values() if code in free_by_util},
         },
         "overload": _summary(*over_conf),
+        # «Обещано / сбылось»: калибровка уверенности «свободно» по корзинам
+        "calibration": [
+            {"from": lo, "to": min(hi, 1.0), "n": n,
+             "promised": round(s / n, 3) if n else None,
+             "observed": round(k / n, 3) if n else None}
+            for (lo, hi), (n, s, k) in zip(CONFIDENCE_BINS, calib)
+        ],
+        "brier": round(sq_err / n_err, 4) if n_err else None,
     }
+
+    regime_info = None
+    if use_eb:
+        since = None
+        if regime_days and rg_now is not None:
+            past = [d for d in regime_days if d < today]
+            for d in reversed(past):
+                if regime_map[d] != rg_now:
+                    since = d + timedelta(days=1)
+                    break
+            since = since or (past[0] if past else None)
+        regime_info = {
+            "heating_on": rg_now,
+            "since": since.isoformat() if since else None,
+            "threshold_c": float(reg_p["threshold_c"]),
+            "run_days": int(reg_p["run_days"]),
+            "temperature_days": len(regime_map),
+        }
 
     error = None
     if district and not scope:
@@ -339,6 +497,8 @@ def build_forecast(
         "operation": "POWER_FORECAST",
         "error": error,
         "rules_version": str(p.get("version") or ""),
+        "estimator": est,
+        "regime": regime_info,
         "today": today.isoformat(),
         "horizon_from": (today + timedelta(days=1)).isoformat(),
         "horizon_to": (today + timedelta(days=horizon)).isoformat(),
@@ -350,7 +510,7 @@ def build_forecast(
         "workdays": sum(1 for d in days_out if d["workday"]),
         "params": p,
         "hypothesis": HYPOTHESIS_NOTE,
-        "method": METHOD_NOTE,
+        "method": METHOD_NOTE.get(est, METHOD_NOTE["eb_regime"]),
         "days": days_out,
         "cells": out_cells,
         "free_windows": free_list,
@@ -369,22 +529,59 @@ def history_days_needed(p: dict) -> int:
     """Сколько суток истории нужно правилу при этих параметрах."""
     hist_w = int(p["history_weeks"])
     lag = int(p["backtest"]["min_lag_weeks"])
-    return max(
+    need = max(
         int(p["capacity"]["window_weeks"]) * 7 + int(p["backtest"]["window_days"]),
         (hist_w + 2) * 7,
         int(p["backtest"]["window_days"]) + (lag + hist_w) * 7,
         int(p["risk"]["window_days"]),
     ) + 2
+    # v2 ищет тот же день недели в том же режиме: сразу после смены режима опорные
+    # дни лежат в прошлом таком же сезоне — нужна история за год
+    return max(need, 400) if str(p.get("estimator") or "eb_regime") != "weekday" else need
+
+
+def _city_temperatures(days: int) -> dict[str, float]:
+    """Среднесуточная температура по городу: медиана районов из экологического архива.
+
+    Строки-заглушки (snapshots = 0) не берутся — урок 2026-08-19 о синтетике.
+    """
+    from .cache import _get_conn
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT day, median(temp_avg) FROM ecology_daily_archive
+            WHERE temp_avg IS NOT NULL AND COALESCE(snapshots, 0) > 0 AND day >= ?
+            GROUP BY day
+            """,
+            [cutoff],
+        ).fetchall()
+        return {str(d)[:10]: float(t) for d, t in rows}
+    except Exception as e:
+        log.warning("power_forecast: температура недоступна (%s) — режим отопления не учитывается", e)
+        return {}
+    finally:
+        conn.close()
 
 
 def get_forecast(district: str | None = None, today: date | None = None) -> dict[str, Any]:
-    """Прогноз на живых данных СИМА: суточный архив + сырые снимки последних 30 дней."""
+    """Прогноз на живых данных СИМА: суточный архив, снимки за 30 дней, температура."""
     from .power_cache import query_observed_days, query_power_history
     from .rule_engine import rules as _rules
 
     p = merge_params(_rules.get("power_forecast_rules"))
-    today = today or datetime.now(timezone.utc).date()
+    if today is None:
+        # «Сегодня» — по местному времени города: в 00:00–07:00 по Новосибирску дата
+        # по UTC ещё вчерашняя, и прогноз начинался бы с сегодняшнего дня как с «завтра».
+        from .city_config import get_utc_offset
+        try:
+            offset = int(get_utc_offset())
+        except Exception:
+            offset = 7
+        today = (datetime.now(timezone.utc) + timedelta(hours=offset)).date()
     need = history_days_needed(p)
     rows = query_power_history(days=need)
     observed = query_observed_days(days=need)
-    return build_forecast(rows, observed, today, p, non_working_days(), district)
+    temps = _city_temperatures(need) if str(p.get("estimator") or "eb_regime") != "weekday" else {}
+    return build_forecast(rows, observed, today, p, non_working_days(), district, temps)
