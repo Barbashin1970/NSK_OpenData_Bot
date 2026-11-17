@@ -77,8 +77,11 @@ def fajl_snimka(adres: str) -> str:
 def zaprosy_iz_stranicy(html: str, rajony: list[dict]) -> list[str]:
     """Готовые запросы для /ask: литералы, шаблоны с районом, чипы ролей."""
     gotovye: set[str] = set()
-    for pat in (r"askNow\('([^'$`\\]+)'\)", r"setQuery\('([^'$`\\]+)'\)", r"\bq:\s*'([^'$`\\]+)'"):
-        gotovye |= set(re.findall(pat, html))
+    # в обеих кавычках: набор примеров ролей записан как {q: "…"} — без двойных кавычек
+    # 25 из 43 примеров не попадали в снимок (проверка живого сайта 2026-11-17)
+    for pat in (r"""askNow\((['"])([^'"$`\\]+)\1\)""", r"""setQuery\((['"])([^'"$`\\]+)\1\)""",
+                r"""\bq:\s*(['"])([^'"$`\\]+)\1"""):
+        gotovye |= {m[1] for m in re.findall(pat, html)}
     # подстановки чипов {D1}, {CITY}… — значения Новосибирска из _resolveChips(...) в коде страницы
     m = re.search(r"let ROLE_CHIPS = _resolveChips\(\s*\{(.*?)\}", html, re.S)
     podst = dict(re.findall(r"([A-Z1-9_]+):\s*'([^']*)'", m.group(1))) if m else {}
@@ -123,6 +126,18 @@ def spisok_adresov(html: str, konfig: dict) -> list[str]:
             vidannye.add(kanon(a))
             itog.append(a)
     return itog
+
+
+def dannye_2gis(x) -> bool:
+    """Ответ с данными API 2ГИС (маршруты, справочник). Правила 2ГИС разрешают только
+    проброс в реальном времени, без хранения, — в снимок такой ответ не идёт. Признак —
+    поле source с «2GIS» (src/transport_api.py: «…real-time, данные не сохраняются»)."""
+    if isinstance(x, dict):
+        return any((k == "source" and isinstance(v, str) and re.search(r"2gis|2гис", v, re.I) is not None)
+                   or dannye_2gis(v) for k, v in x.items())
+    if isinstance(x, list):
+        return any(dannye_2gis(v) for v in x)
+    return False
 
 
 POSLEDNYAYA_OSHIBKA = {"tekst": ""}
@@ -290,7 +305,7 @@ def main():
                  "снимок не снят, публикация не меняется")
     konfig = json.loads(telo)
     adresa = spisok_adresov(html, konfig)
-    poluceno, propusk, bajt = 0, [], 0
+    poluceno, propusk, ne_hranim, bajt = 0, [], [], 0
     start = time.monotonic()
     # ответы по 0,5–2 с, адресов ~400: последовательно — больше 10 минут, потоками — 2–3
     with ThreadPoolExecutor(max_workers=a.potoki) as pul:
@@ -298,6 +313,9 @@ def main():
     for adres, telo in zip(adresa, otvety):
         if telo is None:
             propusk.append(adres)
+            continue
+        if dannye_2gis(json.loads(telo)):
+            ne_hranim.append(adres)                   # прослойка ответит «нет в демо-снимке»
             continue
         (vyhod / fajl_snimka(adres)).write_bytes(telo)
         poluceno += 1
@@ -332,7 +350,8 @@ def main():
     (vyhod / ".nojekyll").write_text("", encoding="utf-8")
     (vyhod / "api" / "_snapshot.json").write_text(json.dumps({
         "snapshot": meta["snapshot"], "source": api, "requested": len(adresa), "saved": poluceno,
-        "skipped": propusk, "keys": {kanon(x): fajl_snimka(x) for x in adresa if x not in propusk},
+        "skipped": propusk, "not_stored_2gis": ne_hranim,
+        "keys": {kanon(x): fajl_snimka(x) for x in adresa if x not in propusk and x not in ne_hranim},
     }, ensure_ascii=False, indent=1), encoding="utf-8")
 
     # ── самопроверка ──────────────────────────────────────────────────────────
@@ -358,10 +377,12 @@ def main():
         print("СТОП, самопроверка:\n  " + "\n  ".join(oshibki[:20]))
         sys.exit(1)
     print(f"{vyhod.name}/ — копия лендинга под {osnova}/: снимков {poluceno} из {len(adresa)} "
-          f"({bajt / 1024 / 1024:.1f} МБ) за {time.monotonic() - start:.0f} с, пропущено {len(propusk)}; "
-          "адресов без основы нет.")
+          f"({bajt / 1024 / 1024:.1f} МБ) за {time.monotonic() - start:.0f} с, пропущено {len(propusk)}, "
+          f"не хранится по правилам 2ГИС {len(ne_hranim)}; адресов без основы нет.")
     for x in propusk[:15]:
         print("  пропущено:", x)
+    for x in ne_hranim[:15]:
+        print("  данные 2ГИС, не хранится:", x)
 
 
 if __name__ == "__main__":
