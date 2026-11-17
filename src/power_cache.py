@@ -494,6 +494,18 @@ def query_power_history(
         conn.close()
 
 
+def _avg_while_listed(row: dict, group: str) -> float:
+    """Среднее число домов группы («active»/«planned»), пока отключение висело в списке.
+
+    Знаменатель — число снимков с записью именно этой группы: в каждом снимке у пары
+    «район × услуга» не больше одной строки на группу, поэтому это active_records или
+    planned_records. Поле snapshots считает снимки с ЛЮБОЙ записью пары и занижало
+    среднее у 17% пар с плановыми работами (сверка 2026-11-17, docs/ZHKH-PROGNOZ-RAZBOR.md).
+    """
+    n = int(row.get(f"{group}_records") or 0)
+    return int(row.get(f"{group}_houses") or 0) / n if n > 0 else 0.0
+
+
 def query_power_history_by_day(
     district_filter: str | None = None,
     utility_filter: str | None = None,
@@ -502,7 +514,9 @@ def query_power_history_by_day(
     """Агрегированная история по дням.
 
     Для каждого дня возвращает СРЕДНЕЕ кол-во домов в моменте (без снежного кома):
-      Шаг 1: для каждой (район × utility) считаем avg = SUM(houses) / snapshots.
+      Шаг 1: для каждой (район × utility) — среднее число домов, пока отключение
+             было в списке: SUM(houses) / число снимков с записью ЭТОЙ группы
+             (active_records или planned_records, см. _avg_while_listed).
       Шаг 2: суммируем эти avg по всем (район × utility) дня.
     """
     rows = query_power_history(district_filter, utility_filter, days)
@@ -515,11 +529,8 @@ def query_power_history_by_day(
                 "active_houses": 0.0, "planned_houses": 0.0,
                 "active_records": 0, "planned_records": 0,
             }
-        snaps = int(r.get("snapshots") or 0)
-        if snaps > 0:
-            # Среднее в моменте для этой (район × utility) пары
-            by_day[d]["active_houses"] += int(r.get("active_houses") or 0) / snaps
-            by_day[d]["planned_houses"] += int(r.get("planned_houses") or 0) / snaps
+        by_day[d]["active_houses"] += _avg_while_listed(r, "active")
+        by_day[d]["planned_houses"] += _avg_while_listed(r, "planned")
         by_day[d]["active_records"] += int(r.get("active_records") or 0)
         by_day[d]["planned_records"] += int(r.get("planned_records") or 0)
     result = []
@@ -539,8 +550,8 @@ def query_power_history_by_district(
 
     Возвращает на каждый район:
       - active_houses, planned_houses — СУММА по снимкам (legacy, "снежный ком")
-      - planned_avg_daily — среднее число домов в плане в любой момент
-        (рассчитано как SUM(planned)/SUM(snapshots), усреднено по периоду)
+      - planned_avg_daily — среднее число домов в плане, пока отключение висело
+        (SUM(planned) / planned_records по каждой паре, усреднено по периоду)
       - planned_now — текущее число домов в плане (последний снимок per utility)
       - days_with_outages — кол-во дней с активными авариями (rounded avg > 0)
       - days_with_any_outage — кол-во дней с любыми отключениями (active OR planned)
@@ -564,19 +575,18 @@ def query_power_history_by_district(
                 "_planned_sum_avg": 0.0,
                 "_days_seen": set(),
             }
-        snaps = int(r.get("snapshots") or 0)
-        if snaps > 0:
-            by_dist[dist]["_active_sum_avg"] += int(r.get("active_houses") or 0) / snaps
-            by_dist[dist]["_planned_sum_avg"] += int(r.get("planned_houses") or 0) / snaps
+        a_avg = _avg_while_listed(r, "active")
+        p_avg = _avg_while_listed(r, "planned")
+        by_dist[dist]["_active_sum_avg"] += a_avg
+        by_dist[dist]["_planned_sum_avg"] += p_avg
         by_dist[dist]["_days_seen"].add(r["day"])
 
         # Day-level накопление (для clean_days, как в by_day)
         key = (dist, r["day"])
         if key not in by_dist_day:
             by_dist_day[key] = {"active_avg": 0.0, "planned_avg": 0.0}
-        if snaps > 0:
-            by_dist_day[key]["active_avg"] += int(r.get("active_houses") or 0) / snaps
-            by_dist_day[key]["planned_avg"] += int(r.get("planned_houses") or 0) / snaps
+        by_dist_day[key]["active_avg"] += a_avg
+        by_dist_day[key]["planned_avg"] += p_avg
 
     # Считаем "дни с любыми отключениями" по той же логике, что и frontend chart:
     # день считается "не-чистым", если rounded avg active > 0 ИЛИ rounded avg planned > 0
