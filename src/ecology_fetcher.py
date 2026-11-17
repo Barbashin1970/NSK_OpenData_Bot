@@ -196,7 +196,7 @@ def _fetch_openmeteo_forecast(station: dict) -> list[dict] | None:
         "latitude":        station["latitude"],
         "longitude":       station["longitude"],
         "daily":           "temperature_2m_max,temperature_2m_min,wind_speed_10m_max,"
-                           "precipitation_sum,snowfall_sum,weathercode",
+                           "precipitation_sum,snowfall_sum,rain_sum,weathercode",
         "wind_speed_unit": "ms",
         "timezone":        get_timezone(),
         "forecast_days":   7,
@@ -211,6 +211,7 @@ def _fetch_openmeteo_forecast(station: dict) -> list[dict] | None:
     wind_max = daily.get("wind_speed_10m_max", [])
     precip   = daily.get("precipitation_sum", [])
     snow     = daily.get("snowfall_sum", [])
+    rain     = daily.get("rain_sum", [])          # дождь отдельно от снега — для гололедицы
     wcode    = daily.get("weathercode", [])
 
     records = []
@@ -222,6 +223,7 @@ def _fetch_openmeteo_forecast(station: dict) -> list[dict] | None:
             "wind_max":      wind_max[i] if i < len(wind_max) else None,
             "precipitation": precip[i]   if i < len(precip)   else None,
             "snowfall_cm":   snow[i]     if i < len(snow)     else None,
+            "rain_mm":       rain[i]     if i < len(rain)     else None,
             "weathercode":   int(wcode[i]) if i < len(wcode) and wcode[i] is not None else None,
         })
     return records

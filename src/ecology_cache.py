@@ -28,6 +28,107 @@ def _eco_rules() -> dict:
     """Возвращает секцию risks из ecology_rules.yaml."""
     return _rules.get("ecology_rules").get("risks", {})
 
+
+FREEZING_CODES = (56, 57, 66, 67)   # коды погоды WMO: ледяная морось и ледяной дождь
+
+# Нормы для текстов служащим — чтобы табло было аргументом в разговоре с мэрией.
+# Источники и пометки [П]/[В] — docs/EKOLOGIYA-POGODA-ISSLEDOVANIE.md (исследование 2026-11-17).
+NORMA_GOLOLED = ("Норма: скользкость на улицах устранить за 5–6 ч с момента обнаружения, на тротуарах — "
+                 "за 12–24 ч; прогноз гололедицы за 4 ч уже считается обнаружением "
+                 "(ГОСТ Р 50597-2017, п. 3.4, табл. 8.1, 8.4).")
+NORMA_MOROZ = ("Расчётная температура отопления Новосибирска −37 °C (СП 131.13330.2018): по мере "
+               "приближения к ней — режим повышенной готовности теплосетей, плановые отключения — "
+               "не на дни мороза.")
+NORMA_PDK = "Порог — среднесуточная ПДК PM2.5 по СанПиН 1.2.3685-21 (0,035 мг/м³)."
+NORMA_NMU = "Основание: ст. 19 закона 96-ФЗ в ред. 548-ФЗ (с 01.03.2026), приказ Минприроды № 651."
+
+
+def _ice_rules() -> dict:
+    """Параметры гололёда из ecology_rules.yaml (risks.ice, версия 1.1)."""
+    return _eco_rules().get("ice", {}) or {}
+
+
+def ice_level(day: dict, next_day: dict | None, cfg: dict | None = None) -> str | None:
+    """Гололёд по влаге, а не по одной температуре (ecology_rules 1.1, решение заказчика 2026-11-17).
+
+    «glaze»    — ледяной дождь или морось в прогнозе на сутки («гололёд»);
+    «refreeze» — днём дождь не меньше refreeze_rain_mm, а следующей ночью не выше
+                 refreeze_night_temp_c («возможна гололедица»);
+    None       — иначе: в сухую погоду около нуля оповещения нет.
+
+    Для сводки по городу ледяной дождь берётся из freezing_any — «хотя бы в одной точке»;
+    для одной точки — из weathercode. Усреднённый по точкам код погоды не годится: среднее
+    «мороси» (51) и «дождя» (61) — 56, то есть ложный ледяной дождь.
+    """
+    cfg = _ice_rules() if cfg is None else cfg
+    codes = {int(c) for c in cfg.get("freezing_codes", FREEZING_CODES)}
+    if "freezing_any" in day:
+        glaze = bool(day.get("freezing_any"))
+    else:
+        glaze = day.get("weathercode") is not None and int(day["weathercode"]) in codes
+    if glaze:
+        return "glaze"
+    rain = day.get("rain_mm")
+    night = (next_day or {}).get("temp_min")
+    if (rain is not None and night is not None
+            and rain >= float(cfg.get("refreeze_rain_mm", 1.0))
+            and night <= float(cfg.get("refreeze_night_temp_c", -1.0))):
+        return "refreeze"
+    return None
+
+
+def _forecast_days(conn, district_filter: str | None, date_from: str, date_to: str,
+                   include_from: bool = True) -> list[dict]:
+    """Прогноз по суткам, сводка по точкам: средние температуры и осадки, наибольший ветер;
+    freezing_any — ледяной дождь или морось хотя бы в одной точке."""
+    codes = [int(c) for c in _ice_rules().get("freezing_codes", FREEZING_CODES)] or [-1]
+    wheres = [f"forecast_date {'>=' if include_from else '>'} ?", "forecast_date <= ?"]
+    params: list = [date_from, date_to]
+    if district_filter:
+        wheres.append("district ILIKE ?")
+        params.append(f"%{district_filter.split()[0]}%")
+    sql = f"""
+        SELECT
+            forecast_date,
+            ROUND(AVG(temp_max), 1)      AS temp_max,
+            ROUND(AVG(temp_min), 1)      AS temp_min,
+            ROUND(MAX(wind_max), 1)      AS wind_max,
+            ROUND(AVG(precipitation), 1) AS precipitation,
+            ROUND(AVG(snowfall_cm), 1)   AS snowfall_cm,
+            ROUND(AVG(rain_mm), 1)       AS rain_mm,
+            MAX(CASE WHEN weathercode IN ({", ".join("?" * len(codes))}) THEN 1 ELSE 0 END) AS freezing_any,
+            CAST(ROUND(AVG(weathercode)) AS INTEGER) AS weathercode
+        FROM eco_forecast
+        WHERE {" AND ".join(wheres)}
+        GROUP BY forecast_date
+        ORDER BY forecast_date
+    """
+    cursor = conn.execute(sql, codes + params)
+    cols = [d[0] for d in cursor.description]
+    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
+def _ice_today(district_filter: str | None) -> tuple[str | None, dict | None, dict | None]:
+    """Гололёд на сегодня: сутки прогноза и следующая ночь — по местному времени города."""
+    try:
+        from .city_config import get_utc_offset
+        offset = int(get_utc_offset())
+    except Exception:
+        offset = 7
+    today = (datetime.now(timezone.utc) + timedelta(hours=offset)).date()
+    init_ecology_tables()
+    conn = _get_conn()
+    try:
+        rows = _forecast_days(conn, district_filter, str(today), str(today + timedelta(days=1)))
+    except Exception as e:
+        log.warning("гололёд: прогноз недоступен (%s)", e)
+        return None, None, None
+    finally:
+        conn.close()
+    by_day = {str(r["forecast_date"])[:10]: r for r in rows}
+    seg, zavtra = by_day.get(str(today)), by_day.get(str(today + timedelta(days=1)))
+    return (ice_level(seg, zavtra) if seg else None), seg, zavtra
+
 log = logging.getLogger(__name__)
 
 # ── DDL ───────────────────────────────────────────────────────────────────────
@@ -91,6 +192,7 @@ CREATE TABLE IF NOT EXISTS eco_forecast (
     wind_max      DOUBLE,
     precipitation DOUBLE,
     snowfall_cm   DOUBLE,               -- снегопад см/сутки (Open-Meteo snowfall_sum)
+    rain_mm       DOUBLE,               -- дождь мм/сутки (Open-Meteo rain_sum) — для гололедицы
     weathercode   INTEGER,
     fetched_at    VARCHAR
 )
@@ -141,11 +243,12 @@ def init_ecology_tables() -> None:
         conn.execute(_DDL_MEASUREMENTS)
         conn.execute(_DDL_DAILY_ARCHIVE)
         conn.execute(_DDL_FORECAST)
-        # Миграция: добавляем snowfall_cm если таблица уже существовала без неё
-        try:
-            conn.execute("ALTER TABLE eco_forecast ADD COLUMN snowfall_cm DOUBLE")
-        except Exception:
-            pass  # колонка уже есть
+        # Миграции: колонки, добавленные после создания таблицы
+        for col in ("snowfall_cm", "rain_mm"):
+            try:
+                conn.execute(f"ALTER TABLE eco_forecast ADD COLUMN {col} DOUBLE")
+            except Exception:
+                pass  # колонка уже есть
     finally:
         conn.close()
 
@@ -435,7 +538,7 @@ def query_current(district_filter: str | None = None) -> list[dict]:
 
 
 def query_pdk_exceedances(district_filter: str | None = None) -> list[dict]:
-    """Записи за сегодня, где PM2.5 > 35 мкг/м³ (порог ВОЗ, ТЗ §5).
+    """Записи за сегодня, где PM2.5 > 35 мкг/м³ (среднесуточная ПДК по СанПиН 1.2.3685-21, ТЗ §5).
 
     Интент: «Превышение ПДК».
     """
@@ -478,8 +581,9 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
 
     Сценарии (ТЗ §2):
       smog_trap    — ветер < 1.5 м/с + PM2.5 > 20 мкг/м³ (экологическая ловушка)
-      pdk          — PM2.5 > 35 мкг/м³ (превышение нормы ВОЗ)
-      ice          — температура в диапазоне -3..+2°C (риск чёрного льда)
+      pdk          — PM2.5 > 35 мкг/м³ (превышение среднесуточной ПДК)
+      ice          — гололёд по влаге (ecology_rules 1.1): ледяной дождь или морось сегодня —
+                     «гололёд»; дождь днём и мороз следующей ночью — «возможна гололедица»
       temp_shock   — суточная дельта температуры ≤ −15°C (температурный шок)
       severe_cold  — температура ниже −20°C (экстремальный холод)
     """
@@ -499,6 +603,8 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
     hums  = _vals("humidity_pct")
 
     avg = lambda lst: round(sum(lst) / len(lst), 1) if lst else None
+    # воздух только из модели (Open-Meteo = CAMS), без датчиков — честная оговорка в тексте
+    _tolko_model = all(str(r.get("source") or "").startswith("open-meteo") for r in rows)
     avg_temp = avg(temps)
     avg_wind = avg(winds)
     avg_pm25 = avg(pm25s)
@@ -526,7 +632,6 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
     _r = _eco_rules()
     _smog     = _r.get("smog_trap",    {})
     _pdk      = _r.get("pdk",          {})
-    _ice      = _r.get("black_ice",    {})
     _shock    = _r.get("temp_shock",   {})
     _cold     = _r.get("extreme_cold", {})
 
@@ -534,8 +639,6 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
     smog_warn_pm25   = float(_smog.get("pm25_warning_threshold",   20.0))
     smog_crit_pm25   = float(_smog.get("pm25_critical_threshold",  35.0))
     pdk_thr          = float(_pdk.get("threshold",                 35.0))
-    ice_t_min        = float(_ice.get("temp_min",                  -3.0))
-    ice_t_max        = float(_ice.get("temp_max",                   2.0))
     shock_delta      = float(_shock.get("delta_threshold",        -15.0))
     cold_warn_thr    = float(_cold.get("warning_threshold",       -20.0))
     cold_crit_thr    = float(_cold.get("critical_threshold",      -30.0))
@@ -556,20 +659,21 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
                 "Отложите пробежки и интенсивные занятия на улице."
             ),
             "official": (
-                "Рассмотреть объявление режима НМУ (неблагоприятных метеоусловий). "
-                "Выпустить предписания предприятиям снизить выбросы на 15–20%."
+                "Режим НМУ объявляет Западно-Сибирское УГМС, выбросы предприятия снижают по своим планам. "
+                "Мэрии — организовать мероприятия по областному порядку: оповестить жителей и учреждения, "
+                "перенести пылящие работы, усилить контроль сжигания мусора. " + NORMA_NMU
             ),
         })
 
-    # ── Превышение нормы ВОЗ по PM2.5 ────────────────────────────────────────
+    # ── Превышение среднесуточной ПДК PM2.5 ────────────────────────────────────────
     if avg_pm25 is not None and avg_pm25 > pdk_thr:
         risks.append({
             "id": "pdk",
-            "scenario": "Превышение нормы ВОЗ",
+            "scenario": "Превышение ПДК PM2.5",
             "severity": "critical",
             "icon": "☢️",
             "title": f"PM2.5 = {avg_pm25} мкг/м³ — норма превышена в {round(avg_pm25 / pdk_thr, 1)}×",
-            "metrics": f"Норма ВОЗ: {pdk_thr} мкг/м³ · Текущее: {avg_pm25} мкг/м³",
+            "metrics": f"ПДК среднесуточная: {pdk_thr} мкг/м³ · Текущее: {avg_pm25} мкг/м³",
             "citizen": (
                 "Ограничьте время на улице. "
                 "Носите маску класса FFP2 / N95. "
@@ -577,28 +681,52 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
             ),
             "official": (
                 "Задействовать систему экстренного оповещения населения. "
-                "Рекомендовать отмену открытых массовых мероприятий."
+                "Рекомендовать отмену открытых массовых мероприятий. " + NORMA_PDK
+                + (" Данные СИМА — расчёт модели CAMS, а не замер: перед мерами сверить с постами УГМС."
+                   if _tolko_model else "")
             ),
         })
 
-    # ── Сценарий А: Риск чёрного льда ────────────────────────────────────────
-    if avg_temp is not None and ice_t_min <= avg_temp <= ice_t_max:
-        hum_note = f" · Влажность {avg_hum}%" if avg_hum else ""
+    # ── Сценарий А: гололёд — по влаге, а не по одной температуре (ecology_rules 1.1) ──
+    # Было: «средняя от −3 до +2 °C» — в ноябре 2026 горело 14 суток из 16 при сухой погоде.
+    # Первыми обмерзают мосты, эстакады и путепроводы: под ними нет тёплой подушки грунта.
+    ice_lvl, seg, zavtra = _ice_today(district_filter)
+    _t = lambda x: f"{x:+.0f}" if x is not None else "—"
+    if ice_lvl == "glaze":
         risks.append({
             "id": "ice",
-            "scenario": "Риск гололёда",
-            "severity": "warning",
+            "scenario": "Гололёд",
+            "severity": "critical",
             "icon": "🧊",
-            "title": f"Температура {avg_temp:+.1f}°C — зона риска чёрного льда",
-            "metrics": f"Температура {avg_temp:+.1f}°C{hum_note}",
+            "title": "Ледяной дождь — гололёд",
+            "metrics": f"Осадки {seg.get('precipitation') or 0} мм · {_t(seg.get('temp_min'))}…{_t(seg.get('temp_max'))} °C",
             "citizen": (
-                "Опасность скрытого обледенения дорог и тротуаров. "
-                "Закладывайте +20–30 минут на маршрут. "
-                "Пешеходам — избегать крутых спусков, рассмотрите метро вместо авто."
+                "Ледяной дождь: дороги и тротуары покрываются коркой льда. Раньше всего — "
+                "на мостах, эстакадах и путепроводах: под ними нет тёплой подушки грунта. "
+                "Если можно, отложите поездку; пешеходам — обходить спуски и лестницы."
             ),
             "official": (
-                "Превентивно вывести пескоразбрасывающую технику на мосты и магистрали. "
-                "Обработать пешеходные зоны у больниц, школ, остановок."
+                "Ледяной дождь по прогнозу на сегодня. В первую очередь обработать мосты через Обь, "
+                "эстакады и путепроводы — они обмерзают раньше дорог на грунте; затем спуски, "
+                "остановки, подходы к больницам и школам. Оповестить жителей. " + NORMA_GOLOLED
+            ),
+        })
+    elif ice_lvl == "refreeze":
+        risks.append({
+            "id": "ice",
+            "scenario": "Возможна гололедица",
+            "severity": "warning",
+            "icon": "🧊",
+            "title": "Дождь, а ночью мороз — возможна гололедица",
+            "metrics": f"Дождь {seg.get('rain_mm')} мм · ночью до {_t((zavtra or {}).get('temp_min'))} °C",
+            "citizen": (
+                "Днём дождь, ночью мороз: мокрое покрытие замёрзнет. Раньше всего — на мостах, "
+                "эстакадах и путепроводах: под ними нет тёплой подушки грунта. Утром заложите "
+                "время на дорогу, на спусках — осторожно."
+            ),
+            "official": (
+                "К утру обработать мосты через Обь, эстакады и путепроводы — они обмерзают первыми; "
+                "затем спуски, остановки, подходы к больницам и школам. " + NORMA_GOLOLED
             ),
         })
 
@@ -640,7 +768,8 @@ def query_risks(district_filter: str | None = None) -> list[dict]:
             "official": (
                 "Открыть пункты обогрева и ночлежки. "
                 "Аварийные бригады — дежурный режим. "
-                "Контролировать теплоснабжение социальных объектов (школы, больницы, дома престарелых)."
+                "Контролировать теплоснабжение социальных объектов (школы, больницы, дома престарелых). "
+                + NORMA_MOROZ
             ),
         })
 
@@ -848,14 +977,16 @@ def upsert_forecast(records: list[dict]) -> int:
                     """
                     INSERT INTO eco_forecast
                         (id, station_id, district, forecast_date,
-                         temp_max, temp_min, wind_max, precipitation, snowfall_cm, weathercode, fetched_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         temp_max, temp_min, wind_max, precipitation, snowfall_cm, rain_mm,
+                         weathercode, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (id) DO UPDATE SET
                         temp_max      = excluded.temp_max,
                         temp_min      = excluded.temp_min,
                         wind_max      = excluded.wind_max,
                         precipitation = excluded.precipitation,
                         snowfall_cm   = excluded.snowfall_cm,
+                        rain_mm       = excluded.rain_mm,
                         weathercode   = excluded.weathercode,
                         fetched_at    = excluded.fetched_at
                     """,
@@ -864,7 +995,7 @@ def upsert_forecast(records: list[dict]) -> int:
                         r["forecast_date"],
                         r.get("temp_max"), r.get("temp_min"),
                         r.get("wind_max"), r.get("precipitation"),
-                        r.get("snowfall_cm"), r.get("weathercode"), r["fetched_at"],
+                        r.get("snowfall_cm"), r.get("rain_mm"), r.get("weathercode"), r["fetched_at"],
                     ],
                 )
                 count += 1
@@ -913,38 +1044,14 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
         today = str(datetime.now(timezone.utc).date())
         cutoff = str((datetime.now(timezone.utc) + timedelta(days=days)).date())
 
-        wheres = ["forecast_date > ?", "forecast_date <= ?"]
-        params: list = [today, cutoff]
-        if district_filter:
-            d = district_filter.split()[0]
-            wheres.append("district ILIKE ?")
-            params.append(f"%{d}%")
-
-        where_sql = "WHERE " + " AND ".join(wheres)
-        sql = f"""
-            SELECT
-                forecast_date,
-                ROUND(AVG(temp_max), 1)      AS temp_max,
-                ROUND(AVG(temp_min), 1)      AS temp_min,
-                ROUND(MAX(wind_max), 1)      AS wind_max,
-                ROUND(AVG(precipitation), 1) AS precipitation,
-                ROUND(AVG(snowfall_cm), 1)   AS snowfall_cm,
-                CAST(ROUND(AVG(weathercode)) AS INTEGER) AS weathercode
-            FROM eco_forecast
-            {where_sql}
-            GROUP BY forecast_date
-            ORDER BY forecast_date
-        """
-        cursor = conn.execute(sql, params)
-        cols = [d[0] for d in cursor.description]
-        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        rows = _forecast_days(conn, district_filter, today, cutoff, include_from=False)
 
         # Обогащаем каждый день: иконка, описание, флаги рисков
         ru_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         ru_months = ["янв", "фев", "мар", "апр", "май", "июн",
                      "июл", "авг", "сен", "окт", "ноя", "дек"]
         from datetime import date as _date
-        for r in rows:
+        for i, r in enumerate(rows):
             dt = _date.fromisoformat(r["forecast_date"])
             r["day_name"] = f"{ru_days[dt.weekday()]} {dt.day} {ru_months[dt.month - 1]}"
             icon, desc = _wmo_label(r["weathercode"])
@@ -954,18 +1061,18 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
             t_min = r["temp_min"]
             # Прогнозные флаги рисков из ecology_rules.yaml
             _fc    = _rules.get("ecology_rules").get("forecast", {})
-            _ice_z = _fc.get("ice_risk", {})
-            _ice_z_min = float(_ice_z.get("temp_zone_min", -3.0))
-            _ice_z_max = float(_ice_z.get("temp_zone_max",  2.0))
             _cold_thr  = float(_fc.get("cold_risk", {}).get("threshold", -20.0))
             _snow_wc   = _fc.get("snow_risk", {})
             _snow_min  = int(_snow_wc.get("wmo_code_min", 70))
             _snow_max  = int(_snow_wc.get("wmo_code_max", 86))
 
-            # Риск гололёда: суточный диапазон проходит через 0°C
-            r["ice_risk"] = bool(t_min is not None and t_max is not None
-                                 and t_min <= 0 <= t_max or
-                                 (t_min is not None and _ice_z_min <= t_min <= _ice_z_max))
+            # Гололёд — по влаге (ecology_rules 1.1): ледяной дождь в сутки или дождь днём и
+            # мороз следующей ночью; для последних суток прогноза ночь неизвестна
+            lvl = ice_level(r, rows[i + 1] if i + 1 < len(rows) else None)
+            r["ice_level"] = lvl
+            r["ice_glaze"] = lvl == "glaze"
+            r["ice_refreeze"] = lvl == "refreeze"
+            r["ice_risk"] = lvl is not None
             # Риск сильного мороза
             r["cold_risk"] = bool(t_min is not None and t_min < _cold_thr)
             # Риск снегопада: осадки + код снега
