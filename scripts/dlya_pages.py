@@ -48,6 +48,12 @@ FORECAST_RAJON = {"Академгородок": "Советский"}   # _forec
 # ask() шлёт /ask?q=…, листалка — /ask?q=…&offset=0&page_size=20; ключ снимка у них общий.
 # Тот же словарь уходит в прослойку (S.defaults).
 UMOLCHANIYA = {"/ask": {"offset": "0", "page_size": str(PAGE_SIZE)}}
+# Функции страницы, которые в демо выключены (просьба заказчика 2026-11-17): игра «Пятнашки»
+# и пользовательские отчёты (МТС, аварийные службы). Кнопки с ними прячутся, вызов — плашка.
+OTKLYUCHIT = ("toggleGamePanel", "_showCustomReport")
+# Адреса, которые в демо намеренно пусты: прослойка отвечает «нет» сразу, без запроса в сеть
+# (без списка отчётов страница не рисует их карточки)
+PUSTYE = ("custom-reports",)
 
 
 # ── Ключ снимка: то же самое считает прослойка в браузере (см. SHIM) ──────────────
@@ -73,9 +79,83 @@ def fajl_snimka(adres: str) -> str:
     return f"api/{fnv1a(kanon(adres))}.json"
 
 
+# ── Районы в запросах — так же, как их склоняет и вырезает страница ───────────────
+def predlozhnyj(name: str) -> str:
+    """_distPrep: «Советский район» → «Советском районе»."""
+    name = re.sub(r"ский\s+(район|округ)", lambda m: f"ском {m.group(1)}е", name, flags=re.I)
+    return re.sub(r"ный\s+(район|округ)", lambda m: f"ном {m.group(1)}е", name, flags=re.I)
+
+
+def okonchanie_rajona(label: str, val: str) -> str:
+    """_distQuerySuffix: «Советский» → « в Советском районе»."""
+    prep = re.sub(r"ный$", "ном", re.sub(r"ский$", "ском", label))
+    return f" в {prep} {'округе' if (val or '').lower().endswith('округ') else 'районе'}"
+
+
+def bez_rajona(q: str, rajony: list[dict]) -> str:
+    """_stripDistrictFromQuery: убрать из запроса район и подрайон."""
+    s = q
+    for d in rajony:
+        if not d.get("val"):
+            continue
+        stem = re.sub(r"ая$", "", re.sub(r"ое$", "", re.sub(r"[иы]й$", "", d["label"])))
+        if len(stem) < 3:
+            continue
+        s = re.sub(r"\s*(в\s+)?" + stem + r"[а-яёa-z]*\s*(район[еа]?|р-не?|округ[еа]?)?", " ", s, flags=re.I)
+    s = re.sub(r"\s*(в\s+)?(?:академгородк|шлюз|кольцов)[а-яёa-z]*\s*", " ", s, flags=re.I)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def varianty_po_rajonam(q: str, rajony: list[dict]) -> list[str]:
+    """Запросы кнопок «Район:» под таблицей (renderTable): «весь город» и каждый район."""
+    baza = bez_rajona(q, rajony)
+    return [baza + okonchanie_rajona(d["label"], d["val"]) if d.get("val") else baza
+            for d in rajony if not d.get("desc") or not d.get("val")]
+
+
 # ── Список адресов снимка — из самого index.html, чтобы не разойтись со страницей ──
-def zaprosy_iz_stranicy(html: str, rajony: list[dict]) -> list[str]:
-    """Готовые запросы для /ask: литералы, шаблоны с районом, чипы ролей."""
+def podstanovki(konfig: dict, temy: list[str]) -> dict[str, list[str]]:
+    """Значения ${…} в шаблонах запросов страницы — как их подставляет сама страница."""
+    vse = [d for d in (konfig.get("districts") or []) if d.get("val")]
+    info = [d for d in vse if not d.get("desc")]                    # _infoDists в renderInfo
+    p = {
+        "dShort": [d["label"] for d in vse],
+        "esc(dist)": [d["val"].replace(" район", "") for d in vse],   # карточки районов экологии
+        "t.name": list(temy),                                         # карточки наборов: «покажи …»
+        "_cityCfg.metro_name": [konfig["metro_name"]] if konfig.get("metro_name") else [],
+        "_cityCfg.airport_name": [konfig["airport_name"]] if konfig.get("airport_name") else [],
+    }
+    for k in ("_d1.prep", "_d2.prep", "_d3.prep"):                  # _rndDist → _distPrep
+        p[k] = [predlozhnyj(d["val"]) for d in info]
+    p["_tr"] = [d["label"] for d in info]                           # _rndPair: два разных района
+    return p
+
+
+def razvernut_shablony(html: str, konfig: dict, temy: list[str], dop: dict | None = None) -> tuple[set[str], set[str]]:
+    """Шаблоны запросов с ${…}: строки в askNow/setQuery и `…` вида запроса. Возвращает
+    развёрнутые запросы и подстановки, которых скрипт не знает (видно в журнале сборки).
+    dop — значения, известные только из ответов (номера линий метро: ${id})."""
+    p = {**podstanovki(konfig, temy), **(dop or {})}
+    shablony = {m[1] for m in re.findall(r"""(?:askNow|setQuery)\((['"])([^'"<>\n]*?\$\{[^}]+\}[^'"<>\n]*?)\1\)""", html)}
+    shablony |= {s for s in re.findall(r"`([^`<>\n]{3,100})`", html) if "${" in s}
+    gotovye: set[str] = set()
+    neznakomye: set[str] = set()
+    for s in shablony:
+        mesta = re.findall(r"\$\{([^}]+)\}", s)
+        if not re.search(r"[а-яё]{3}", re.sub(r"\$\{[^}]+\}", "", s), re.I):
+            continue                                   # не запрос: одни подстановки
+        if set(mesta) == {"_tr1", "_tr2"}:
+            gotovye |= {s.replace("${_tr1}", a).replace("${_tr2}", b) for a in p["_tr"] for b in p["_tr"] if a != b}
+            continue
+        if len(mesta) != 1 or mesta[0] not in p:
+            neznakomye |= set(mesta) - set(p)
+            continue
+        gotovye |= {s.replace("${" + mesta[0] + "}", v) for v in p[mesta[0]]}
+    return gotovye, neznakomye
+
+
+def zaprosy_iz_stranicy(html: str, konfig: dict, temy: list[str] = ()) -> list[str]:
+    """Готовые запросы для /ask: литералы, шаблоны с подстановками, чипы ролей."""
     gotovye: set[str] = set()
     # в обеих кавычках: набор примеров ролей записан как {q: "…"} — без двойных кавычек
     # 25 из 43 примеров не попадали в снимок (проверка живого сайта 2026-11-17)
@@ -86,24 +166,20 @@ def zaprosy_iz_stranicy(html: str, rajony: list[dict]) -> list[str]:
     m = re.search(r"let ROLE_CHIPS = _resolveChips\(\s*\{(.*?)\}", html, re.S)
     podst = dict(re.findall(r"([A-Z1-9_]+):\s*'([^']*)'", m.group(1))) if m else {}
     gotovye = {re.sub(r"\{([A-Z1-9_]+)\}", lambda x: podst.get(x.group(1), ""), q).strip() for q in gotovye}
-    # шаблоны с ${dShort} — для каждого района
-    kratkie = [r["label"] for r in rajony if r.get("val")]
-    for shablon in set(re.findall(r"`([^`]*\$\{dShort\}[^`]*)`", html)):
-        if shablon.count("${") != 1:
-            continue
-        for k in kratkie:
-            gotovye.add(shablon.replace("${dShort}", k))
+    gotovye |= razvernut_shablony(html, konfig, list(temy))[0]
     return sorted(q for q in gotovye if q and len(q) < 120)
 
 
-def spisok_adresov(html: str, konfig: dict) -> list[str]:
+def spisok_adresov(html: str, konfig: dict, temy: list[str] = ()) -> list[str]:
     gorod = konfig.get("city_id") or "novosibirsk"
     rajony = [r for r in (konfig.get("districts") or []) if r.get("val")]
     razdely_cii = re.findall(r"\{\s*key:\s*'([a-z]+)',\s*icon:", html.split("const _CII_SECTIONS", 1)[-1][:2000])
     adresa = [
         "/api/city-config", "/api/available-cities", "/topics", "/api/vocabulary", "/api/version", "/api/version/check",
         "/ecology/status", "/ecology/risks", "/traffic-index", "/transit/districts", "/power/forecast",
-        f"/budget/{gorod}", "/budget-compare", f"/emissions/{gorod}", "/custom-reports", "/ciinsu/news",
+        # /custom-reports не снимается: карточки отчётов (МТС, аварийные службы) в демо не нужны
+        # (просьба заказчика 2026-11-17) — без списка страница их не рисует
+        f"/budget/{gorod}", "/budget-compare", f"/emissions/{gorod}", "/ciinsu/news",
         "/ecology/aqi-exceedances?days=30&aqi_threshold=40",
         "/ask?q=" + quote("отключения ЖКХ сейчас", safe=""),       # табло: без параметров страницы
     ] + [f"/ciinsu?section={k}" for k in razdely_cii]
@@ -117,7 +193,7 @@ def spisok_adresov(html: str, konfig: dict) -> list[str]:
         adresa.append(f"/ecology/aqi-exceedances?days=30&aqi_threshold=40&district={v}")
         for d in PERIODY:
             adresa += [f"/power/history?days={d}&group_by=day&district={v}", f"/ecology/history?days={d}&district={v}"]
-    for q in zaprosy_iz_stranicy(html, rajony):
+    for q in zaprosy_iz_stranicy(html, konfig, temy):
         adresa.append(f"/ask?q={quote(q, safe='')}&offset=0&page_size={PAGE_SIZE}")
     # без дублей по ключу, в исходном порядке
     vidannye, itog = set(), []
@@ -145,11 +221,11 @@ POSLEDNYAYA_OSHIBKA = {"tekst": ""}
 PODPIS = "SIMA-pages-snapshot/1.0"
 
 
-def zabrat(api: str, adres: str, popytok: int = 2) -> bytes | None:
+def zabrat(api: str, adres: str, popytok: int = 2, tajmaut: int = 45) -> bytes | None:
     for i in range(popytok):
         try:
             zapros = Request(api + adres, headers={"User-Agent": PODPIS, "Accept": "application/json"})
-            with urlopen(zapros, timeout=45) as otvet:
+            with urlopen(zapros, timeout=tajmaut) as otvet:
                 telo = otvet.read()
                 json.loads(telo)                      # снимок — только настоящий JSON
                 return telo
@@ -188,6 +264,44 @@ window.SIMA_STATIC = __META__;
     return new Response(JSON.stringify(obj), { status: status, headers: { 'Content-Type': 'application/json' } });
   }
   var NET = 'В демо-версии без сервера это недоступно. Полная версия СИМА — ' + S.source;
+  // выключенные функции страницы (S.off): их кнопки не видны сразу, ещё до отрисовки
+  if ((S.off || []).length && document.head) {
+    var st = document.createElement('style');
+    st.textContent = S.off.map(function (f) { return '[onclick^="' + f + '"]'; }).join(',') + '{display:none!important}';
+    document.head.appendChild(st);
+  }
+  // Ключи снимка (_snapshot.json, один раз): подсказки при промахе и скрытие кнопок без ответа
+  var KLYUCHI = Promise.resolve().then(function () { return realFetch(S.base + '/api/_snapshot.json'); })
+    .then(function (r) { return r.json(); }).then(function (j) { return j.keys || {}; }).catch(function () { return null; });
+  function spisok() {
+    return KLYUCHI.then(function (k) {
+      return Object.keys(k || {}).filter(function (x) { return x.indexOf('/ask?q=') === 0 && x.indexOf('&') < 0; })
+        .map(function (x) { return x.slice(7); });
+    });
+  }
+  var STOP = {'покажи': 1, 'какие': 1, 'какой': 1, 'сколько': 1, 'где': 1, 'все': 1, 'для': 1, 'как': 1, 'что': 1,
+              'это': 1, 'район': 1, 'районе': 1, 'город': 1, 'города': 1, 'городе': 1};
+  function slova(s) {
+    return (s.toLowerCase().replace(/ё/g, 'е').match(/[а-яa-z0-9]+/g) || []).filter(function (w) { return w.length > 2 && !STOP[w]; });
+  }
+  function rodnye(a, b) {          // «школ» ~ «школы», «аптек» ~ «аптеки», но «парки» ≁ «парковки»
+    var n = 0;
+    while (n < a.length && n < b.length && a.charAt(n) === b.charAt(n)) n++;
+    return n >= Math.min(5, a.length, b.length);
+  }
+  function pohozhie(q, vse) {
+    var qs = slova(q);
+    if (!qs.length) return [];
+    return vse.map(function (t) {
+      var ts = slova(t), hit = 0;
+      qs.forEach(function (a) { if (ts.some(function (b) { return rodnye(a, b); })) hit++; });
+      return [hit * 10 - Math.max(0, ts.length - hit), t];
+    }).filter(function (p) { return p[0] >= 10; })
+      .sort(function (x, y) { return y[0] - x[0] || x[1].length - y[1].length; })
+      .slice(0, 5).map(function (p) { return p[1]; });
+  }
+  function ekr(s) { return String(s).replace(/[&<>"']/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); }
+  function ssylka(t) { return '<a href="#" data-sima-q="' + ekr(t) + '" style="color:#1d4ed8;text-decoration:underline">' + ekr(t) + '</a>'; }
   window.SIMA_STATIC.key = function (url) { return 'api/' + fnv(kanon(url)) + '.json'; };
   window.fetch = function (input, init) {
     var url = typeof input === 'string' ? input : (input && input.url) || '';
@@ -195,6 +309,8 @@ window.SIMA_STATIC = __META__;
     var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
     if (url.indexOf(S.base + '/') === 0) return realFetch(input, init);
     if (url.indexOf('/mapgl-key') === 0) return Promise.resolve(json(200, { available: false, demo: true }));
+    if ((S.empty || []).some(function (p) { return new RegExp('^/' + p + '(/|\\?|$)').test(url); }))
+      return Promise.resolve(json(404, { error: 'В демо-версии не показывается', demo: true }));
     // действие (отзыв, ответы, обновление) — плашка и отказ; чтение страниц управления —
     // как недоступная сеть: код табло ловит её и просто не рисует блок (задачи мэра)
     if (method !== 'GET') { toast(); return Promise.resolve(json(403, { error: NET, detail: NET, demo: true })); }
@@ -202,7 +318,14 @@ window.SIMA_STATIC = __META__;
     return realFetch(S.base + '/' + window.SIMA_STATIC.key(url)).then(function (r) {
       if (r.ok) return r;
       console.info('СИМА демо: нет в снимке —', kanon(url));
-      if (url.indexOf('/ask') === 0) return json(200, { error: 'Этого запроса нет в демо-снимке: без сервера отвечают только подсказанные запросы.', available_topics: S.examples, demo: true });
+      if (url.indexOf('/ask') === 0) {
+        var q = new URL(url, 'http://x').searchParams.get('q') || '';
+        return spisok().then(function (vse) {
+          var p = pohozhie(q, vse);
+          return json(200, { error: 'Этого запроса нет в демо-снимке: без сервера копия отвечает только на сохранённые запросы (их ' + vse.length + ').',
+                             available_topics: (p.length ? p : S.examples).map(ssylka), demo: true });
+        });
+      }
       return json(404, { error: 'Нет в демо-снимке', demo: true });
     });
   };
@@ -222,9 +345,41 @@ window.SIMA_STATIC = __META__;
   };
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('[data-demo-off]');
-    if (a) { e.preventDefault(); e.stopPropagation(); toast(); }
+    if (a) { e.preventDefault(); e.stopPropagation(); toast(); return; }
+    var s = e.target.closest && e.target.closest('[data-sima-q]');      // подсказка при промахе
+    if (s && typeof window.askNow === 'function') { e.preventDefault(); e.stopPropagation(); window.askNow(s.getAttribute('data-sima-q')); }
   }, true);
+  // Кнопка, чьего запроса нет в снимке (тема не отвечает на сервере, вторая страница…), прячется:
+  // лучше меньше кнопок, чем «нет в демо-снимке» по клику. Кнопки появляются по ходу отрисовки —
+  // отсюда наблюдатель. Основной сайт не меняется.
+  function zaprosyKnopki(code) {
+    var out = [];
+    try { new Function('askNow', 'setQuery', code)(function (q) { out.push(q); }, function (q) { out.push(q); }); } catch (e) {}
+    return out;
+  }
+  function spryatat(root, k) {
+    var els = [].slice.call(root.querySelectorAll ? root.querySelectorAll('[onclick]') : []);
+    if (root.getAttribute && root.getAttribute('onclick')) els.unshift(root);
+    els.forEach(function (el) {
+      var code = el.getAttribute('onclick') || '';
+      if (!/askNow\(|setQuery\(/.test(code)) return;
+      var qs = zaprosyKnopki(code);
+      if (qs.length && qs.every(function (q) { return !k[kanon('/ask?q=' + encodeURIComponent(q))]; })) el.style.display = 'none';
+    });
+  }
+  KLYUCHI.then(function (k) {
+    if (!k) return;
+    function nachat() {
+      spryatat(document.body, k);
+      new MutationObserver(function (ms) {
+        ms.forEach(function (m) { [].forEach.call(m.addedNodes, function (n) { if (n.nodeType === 1) spryatat(n, k); }); });
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.body) nachat(); else document.addEventListener('DOMContentLoaded', nachat);
+  });
   document.addEventListener('DOMContentLoaded', function () {
+    // вызов выключенной функции другим путём (запрос «пятнашки» → игра) — только плашка
+    (S.off || []).forEach(function (f) { if (typeof window[f] === 'function') window[f] = function () { toast(); }; });
     var bar = document.createElement('div');
     bar.style.cssText = 'background:#fef3c7;color:#78350f;font:12px system-ui,sans-serif;padding:6px 12px;text-align:center;border-bottom:1px solid #fde68a';
     bar.textContent = 'Демо-копия СИМА без сервера: данные на ' + S.snapshotLocal + ', обновляются раз в час. Страницы управления недоступны. Полная версия — ' + S.source;
@@ -304,13 +459,71 @@ def main():
         sys.exit(f"СТОП: {api}/api/city-config не отвечает ({POSLEDNYAYA_OSHIBKA['tekst']}) — "
                  "снимок не снят, публикация не меняется")
     konfig = json.loads(telo)
-    adresa = spisok_adresov(html, konfig)
-    poluceno, propusk, ne_hranim, bajt = 0, [], [], 0
+    rajony_vse = konfig.get("districts") or []
+    telo = zabrat(api, "/topics")
+    temy_json = json.loads(telo) if telo else {}
+    temy = [t["name"] for t in (temy_json.get("topics", []) if isinstance(temy_json, dict) else temy_json)
+            if isinstance(t, dict) and t.get("name")]
     start = time.monotonic()
-    # ответы по 0,5–2 с, адресов ~400: последовательно — больше 10 минут, потоками — 2–3
-    with ThreadPoolExecutor(max_workers=a.potoki) as pul:
-        otvety = list(pul.map(lambda x: zabrat(api, x), adresa))
-    for adres, telo in zip(adresa, otvety):
+    otvety: dict[str, bytes | None] = {}
+
+    def snyat(spisok: list[str], popytok: int, tajmaut: int) -> None:
+        # ответы по 0,5–2 с, адресов сотни: последовательно — десятки минут, потоками — минуты
+        uzhe, novye = {kanon(y) for y in otvety}, []
+        for x in spisok:
+            if kanon(x) not in uzhe:
+                uzhe.add(kanon(x))
+                novye.append(x)
+        with ThreadPoolExecutor(max_workers=a.potoki) as pul:
+            otvety.update(zip(novye, pul.map(lambda x: zabrat(api, x, popytok, tajmaut), novye)))
+
+    def ask(q: str) -> str:
+        return "/ask?q=" + quote(q, safe="")
+
+    # Шаг 0 — проба: по карточке «покажи …» на тему. Тема, не ответившая за 30 с (сервер
+    # перекачивает OSM — BEKLOG № 12), выпадает из производных запросов: иначе зависшие
+    # запросы держали бы сборку и раз в час нагружали Railway попытками Overpass.
+    snyat([ask(f"покажи {t}") for t in temy], 1, 30)
+    # образец темы: начала слов названия — «детск…сад», «спорт…площа» (и «спортплощадки»),
+    # чтобы «спортивные площадки» не цепляли «спортивные организации»
+    zavisli = [r"\w*\s*".join(w[:max(3, min(5, len(w) - 1))] for w in t.lower().split())
+               for t in temy if otvety.get(ask(f"покажи {t}")) is None]
+
+    def zhivoj(adres: str) -> bool:
+        q = dict(parse_qsl(urlsplit(adres).query)).get("q", "").lower() if adres.startswith("/ask") else ""
+        return not any(re.search(k, q) for k in zavisli)
+
+    # Шаг 1 — всё, что страница показывает и предлагает: адреса API, готовые запросы, шаблоны
+    snyat([x for x in spisok_adresov(html, konfig, temy) if zhivoj(x) or x in VAZHNYE], 2, 45)
+    # Шаг 2 — кнопки «Район:» под каждой таблицей из снимка (renderTable)
+    tablicy = []
+    for adres, telo in list(otvety.items()):
+        if not telo or not adres.startswith("/ask"):
+            continue
+        d = json.loads(telo)
+        if isinstance(d, dict) and isinstance(d.get("rows"), list) and isinstance(d.get("columns"), list) \
+                and d.get("operation") in ("FILTER", "TOP_N", "GROUP", "COUNT"):
+            tablicy.append(dict(parse_qsl(urlsplit(adres).query)).get("q", ""))
+    vidannye = {kanon(x) for x in otvety}
+    shag2 = []
+    for q in tablicy:
+        for v in varianty_po_rajonam(q, rajony_vse):
+            if v and kanon(ask(v)) not in vidannye and zhivoj(ask(v)):
+                vidannye.add(kanon(ask(v)))
+                shag2.append(ask(v))
+    # кнопки «Линия N» в ответе про метро: askNow('станции метро линия ${id}'), номера — из ответа
+    linii = sorted({str(k) for x, telo in otvety.items() if telo and x.startswith("/ask")
+                    for d in [json.loads(telo)] if isinstance(d, dict) and d.get("topic") == "metro"
+                    and isinstance(d.get("lines"), dict) for k in d["lines"]})
+    for v in sorted(razvernut_shablony(html, konfig, temy, {"id": linii})[0]):
+        if kanon(ask(v)) not in vidannye and zhivoj(ask(v)):
+            vidannye.add(kanon(ask(v)))
+            shag2.append(ask(v))
+    snyat(shag2, 1, 30)
+
+    adresa = list(otvety)
+    poluceno, propusk, ne_hranim, bajt = 0, [], [], 0
+    for adres, telo in otvety.items():
         if telo is None:
             propusk.append(adres)
             continue
@@ -340,6 +553,8 @@ def main():
         "snapshot": sejchas.isoformat(timespec="seconds"),
         "snapshotLocal": (sejchas + timedelta(hours=7)).strftime("%d.%m.%Y %H:%M") + " по Новосибирску",
         "manage": list(UPRAVLENIE),
+        "off": list(OTKLYUCHIT),
+        "empty": list(PUSTYE),
         "defaults": UMOLCHANIYA,
         "examples": primery,
     }
@@ -383,6 +598,13 @@ def main():
         print("  пропущено:", x)
     for x in ne_hranim[:15]:
         print("  данные 2ГИС, не хранится:", x)
+    print(f"  кнопки «Район:» под таблицами (шаг 2): {len(shag2)} адресов")
+    if zavisli:
+        print("  темы не ответили за 30 с — их запросы не снимаются, кнопки к ним прослойка прячет:",
+              ", ".join(t for t in temy if otvety.get(ask(f"покажи {t}")) is None))
+    neznakomye = razvernut_shablony(html, konfig, temy)[1]
+    if neznakomye:
+        print("  шаблоны с незнакомыми подстановками не развёрнуты:", ", ".join(sorted(neznakomye)[:12]))
 
 
 if __name__ == "__main__":
