@@ -40,3 +40,6 @@ venv/
 
 # Секреты
 .env
+
+# Демо-копия лендинга для GitHub Pages — собирается в Actions (scripts/dlya_pages.py)
+_pages/

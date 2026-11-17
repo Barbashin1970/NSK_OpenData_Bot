@@ -4,7 +4,7 @@ import logging
 import re as _re
 import threading
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from ..city_config import (
@@ -26,6 +26,19 @@ router = APIRouter()
 # Мьютекс для предотвращения одновременного scrape+write в DuckDB
 # (3 параллельных запроса из фронта все вызывают is_power_stale → upsert)
 _power_update_lock = threading.Lock()
+
+# Демо-копия на GitHub Pages (scripts/dlya_pages.py) раз в час снимает ~190 адресов /ask
+# с этой подписью. Это не запросы людей: в журнал запросов и его статистику они не пишутся
+# (иначе ~4 500 служебных строк в сутки; docs/PAGES-DEMO-RAZBOR.md, Р-10).
+SNAPSHOT_UA = "SIMA-pages-snapshot/"
+
+
+def _is_snapshot(request: Request) -> bool:
+    return request.headers.get("user-agent", "").startswith(SNAPSHOT_UA)
+
+
+def _no_log(**_kw) -> None:
+    return None
 
 
 # ── Метро-подсказки для транзитных маршрутов ──────────────────────────────────
@@ -340,6 +353,7 @@ def get_topics() -> dict:
     },
 )
 def get_ask(
+    request: Request,
     q: str = Query(
         ...,
         description=(
@@ -410,12 +424,14 @@ def get_ask(
     # Determine city for logging
     from ..city_config import get_city_id as _get_city_id
     _city_id = _get_city_id()
+    # снимок демо-копии для GitHub Pages — не запрос человека: в журнал не пишется
+    _log = _no_log if _is_snapshot(request) else _log_query
 
     if not route_result:
         q_lower = q.lower()
         if DISTRICTS_PATTERNS.search(q_lower):
             from ..router import DISTRICTS
-            _log_query(query=q, operation="DISTRICTS", city_id=_city_id)
+            _log(query=q, operation="DISTRICTS", city_id=_city_id)
             return {
                 "query": q,
                 "operation": "DISTRICTS",
@@ -428,10 +444,10 @@ def get_ask(
                 {"id": tid, "name": ds.get("name"), "description": ds.get("description")}
                 for tid, ds in registry.items()
             ]
-            _log_query(query=q, operation="INFO", city_id=_city_id)
+            _log(query=q, operation="INFO", city_id=_city_id)
             return {"query": q, "operation": "INFO", "topics": topics_list}
         log.info("UNKNOWN_QUERY: %s", q)
-        _log_query(query=q, operation="UNKNOWN", city_id=_city_id)
+        _log(query=q, operation="UNKNOWN", city_id=_city_id)
         return {
             "query": q,
             "operation": "UNKNOWN",
@@ -444,7 +460,7 @@ def get_ask(
         plan.limit = page_size
 
     # ── Логирование запроса ────────────────────────────────────────────────────
-    _log_query(
+    _log(
         query=q,
         topic=topic,
         topic_name=route_result.name,
