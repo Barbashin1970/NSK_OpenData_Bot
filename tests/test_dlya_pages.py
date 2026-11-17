@@ -9,6 +9,7 @@
 
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -50,6 +51,112 @@ def test_примеры_в_двойных_кавычках_попадают_в_�
     for q in ("топ-5 аптек", "культурные организации", "больницы с приёмным покоем",
               "аптеки в Центральном районе", "пробки сейчас"):
         assert dp.kanon("/ask?q=" + quote(q, safe="")) in adresa, q
+
+
+RAJONY = [{"val": "", "label": "Весь город", "desc": "Сводные данные по всем районам"}] + [
+    {"val": f"{x} район", "label": x, "desc": ""} for x in (
+        "Дзержинский", "Железнодорожный", "Заельцовский", "Калининский", "Кировский",
+        "Ленинский", "Октябрьский", "Первомайский", "Советский", "Центральный")] + [
+    {"val": "Кольцово", "label": "Кольцово", "desc": ""},
+    {"val": "Академгородок", "label": "Академгородок", "desc": "Советский р-н"},
+    {"val": "Шлюз", "label": "Шлюз", "desc": "Советский р-н"}]
+KONFIG = {"city_id": "novosibirsk", "districts": RAJONY,
+          "metro_name": "Новосибирский метрополитен", "airport_name": "Аэропорт Толмачёво"}
+TEMY = ["Школы", "Детские сады", "Аптеки", "Остановки транспорта", "Парковки"]
+
+
+def _node_or_skip():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node не установлен")
+    return node
+
+
+def test_районы_склоняются_и_вырезаются_как_на_странице(tmp_path):
+    """Шаг 2 снимает кнопки «Район:» — их текст обязан совпасть с тем, что пошлёт страница."""
+    node = _node_or_skip()
+    html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    funkcii = "\n".join(re.search(rf"function {f}\(.*?\n\}}\n", html, re.S).group(0)
+                        for f in ("_distPrep", "_stripDistrictFromQuery", "_distQuerySuffix"))
+    zaprosy = ["аптеки в Ленинском районе", "покажи Школы в Центральном районе", "школы Советский",
+               "детские сады в Академгородке", "топ-5 аптек", "качество воздуха в Кольцово",
+               "библиотеки для детей в Железнодорожном р-не", "отключения в Октябрьском районе сейчас"]
+    stend = (f"let NSK_DISTRICTS = {json.dumps(RAJONY, ensure_ascii=False)};\n{funkcii}\n"
+             f"console.log(JSON.stringify({{prep: NSK_DISTRICTS.map(d => _distPrep(d.val)),"
+             f" suf: NSK_DISTRICTS.map(d => _distQuerySuffix(d.label, d.val)),"
+             f" strip: {json.dumps(zaprosy, ensure_ascii=False)}.map(_stripDistrictFromQuery)}}));")
+    f = tmp_path / "rajony.js"
+    f.write_text(stend, encoding="utf-8")
+    js = json.loads(subprocess.run([node, str(f)], capture_output=True, text=True, check=True).stdout)
+    assert js["prep"] == [dp.predlozhnyj(d["val"]) for d in RAJONY]
+    assert js["suf"] == [dp.okonchanie_rajona(d["label"], d["val"]) for d in RAJONY]
+    assert js["strip"] == [dp.bez_rajona(q, RAJONY) for q in zaprosy]
+
+
+def test_шаблоны_страницы_разворачиваются():
+    """Живой сайт 17.11: карточки «покажи …», метро, аэропорт, районы из блока «Сервисы» и
+    экологии отвечали «нет в демо-снимке» — их запросы строятся на лету."""
+    html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    zaprosy, _ = dp.razvernut_shablony(html, KONFIG, TEMY)
+    for q in ("покажи Школы", "покажи Детские сады", "метро Новосибирский метрополитен",
+              "аэропорт Аэропорт Толмачёво", "аптеки в Ленинском районе", "парковки в Кольцово",
+              "как проехать из Советский в Центральный", "качество воздуха в Советский"):
+        assert q in zaprosy, q
+    assert "покажи Школы в Ленинском районе" in dp.varianty_po_rajonam("покажи Школы", RAJONY)
+    assert "аптеки" in dp.varianty_po_rajonam("аптеки в Октябрьском районе", RAJONY)   # «Весь город»
+
+
+def test_промах_подсказывает_похожие_запросы(tmp_path):
+    """Вместо пяти постоянных примеров — сохранённые запросы с общими словами, по ним можно нажать."""
+    node = _node_or_skip()
+    meta = dict(META, examples=["отключения ЖКХ сейчас"])
+    shim = dp.SHIM.replace("__META__", json.dumps(meta, ensure_ascii=False))
+    js = shim.split("<script>", 1)[1].split("</script>", 1)[0]
+    klyuchi = {f"/ask?q={q}": "api/x.json" for q in ("школы в Ленинском районе", "аптеки в Центральном районе",
+                                                      "парковки в Ленинском районе", "покажи Школы")}
+    stend = ("globalThis.window = globalThis; window.open = () => {};\n"
+             "globalThis.document = { addEventListener() {} };\n"
+             f"const KLYUCHI = {json.dumps(klyuchi, ensure_ascii=False)};\n"
+             "window.fetch = (u) => Promise.resolve(u.endsWith('/api/_snapshot.json')\n"
+             "  ? new Response(JSON.stringify({keys: KLYUCHI}), {status: 200}) : new Response('', {status: 404}));\n"
+             + js +
+             "\nwindow.fetch('/ask?q=' + encodeURIComponent('школы ленинский')).then(r => r.json())"
+             ".then(d => console.log('ИТОГ ' + JSON.stringify(d)));")
+    f = tmp_path / "promah.js"
+    f.write_text(stend, encoding="utf-8")
+    vyvod = subprocess.run([node, str(f)], capture_output=True, text=True, check=True).stdout
+    d = json.loads(vyvod.split("ИТОГ ", 1)[1])
+    assert "нет в демо-снимке" in d["error"]
+    assert d["available_topics"][0].startswith('<a href="#" data-sima-q="школы в Ленинском районе"')
+    assert not any("аптеки" in t for t in d["available_topics"])
+
+
+def test_игра_и_отчёты_в_демо_выключены(tmp_path):
+    """Просьба заказчика 17.11: «Пятнашки» и отчёты (МТС, аварийные службы — давали 404)
+    в демо не показываются; на основном сайте всё остаётся."""
+    assert {"toggleGamePanel", "_showCustomReport"} <= set(dp.OTKLYUCHIT)
+    html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    assert not any(a.startswith("/custom-reports") for a in dp.spisok_adresov(html, KONFIG))
+    node = _node_or_skip()
+    shim = dp.SHIM.replace("__META__", json.dumps(dict(META, off=list(dp.OTKLYUCHIT)), ensure_ascii=False))
+    js = shim.split("<script>", 1)[1].split("</script>", 1)[0]
+    stend = ("globalThis.window = globalThis; window.open = () => {}; window.fetch = () => Promise.reject();\n"
+             "const stili = []; globalThis.document = { addEventListener() {}, head: { appendChild: e => stili.push(e.textContent) },\n"
+             "  createElement: () => ({}) };\n" + js + "\nconsole.log(JSON.stringify(stili));")
+    f = tmp_path / "off.js"
+    f.write_text(stend, encoding="utf-8")
+    css = json.loads(subprocess.run([node, str(f)], capture_output=True, text=True, check=True).stdout)
+    assert '[onclick^="toggleGamePanel"]' in css[0] and '[onclick^="_showCustomReport"]' in css[0]
+    # список отчётов — «нет» сразу, без запроса в сеть (иначе 404 в журнале браузера)
+    shim = dp.SHIM.replace("__META__", json.dumps(dict(META, empty=list(dp.PUSTYE)), ensure_ascii=False))
+    js = shim.split("<script>", 1)[1].split("</script>", 1)[0]
+    stend = ("globalThis.window = globalThis; window.open = () => {}; let set = 0;\n"
+             "window.fetch = () => { set++; return Promise.reject(); };\n"
+             "globalThis.document = { addEventListener() {} };\n" + js +
+             "\nwindow.fetch('/custom-reports').then(r => console.log(JSON.stringify([r.status, set])));")
+    f.write_text(stend, encoding="utf-8")
+    status, zaprosov = json.loads(subprocess.run([node, str(f)], capture_output=True, text=True, check=True).stdout)
+    assert status == 404 and zaprosov == 1        # единственный запрос — _snapshot.json при загрузке
 
 
 def test_данные_2гис_не_хранятся():
