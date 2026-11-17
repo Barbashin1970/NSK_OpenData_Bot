@@ -1,0 +1,52 @@
+# Демо-копия лендинга СИМА на GitHub Pages: https://barbashin1970.github.io/NSK_OpenData_Bot/
+# Основной сайт — Railway (живой API); из российских сетей без VPN он не открывается,
+# а github.io открывается. Pages раздаёт только файлы, поэтому сюда идёт копия лендинга
+# со снимком ответов API — scripts/dlya_pages.py. Страницы управления выключены.
+# Разбор: docs/PAGES-DEMO-RAZBOR.md.
+# Включить один раз: Settings → Pages → Build and deployment → Source: GitHub Actions.
+# Версии действий проверены по API релизов 17.11.2026: deploy-pages@v4 (2024) не находил
+# артефакт нового upload-artifact — «No artifacts named github-pages» (урок PROMPT-Professor).
+name: Демо лендинга на GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/static/index.html"
+      - "src/static/img/**"
+      - "src/static/manifest.json"
+      - "scripts/dlya_pages.py"
+      - ".github/workflows/pages.yml"
+  schedule:
+    - cron: "17 * * * *"        # снимок данных раз в час (GitHub может задержать запуск)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.publikaciya.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      # сначала — включены ли Pages: если нет, запуск падает сразу, не трогая Railway
+      - uses: actions/configure-pages@v6
+      - name: Копия лендинга и снимок данных с Railway
+        env:
+          SIMA_API: ${{ vars.SIMA_API || 'https://nsk-opendata-bot.up.railway.app' }}
+        run: python3 scripts/dlya_pages.py --osnova "/${{ github.event.repository.name }}" --vyhod _pages --api "$SIMA_API"
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _pages
+      - id: publikaciya
+        uses: actions/deploy-pages@v5
