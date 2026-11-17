@@ -105,7 +105,7 @@ def test_сводка_прогноза_и_риск_сегодня_на_врем�
                 "snowfall_cm": 0.0, "rain_mm": rain, "weathercode": code, "fetched_at": now}
 
     ec.upsert_forecast([
-        # сегодня: морось и дождь в двух точках (среднее кодов — 56!), ночью мороз → гололедица
+        # сегодня: морось и дождь в двух точках (среднее кодов было бы 56!), ночью мороз → гололедица
         stroka("А", d[0], -1, 3, 2.0, 51), stroka("Б", d[0], -1, 3, 3.0, 61),
         stroka("А", d[1], -4, 1, 0.0, 3), stroka("Б", d[1], -4, 1, 0.0, 3),
         # послезавтра в одной точке ледяной дождь → гололёд по городу
@@ -113,7 +113,8 @@ def test_сводка_прогноза_и_риск_сегодня_на_врем�
         stroka("А", d[3], -6, -1, 0.0, 3), stroka("Б", d[3], -6, -1, 0.0, 3),
     ])
     lvl, seg, zavtra = ec._ice_today(None)
-    assert lvl == "refreeze" and seg["freezing_any"] == 0 and seg["weathercode"] == 56
+    # сводка по городу: самое сильное явление (61), а не среднее кодов (было 56 — «ледяная морось»)
+    assert lvl == "refreeze" and seg["freezing_any"] == 0 and seg["weathercode"] == 61
 
     prognoz = {r["forecast_date"]: r for r in ec.query_forecast(None, days=7)}
     assert prognoz[d[1]]["ice_risk"] is False
