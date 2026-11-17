@@ -419,6 +419,10 @@ async def _start_background_preloader() -> None:
     # Мульти-город: обновляет экологию/медицину/камеры для ВСЕХ городов
     # Стартует через 2 мин, повторяется каждый час (накопление экоданных)
     asyncio.create_task(multi_city_refresh_loop(interval_hours=1, initial_delay=120.0))
+    # Демо-копия на GitHub Pages: расписание GitHub ненадёжно — сервер сам раз в час
+    # запускает её обновление (нужен GITHUB_PAGES_TOKEN; без него цикл молчит)
+    from .pages_dispatch import pages_dispatch_loop
+    asyncio.create_task(pages_dispatch_loop())
 
 
 # ── Кастомный Swagger UI ─────────────────────────────────────────────────────
