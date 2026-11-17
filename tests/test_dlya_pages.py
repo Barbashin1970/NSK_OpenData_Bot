@@ -41,6 +41,25 @@ def test_параметры_по_умолчанию_не_меняют_ключ()
     assert dp.fajl_snimka(q) != dp.fajl_snimka(q + "&offset=20&page_size=20")
 
 
+def test_примеры_в_двойных_кавычках_попадают_в_снимок():
+    """Проверка живого сайта: набор примеров ролей записан как {q: "…"} — 25 из 43
+    примеров, в том числе видимые на табло чипы, отвечали «нет в демо-снимке»."""
+    from urllib.parse import quote
+    html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    adresa = {dp.kanon(a) for a in dp.spisok_adresov(html, {"city_id": "novosibirsk", "districts": []})}
+    for q in ("топ-5 аптек", "культурные организации", "больницы с приёмным покоем",
+              "аптеки в Центральном районе", "пробки сейчас"):
+        assert dp.kanon("/ask?q=" + quote(q, safe="")) in adresa, q
+
+
+def test_данные_2гис_не_хранятся():
+    """Правила 2ГИС: маршруты и справочник — только проброс, без хранения."""
+    assert dp.dannye_2gis({"rows": [{"source": "2GIS Public Transport Routing API (real-time, данные не сохраняются)"}]})
+    assert not dp.dannye_2gis({"source": "https://opendata.novo-sibirsk.ru · остановки",
+                               "notice": "Для точного маршрута воспользуйтесь 2ГИС",
+                               "hint": "https://2gis.ru/novosibirsk/routeSearch"})
+
+
 def test_ключ_снимка_одинаков_в_python_и_в_браузере(tmp_path):
     """Р-2: файл снимка ищет прослойка в браузере — ключи обязаны совпадать байт в байт."""
     node = shutil.which("node")
