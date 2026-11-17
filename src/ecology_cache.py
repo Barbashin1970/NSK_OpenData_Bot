@@ -57,8 +57,8 @@ def ice_level(day: dict, next_day: dict | None, cfg: dict | None = None) -> str 
     None       — иначе: в сухую погоду около нуля оповещения нет.
 
     Для сводки по городу ледяной дождь берётся из freezing_any — «хотя бы в одной точке»;
-    для одной точки — из weathercode. Усреднённый по точкам код погоды не годится: среднее
-    «мороси» (51) и «дождя» (61) — 56, то есть ложный ледяной дождь.
+    для одной точки — из weathercode. Код погоды по точкам не усредняют: среднее «мороси» (51)
+    и «дождя» (61) — 56, ложный ледяной дождь (в сводке теперь MAX — самое сильное явление).
     """
     cfg = _ice_rules() if cfg is None else cfg
     codes = {int(c) for c in cfg.get("freezing_codes", FREEZING_CODES)}
@@ -97,7 +97,9 @@ def _forecast_days(conn, district_filter: str | None, date_from: str, date_to: s
             ROUND(AVG(snowfall_cm), 1)   AS snowfall_cm,
             ROUND(AVG(rain_mm), 1)       AS rain_mm,
             MAX(CASE WHEN weathercode IN ({", ".join("?" * len(codes))}) THEN 1 ELSE 0 END) AS freezing_any,
-            CAST(ROUND(AVG(weathercode)) AS INTEGER) AS weathercode
+            -- самое сильное явление среди точек: усреднять коды нельзя (3 и 61 дают 34 —
+            -- такого кода нет; флаг снегопада по нему ошибался). Коды WMO растут с силой явления.
+            MAX(weathercode)             AS weathercode
         FROM eco_forecast
         WHERE {" AND ".join(wheres)}
         GROUP BY forecast_date
