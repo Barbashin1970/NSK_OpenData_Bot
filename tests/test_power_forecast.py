@@ -244,6 +244,25 @@ class TestКалибровкаV2:
         assert cell(v2, NEXT_WED, utility="Теплоснабжение")["status"] != "free"
         assert cell(v1, NEXT_WED, utility="Теплоснабжение")["status"] == "free"   # старый изъян
 
+    def test_перегруз_по_последним_неделям_в_любом_режиме(self):
+        """Модалка «?»: вероятность работ — по дням того же режима, а перегруз — по последним
+        таким же дням недели в любом режиме (замер 2026-11-17: так точнее на самопроверке)."""
+        temps = {(TODAY - timedelta(days=k)).isoformat(): (2.0 if k > 170 or k <= 10 else 15.0)
+                 for k in range(1, 201)}
+        rows = make_rows(TestГипотезаЁмкости.heavy_tuesdays, days_back=200)
+        fc = build_forecast(rows, all_days(200), TODAY, None, (), None, temps)
+        assert fc["regime"]["heating_on"] is True
+        # опоры режима — весенние вторники с обычным объёмом; последние 4 вторника тяжёлые
+        c = cell(fc, NEXT_TUE)
+        assert c["status"] == "overload" and c["p_overload"] == 1.0
+
+    def test_уверенность_100_только_где_работ_не_было_вовсе(self):
+        """Модалка «?»: оценка тянется к обычной частоте b; 0% и 100% выходят, только если
+        и опорные дни, и все 8 недель одинаковы."""
+        fc = build_forecast(make_rows(weekly), all_days(), TODAY)
+        assert cell(fc, NEXT_WED, utility=GAS)["p_free"] == 1.0        # газа не было вовсе
+        assert 0 < cell(fc, NEXT_WED)["p_planned"] < 1                  # ср без работ, но b > 0
+
     def test_самопроверка_обещано_сбылось(self):
         fc = build_forecast(make_rows(weekly), all_days(), TODAY)
         cal = fc["backtest"]["calibration"]
