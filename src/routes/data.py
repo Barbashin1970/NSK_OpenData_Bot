@@ -112,15 +112,19 @@ def _handle_osm_topic(q: str, topic: str, route_result, plan, with_coords: bool)
     from ..osm_universal import (
         OSM_TOPICS, fetch_osm_topic, upsert_osm_topic,
         query_osm_topic, group_osm_topic, count_osm_topic,
-        is_osm_topic_stale, get_osm_meta,
+        is_osm_topic_stale, get_osm_meta, osm_topic_available,
     )
     from ..city_config import get_city_profile, get_db_path
+    from ..stale_refresh import refresh_if_stale
 
     cfg = OSM_TOPICS[topic]
 
-    # Lazy-load: если данных нет или устарели — загрузить через Overpass
-    if is_osm_topic_stale(topic):
-        profile = get_city_profile()
+    # Устарело — ответ сразу из кэша, обновление через Overpass в фоне; данных нет — качаем
+    # в запросе (BEKLOG № 12, docs/OSM-OBNOVLENIE-RAZBOR.md). Город и база — на момент запроса.
+    profile = get_city_profile()
+    db_path = get_db_path()
+
+    def _refresh() -> int:
         bb = profile["city"]["bbox"]
         def _fmt(v: float) -> str:
             s = f"{v:.10f}".rstrip("0")
@@ -141,8 +145,12 @@ def _handle_osm_topic(q: str, topic: str, route_result, plan, with_coords: bool)
 
         eco_stations = profile.get("ecology_stations", [])
         rows = fetch_osm_topic(topic, bbox_str, bb, boundaries, eco_stations)
-        if rows:
-            upsert_osm_topic(topic, rows)
+        return upsert_osm_topic(topic, rows, db_path=db_path) if rows else 0
+
+    refresh_if_stale(f"{db_path}:{topic}",
+                     lambda: is_osm_topic_stale(topic, db_path),
+                     lambda: osm_topic_available(topic, db_path),
+                     _refresh)
 
     op = plan.operation
     meta = get_osm_meta(topic)
@@ -754,11 +762,20 @@ def get_ask(
             upsert_cameras, is_cameras_stale,
         )
         from ..cameras_fetcher import fetch_cameras
+        from ..stale_refresh import refresh_if_stale
+        from ..city_config import get_city_id as _cur_city
 
-        if is_cameras_stale():
+        _city = _cur_city()
+
+        def _refresh_cameras() -> int:
             fetched = fetch_cameras()
-            if fetched:
-                upsert_cameras(fetched)
+            if not fetched or _cur_city() != _city:     # город сменился, пока качали, — не писать
+                return 0
+            return upsert_cameras(fetched)
+
+        # BEKLOG № 12: устаревшие камеры — ответ сразу, обновление в фоне
+        refresh_if_stale(f"{_city}:cameras", is_cameras_stale,
+                         lambda: (get_cameras_meta().get("total_rows") or 0) > 0, _refresh_cameras)
 
         op = plan.operation
         meta = get_cameras_meta()
@@ -811,11 +828,20 @@ def get_ask(
             get_medical_meta, upsert_medical, is_medical_stale,
         )
         from ..medical_fetcher import fetch_medical
+        from ..stale_refresh import refresh_if_stale
+        from ..city_config import get_city_id as _cur_city
 
-        if is_medical_stale():
+        _city = _cur_city()
+
+        def _refresh_medical() -> int:
             fetched = fetch_medical()
-            if fetched:
-                upsert_medical(fetched)
+            if not fetched or _cur_city() != _city:     # город сменился, пока качали, — не писать
+                return 0
+            return upsert_medical(fetched)
+
+        # BEKLOG № 12: устаревшие медучреждения — ответ сразу, обновление в фоне
+        refresh_if_stale(f"{_city}:medical", is_medical_stale,
+                         lambda: (get_medical_meta().get("total_rows") or 0) > 0, _refresh_medical)
 
         op = plan.operation
         meta = get_medical_meta()
