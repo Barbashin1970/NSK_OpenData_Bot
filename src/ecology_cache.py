@@ -30,12 +30,41 @@ def _eco_rules() -> dict:
 
 
 FREEZING_CODES = (56, 57, 66, 67)   # коды погоды WMO: ледяная морось и ледяной дождь
+SNOW_CODES = (71, 73, 75, 77, 85, 86)   # коды погоды WMO: снег, снежная крупа, снежные ливни
+
+# Ранг явлений для сводки по городу: какое явление показать, если в точках оно разное.
+# Коды WMO растут с силой только внутри группы (61 → 63 → 65), между группами — нет:
+# MAX(75 «сильный снег», 80 «слабый ливень») = 80, MAX(73, 95) = 95 — снег пропадал из
+# сводки (замечание РАГРАФ 2026-11-17). Порядок групп — по последствиям для служб города:
+# ледяные осадки (гололёд) > снег > гроза > дождь и ливни > морось > туман > облачность.
+WMO_RANK: dict[int, int] = {
+    0: 0, 1: 1, 2: 2, 3: 3,                             # ясно … пасмурно
+    45: 10, 48: 11,                                     # туман, изморозь
+    51: 20, 53: 21, 55: 22,                             # морось
+    61: 30, 80: 31, 63: 32, 81: 33, 65: 34, 82: 35,     # дождь и ливни — по силе
+    95: 40, 96: 41, 99: 42,                             # гроза, гроза с градом
+    77: 50, 71: 51, 85: 52, 73: 53, 86: 54, 75: 55,     # снег — по силе
+    56: 60, 57: 61, 66: 62, 67: 63,                     # ледяная морось и ледяной дождь
+}
+
+
+def strongest_weathercode(codes) -> int | None:
+    """Самое значимое явление среди точек — по рангу WMO_RANK, а не по наибольшему коду."""
+    known = [int(c) for c in codes if c is not None]
+    if not known:
+        return None
+    return max(known, key=lambda c: (WMO_RANK.get(c, -1), c))
+
 
 # Нормы для текстов служащим — чтобы табло было аргументом в разговоре с мэрией.
 # Источники и пометки [П]/[В] — docs/EKOLOGIYA-POGODA-ISSLEDOVANIE.md (исследование 2026-11-17).
+# П. 3.4 ГОСТ Р 50597-2017 называет источник прогноза — дорожные метеостанции и организации
+# Росгидромета; прогноз модели общего назначения (Open-Meteo) срок не запускает.
 NORMA_GOLOLED = ("Норма: скользкость на улицах устранить за 5–6 ч с момента обнаружения, на тротуарах — "
-                 "за 12–24 ч; прогноз гололедицы за 4 ч уже считается обнаружением "
-                 "(ГОСТ Р 50597-2017, п. 3.4, табл. 8.1, 8.4).")
+                 "за 12–24 ч (ГОСТ Р 50597-2017, табл. 8.1, 8.4). Обнаружением считается и прогноз её "
+                 "образования на ближайшие 4 ч с дорожных метеостанций или от Росгидромета (п. 3.4). "
+                 "Прогноз СИМА — модель Open-Meteo, срок он не запускает: это повод запросить прогноз "
+                 "Западно-Сибирского УГМС.")
 NORMA_MOROZ = ("Расчётная температура отопления Новосибирска −37 °C (СП 131.13330.2018): по мере "
                "приближения к ней — режим повышенной готовности теплосетей, плановые отключения — "
                "не на дни мороза.")
@@ -49,7 +78,7 @@ def _ice_rules() -> dict:
 
 
 def ice_level(day: dict, next_day: dict | None, cfg: dict | None = None) -> str | None:
-    """Гололёд по влаге, а не по одной температуре (ecology_rules 1.1, решение заказчика 2026-11-17).
+    """Гололёд по влаге, а не по одной температуре (ecology_rules 1.1, решение руководителя работы 2026-11-17).
 
     «glaze»    — ледяной дождь или морось в прогнозе на сутки («гололёд»);
     «refreeze» — днём дождь не меньше refreeze_rain_mm, а следующей ночью не выше
@@ -58,7 +87,8 @@ def ice_level(day: dict, next_day: dict | None, cfg: dict | None = None) -> str 
 
     Для сводки по городу ледяной дождь берётся из freezing_any — «хотя бы в одной точке»;
     для одной точки — из weathercode. Код погоды по точкам не усредняют: среднее «мороси» (51)
-    и «дождя» (61) — 56, ложный ледяной дождь (в сводке теперь MAX — самое сильное явление).
+    и «дождя» (61) — 56, ложный ледяной дождь. В сводке — самое значимое явление по рангу
+    WMO_RANK (strongest_weathercode), а не наибольший код.
     """
     cfg = _ice_rules() if cfg is None else cfg
     codes = {int(c) for c in cfg.get("freezing_codes", FREEZING_CODES)}
@@ -97,9 +127,9 @@ def _forecast_days(conn, district_filter: str | None, date_from: str, date_to: s
             ROUND(AVG(snowfall_cm), 1)   AS snowfall_cm,
             ROUND(AVG(rain_mm), 1)       AS rain_mm,
             MAX(CASE WHEN weathercode IN ({", ".join("?" * len(codes))}) THEN 1 ELSE 0 END) AS freezing_any,
-            -- самое сильное явление среди точек: усреднять коды нельзя (3 и 61 дают 34 —
-            -- такого кода нет; флаг снегопада по нему ошибался). Коды WMO растут с силой явления.
-            MAX(weathercode)             AS weathercode
+            -- коды точек целиком: явление дня выбирается по рангу, а не средним (3 и 61 дают 34 —
+            -- такого кода нет) и не наибольшим кодом (80 «ливень» выше 75 «сильный снег»)
+            LIST(weathercode)            AS codes
         FROM eco_forecast
         WHERE {" AND ".join(wheres)}
         GROUP BY forecast_date
@@ -107,7 +137,10 @@ def _forecast_days(conn, district_filter: str | None, date_from: str, date_to: s
     """
     cursor = conn.execute(sql, codes + params)
     cols = [d[0] for d in cursor.description]
-    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+    rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    for r in rows:
+        r["weathercode"] = strongest_weathercode(r.pop("codes") or [])
+    return rows
 
 
 def _ice_today(district_filter: str | None) -> tuple[str | None, dict | None, dict | None]:
@@ -1064,9 +1097,7 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
             # Прогнозные флаги рисков из ecology_rules.yaml
             _fc    = _rules.get("ecology_rules").get("forecast", {})
             _cold_thr  = float(_fc.get("cold_risk", {}).get("threshold", -20.0))
-            _snow_wc   = _fc.get("snow_risk", {})
-            _snow_min  = int(_snow_wc.get("wmo_code_min", 70))
-            _snow_max  = int(_snow_wc.get("wmo_code_max", 86))
+            _snow_codes = {int(c) for c in (_fc.get("snow_risk") or {}).get("snow_codes", SNOW_CODES)}
 
             # Гололёд — по влаге (ecology_rules 1.1): ледяной дождь в сутки или дождь днём и
             # мороз следующей ночью; для последних суток прогноза ночь неизвестна
@@ -1077,9 +1108,9 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
             r["ice_risk"] = lvl is not None
             # Риск сильного мороза
             r["cold_risk"] = bool(t_min is not None and t_min < _cold_thr)
-            # Риск снегопада: осадки + код снега
-            wc = r.get("weathercode") or 0
-            r["snow_risk"] = bool(r.get("precipitation", 0) and _snow_min <= wc <= _snow_max)
+            # Риск снегопада: осадки и код снега (ecology_rules 1.2). Прежний диапазон 70–86
+            # включал ливневый дождь 80–82 и горел летом (замечание РАГРАФ 2026-11-17)
+            r["snow_risk"] = bool(r.get("precipitation") and r.get("weathercode") in _snow_codes)
 
             # Индекс влияния снегопада (0–10)
             _snow_cfg = _fc.get("snow_impact", {})

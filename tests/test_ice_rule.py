@@ -1,7 +1,7 @@
 """
 ══════════════════════════════════════════════════════════════════════════════
   ГОЛОЛЁД ПО ВЛАГЕ (ecology_rules 1.1) — src/ecology_cache.py: ice_level
-  Решение заказчика 2026-11-17 · docs/EKOLOGIYA-POGODA-ISSLEDOVANIE.md
+  Решение руководителя работы 2026-11-17 · docs/EKOLOGIYA-POGODA-ISSLEDOVANIE.md
 ══════════════════════════════════════════════════════════════════════════════
 
 Было: «средняя за сутки от −3 до +2 °C» — без осадков; в ноябре 2026 горело 14 суток из 16.
@@ -82,7 +82,7 @@ def test_регламент_читается():
     yaml = pytest.importorskip("yaml")
     from pathlib import Path
     d = yaml.safe_load((Path(__file__).parent.parent / "config/rules/ecology_rules.yaml").read_text(encoding="utf-8"))
-    assert d["version"] == "1.1" and d["risks"]["ice"] == CFG
+    assert d["version"] == "1.2" and d["risks"]["ice"] == CFG
     assert "black_ice" not in d["risks"] and "ice_risk" not in d["forecast"]
 
 
@@ -113,7 +113,8 @@ def test_сводка_прогноза_и_риск_сегодня_на_врем�
         stroka("А", d[3], -6, -1, 0.0, 3), stroka("Б", d[3], -6, -1, 0.0, 3),
     ])
     lvl, seg, zavtra = ec._ice_today(None)
-    # сводка по городу: самое сильное явление (61), а не среднее кодов (было 56 — «ледяная морось»)
+    # сводка по городу: самое значимое явление по рангу (61), а не среднее кодов (было 56 —
+    # «ледяная морось»); ранг между группами — tests/test_weather_summary.py
     assert lvl == "refreeze" and seg["freezing_any"] == 0 and seg["weathercode"] == 61
 
     prognoz = {r["forecast_date"]: r for r in ec.query_forecast(None, days=7)}
@@ -126,5 +127,7 @@ def test_сводка_прогноза_и_риск_сегодня_на_врем�
     led = [r for r in ec.query_risks(None) if r["id"] == "ice"]
     assert len(led) == 1 and led[0]["scenario"] == "Возможна гололедица"
     assert "мост" in led[0]["citizen"] and "эстакад" in led[0]["official"]
-    assert "ГОСТ Р 50597-2017, п. 3.4" in led[0]["official"]      # норма — аргумент для мэрии
+    assert "ГОСТ Р 50597-2017" in led[0]["official"] and "п. 3.4" in led[0]["official"]  # норма — аргумент
+    # п. 3.4 называет источник прогноза: метеостанции и Росгидромет, а не модель общего назначения
+    assert "Росгидромет" in led[0]["official"] and "срок он не запускает" in led[0]["official"]
     assert "чёрн" not in (led[0]["title"] + led[0]["citizen"] + led[0]["official"]).lower()
