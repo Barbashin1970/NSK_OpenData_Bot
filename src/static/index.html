@@ -3134,7 +3134,7 @@ async function _showEcoReport(districtFilter) {
       const parts = [];
       // AQI verdict
       if (avgAqi != null) {
-        if (avgAqi <= 20) parts.push({icon: '🟢', text: 'Отличное качество воздуха за весь период. Показатели стабильно ниже порога ВОЗ.', color: 'text-emerald-700', bg: 'bg-emerald-50'});
+        if (avgAqi <= 20) parts.push({icon: '🟢', text: 'Отличное качество воздуха за весь период. Показатели стабильно ниже ПДК.', color: 'text-emerald-700', bg: 'bg-emerald-50'});
         else if (avgAqi <= 35) parts.push({icon: '🟢', text: 'Хорошее качество воздуха. Средний AQI в пределах нормы, серьёзных превышений не зафиксировано.', color: 'text-green-700', bg: 'bg-green-50'});
         else if (avgAqi <= 50) parts.push({icon: '🟡', text: 'Качество воздуха удовлетворительное. Отмечены отдельные эпизоды повышения AQI.', color: 'text-yellow-700', bg: 'bg-yellow-50'});
         else if (avgAqi <= 70) parts.push({icon: '🟠', text: 'Качество воздуха ниже нормы. Частые превышения порога 40 AQI — рекомендуется ограничить прогулки.', color: 'text-orange-700', bg: 'bg-orange-50'});
@@ -5936,7 +5936,7 @@ function aqiColor(aqi) {
 // ─── Словарь терминов для ? тултипов ──────────────────────────────────────────
 const _TERM_HINTS = {
   AQI: 'AQI (Air Quality Index) — индекс качества воздуха от 0 до 100+. До 20 — отлично, 20–40 — хорошо, 40–60 — умеренно, выше 60 — плохо. Учитывает PM2.5, PM10, NO₂.',
-  'PM2.5': 'PM2.5 — мельчайшие частицы пыли (< 2.5 мкм), проникающие в лёгкие и кровь. Норма ВОЗ: до 15 мкг/м³ (среднегодовая), до 35 мкг/м³ (суточная). Источники: транспорт, ТЭЦ, печное отопление.',
+  'PM2.5': 'PM2.5 — мельчайшие частицы пыли (< 2.5 мкм), проникающие в лёгкие и кровь. Ориентиры ВОЗ (2021): 5 мкг/м³ среднегодовая, 15 мкг/м³ среднесуточная; ПДК в России (СанПиН 1.2.3685-21): 25 и 35 мкг/м³. Источники: транспорт, ТЭЦ, печное отопление.',
   'ПДК': 'ПДК — предельно допустимая концентрация загрязняющего вещества. Превышение означает риск для здоровья при длительном воздействии.',
 };
 function _termHint(label) {
@@ -5964,7 +5964,7 @@ function computeLifeIndices(rows, snowImpact) {
   // Индекс автомобилиста: 0=безопасно, 10=очень опасно
   let driver = 0;
   if (avgT != null) {
-    if (avgT >= -3 && avgT <= 2) driver += 5;    // чёрный лёд
+    if (avgT >= -3 && avgT <= 2) driver += 5;    // около нуля — возможен гололёд
     else if (avgT < -3 && avgT >= -10) driver += 2; // обычный лёд
     if (avgT < -25) driver += 3;
     else if (avgT < -20) driver += 2;
@@ -6321,7 +6321,9 @@ function renderEcology(data) {
       // Риски
       let risks = '';
       if (r.cold_risk)  risks += `<span class="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">🥶 Сильный мороз</span> `;
-      if (r.ice_risk)   risks += `<span class="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">🧊 Риск гололёда</span> `;
+      // гололёд — по влаге (ecology_rules 1.1): ледяной дождь или дождь днём и мороз ночью
+      if (r.ice_glaze)  risks += `<span class="inline-flex items-center gap-1 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full" title="Ледяной дождь или морось по прогнозу">🧊 Гололёд</span> `;
+      else if (r.ice_risk) risks += `<span class="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full" title="Днём дождь, а следующей ночью мороз">🧊 Возможна гололедица</span> `;
       if (r.snow_risk) {
         const sf = r.snowfall_cm ? ` ${r.snowfall_cm} см` : '';
         const si = r.snow_impact || 0;
@@ -6360,8 +6362,10 @@ function renderEcology(data) {
     const warnings = [];
     if (warningDays.some(r => r.cold_risk))
       warnings.push('❗ Экстремальные морозы ожидаются в ближайшие дни — усилить теплоснабжение социальных объектов, открыть пункты обогрева.');
-    if (warningDays.some(r => r.ice_risk))
-      warnings.push('⚠️ Риск гололёда по прогнозу — вывести пескоразбрасывающую технику на мосты, перекрёстки, пешеходные зоны у больниц и школ.');
+    if (warningDays.some(r => r.ice_glaze))
+      warnings.push('⚠️ Ледяной дождь по прогнозу — гололёд. В первую очередь обработать мосты, эстакады и путепроводы: под ними нет тёплой подушки грунта, они обмерзают раньше дорог на земле. Затем спуски, остановки, подходы к больницам и школам.');
+    else if (warningDays.some(r => r.ice_risk))
+      warnings.push('⚠️ Днём дождь, а ночью мороз — возможна гололедица. К утру обработать мосты, эстакады и путепроводы — они обмерзают первыми; затем спуски, остановки, подходы к больницам и школам.');
     const maxSnowImpact = Math.max(...warningDays.map(r => r.snow_impact || 0));
     if (maxSnowImpact >= 8)
       warnings.push('🌨 Сильный снегопад ожидается в ближайшие дни — мобилизовать всю снегоуборочную технику, оповестить управляющие компании о проверке готовности к расчистке дворов, контролировать очистку кровель.');

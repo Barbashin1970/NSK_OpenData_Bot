@@ -529,7 +529,7 @@ def ecology_pdk(district: str | None) -> None:
         return
 
     from rich.table import Table
-    tbl = Table(title="Превышение ПДК PM2.5 (порог ВОЗ: 35 мкг/м³)", style="red")
+    tbl = Table(title="Превышение ПДК PM2.5 (среднесуточная ПДК: 35 мкг/м³)", style="red")
     tbl.add_column("Район",      style="cyan")
     tbl.add_column("PM2.5 макс", justify="right", style="red bold")
     tbl.add_column("PM2.5 ср",   justify="right")
