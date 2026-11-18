@@ -584,9 +584,11 @@ def _city_temperatures(days: int) -> dict[str, float]:
 # Самопроверка (шаг 10) пересчитывает прошлое нынешним кодом по нынешнему архиву — это
 # не то, что видел мэр. Проверка «обещано / сбылось» по выданному требует сохранять
 # каждый выпуск (замечание РАГРАФ 7, 2026-11-17). Выпуск — прогноз по городу: день
-# выпуска, версия регламента, ячейки с p и статусом. Тот же прогноз при повторном
-# расчёте — тот же выпуск; изменилось содержимое (досчитались вчерашние сутки, правка
-# регламента в Студии) — новый выпуск со своим моментом.
+# выпуска, версия регламента, последние наблюдённые сутки, ячейки с p и статусом. Тот же
+# прогноз при повторном расчёте — тот же выпуск; изменилось содержимое (досчитались
+# вчерашние сутки, правка регламента в Студии) — новый выпуск со своим моментом.
+# issued_at — когда посчитан, history_to — по каким данным (замечание РАГРАФ 2, 18.11):
+# замолчи сборщик сводки 051, выпуски пойдут со свежим моментом на стареющей истории.
 _ISSUES_DDL = (
     """
     CREATE TABLE IF NOT EXISTS power_forecast_issues (
@@ -620,14 +622,21 @@ ISSUE_CELL_FIELDS = ("day", "district", "utility_code", "status", "regular", "p_
 # Договор с РАГРАФ (2026-11-18): регламент sima-brigady-peregruz раз в час читает
 # GET /power/forecast?district=Советский. Эти имена полей не менять без предупреждения сессии
 # РАГРАФ — сторож tests/test_power_forecast.py::TestВыпуски::test_договор_полей_с_РАГРАФ.
-RAGRAF_POLYA = ("days", "cells", "status", "p_free", "p_overload", "issue_id", "issued_at", "rules_version")
+RAGRAF_POLYA = ("days", "cells", "status", "p_free", "p_overload",
+                "issue_id", "issued_at", "rules_version", "history_to")
 _ISSUED: dict[str, str] = {}     # issue_id → issued_at: уже сохранённые этим процессом
 
 
 def issue_id_of(fc: dict) -> str:
-    """Идентификатор выпуска: день выпуска, версия регламента и отпечаток содержимого."""
+    """Идентификатор выпуска: день выпуска, версия регламента и отпечаток содержимого.
+
+    В отпечатке и history_to: у выпуска одно значение «по каким данным», и в базе то же,
+    что в ответе. При работающем сборщике history_to — вчерашние сутки и меняется вместе
+    с днём выпуска, лишних выпусков это не даёт.
+    """
     body = [[c.get(k) for k in ISSUE_CELL_FIELDS] for c in fc["cells"]]
-    raw = json.dumps([fc["today"], fc["rules_version"], fc["estimator"], fc["params"], body],
+    raw = json.dumps([fc["today"], fc["rules_version"], fc["estimator"], fc["params"],
+                      fc.get("history_to"), body],
                      ensure_ascii=False, sort_keys=True, default=str)
     return f"{fc['today']}.{fc['rules_version'] or '0'}.{hashlib.sha1(raw.encode('utf-8')).hexdigest()[:10]}"
 
@@ -691,8 +700,8 @@ def record_issue(fc: dict) -> dict[str, Any]:
 def get_forecast(district: str | None = None, today: date | None = None) -> dict[str, Any]:
     """Прогноз на живых данных СИМА: суточный архив, снимки за 30 дней, температура.
 
-    Каждый ответ несёт паспорт выпуска (issue_id, issued_at, rules_version). Выпуск —
-    прогноз по городу; прогноз района — его часть с тем же паспортом.
+    Каждый ответ несёт паспорт выпуска (issue_id, issued_at, rules_version, history_to).
+    Выпуск — прогноз по городу; прогноз района — его часть с тем же паспортом.
     """
     from .power_cache import query_observed_days, query_power_history
     from .rule_engine import rules as _rules
