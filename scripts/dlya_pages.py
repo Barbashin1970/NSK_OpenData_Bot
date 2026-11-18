@@ -177,6 +177,7 @@ def spisok_adresov(html: str, konfig: dict, temy: list[str] = ()) -> list[str]:
     adresa = [
         "/api/city-config", "/api/available-cities", "/topics", "/api/vocabulary", "/api/version", "/api/version/check",
         "/ecology/status", "/ecology/risks", "/traffic-index", "/transit/districts", "/power/forecast",
+        "/ecology/snow-outlook",                                  # снегопад по районам (docs/SNEGOPAD-RAZBOR.md)
         # /custom-reports не снимается: карточки отчётов (МТС, аварийные службы) в демо не нужны
         # (просьба заказчика 2026-11-17) — без списка страница их не рисует
         f"/budget/{gorod}", "/budget-compare", f"/emissions/{gorod}", "/ciinsu/news",
@@ -190,6 +191,7 @@ def spisok_adresov(html: str, konfig: dict, temy: list[str] = ()) -> list[str]:
     for r in rajony:
         v = quote(r["val"], safe="")
         adresa.append("/power/forecast?district=" + quote(FORECAST_RAJON.get(r["val"], r["val"]), safe=""))
+        adresa.append("/ecology/snow-outlook?district=" + quote(FORECAST_RAJON.get(r["val"], r["val"]), safe=""))
         adresa.append(f"/ecology/aqi-exceedances?days=30&aqi_threshold=40&district={v}")
         for d in PERIODY:
             adresa += [f"/power/history?days={d}&group_by=day&district={v}", f"/ecology/history?days={d}&district={v}"]

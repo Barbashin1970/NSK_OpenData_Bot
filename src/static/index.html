@@ -917,11 +917,11 @@ async function _loadRoleDashboardImpl(isRetry) {
 
   // ── Есть свежий кеш → мгновенный рендер ──────────────────────────────
   if (cached && (Date.now() - cached.ts < _DASH_TTL) && !isRetry) {
-    _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit, false, cached.forecast);
+    _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit, false, cached.forecast, cached.snow);
     // Тихо обновляем в фоне, если кеш старше 2 минут
     if (Date.now() - cached.ts > 2 * 60 * 1000) {
       _fetchDashData().then(d => {
-        if (d) { _dashCache[cacheKey] = { ts: Date.now(), ...d }; _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit, false, d.forecast); }
+        if (d) { _dashCache[cacheKey] = { ts: Date.now(), ...d }; _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit, false, d.forecast, d.snow); }
       }).catch(() => {});
     }
     return;
@@ -931,7 +931,7 @@ async function _loadRoleDashboardImpl(isRetry) {
   if (!isRetry) {
     // Если есть устаревший кеш — показать его пока грузятся свежие данные
     if (cached) {
-      _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit, true, cached.forecast);
+      _renderDashFromData(dashEl, cached.power, cached.eco, cached.risks, cached.trafficData, cached.transit, true, cached.forecast, cached.snow);
     } else {
       dashEl.innerHTML = `<div class="space-y-3 py-2">
         <div class="flex items-center gap-2 text-xs text-sky-500"><div class="animate-spin w-3 h-3 border-2 border-sky-400 border-t-transparent rounded-full"></div> Загрузка данных…</div>
@@ -945,7 +945,7 @@ async function _loadRoleDashboardImpl(isRetry) {
   try {
     const d = await _fetchDashData();
     _dashCache[cacheKey] = { ts: Date.now(), ...d };
-    _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit, false, d.forecast);
+    _renderDashFromData(dashEl, d.power, d.eco, d.risks, d.trafficData, d.transit, false, d.forecast, d.snow);
 
     // Если AQI отсутствует — повторяем один раз через 5 с (экология могла ещё не загрузиться)
     const hasAqi = d.eco?.rows?.some(r => r.aqi != null);
@@ -974,7 +974,10 @@ async function _fetchDashData() {
   const fcDistrict = currentRole === 'official' ? _forecastDistrictParam(officialDistrict) : '';
   const fcPromise = fetch('/power/forecast' + (fcDistrict ? '?district=' + encodeURIComponent(fcDistrict) : ''))
     .then(r => r.ok ? r.json() : null).catch(() => null);
-  const [results, forecast] = await Promise.all([Promise.all(fetches), fcPromise]);
+  // Снегопад по районам на 1–3 суток (docs/SNEGOPAD-RAZBOR.md): мэру — город, служащему — район
+  const snowPromise = fetch('/ecology/snow-outlook' + (fcDistrict ? '?district=' + encodeURIComponent(fcDistrict) : ''))
+    .then(r => r.ok ? r.json() : null).catch(() => null);
+  const [results, forecast, snow] = await Promise.all([Promise.all(fetches), fcPromise, snowPromise]);
   return {
     power:       results[0].ok ? await results[0].json() : null,
     eco:         results[1].ok ? await results[1].json() : null,
@@ -982,6 +985,7 @@ async function _fetchDashData() {
     trafficData: results[3]?.ok ? await results[3].json() : null,
     transit:     (currentRole === 'official' && results[4]?.ok) ? await results[4].json() : null,
     forecast,
+    snow,
   };
 }
 
@@ -993,13 +997,13 @@ function _forecastDistrictParam(district) {
   return sub[d] || d;
 }
 
-async function _renderDashFromData(dashEl, power, eco, risks, trafficData, transit, isStale, forecast) {
+async function _renderDashFromData(dashEl, power, eco, risks, trafficData, transit, isStale, forecast, snow) {
   const staleIndicator = isStale
     ? '<div class="flex items-center gap-1.5 text-[10px] text-sky-500 mb-1"><div class="animate-spin w-2.5 h-2.5 border border-sky-400 border-t-transparent rounded-full"></div> обновление…</div>'
     : '';
   const dashContent = currentRole === 'mayor'
-    ? await renderMayorDashboard(power, eco, risks, trafficData, forecast)
-    : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData, forecast);
+    ? await renderMayorDashboard(power, eco, risks, trafficData, forecast, snow)
+    : renderOfficialDashboard(power, eco, risks, transit, officialDistrict, trafficData, forecast, snow);
   dashEl.innerHTML = staleIndicator + dashContent;
   _restoreDashCollapse();
   // Скрыть info-карточку "панель загружается…" после рендера дашборда
@@ -1222,6 +1226,89 @@ function _fcConf(x) { return x == null ? null : Math.round(x * 20) * 5; }
 function _fcObservedFree(bt, pFree) {
   const c = (bt?.calibration || []).find(b => pFree >= b.from && (pFree < b.to || b.to >= 1));
   return c && c.n >= 20 && c.observed != null ? c.observed : null;
+}
+
+// ── Снегопад по районам на 1–3 суток (пилот, docs/SNEGOPAD-RAZBOR.md) ─────────────
+// Уровни — пороги регламента ecology_rules.snow_outlook (2 / 5 / 15 см за сутки).
+const _SNOW_LVL_CLS = ['text-slate-300', 'bg-sky-50 text-sky-800', 'bg-indigo-100 text-indigo-800',
+                       'bg-violet-200 text-violet-900 font-semibold'];
+const _SNOW_BADGE_CLS = ['bg-slate-100 text-slate-500', 'bg-sky-100 text-sky-800', 'bg-indigo-100 text-indigo-800',
+                         'bg-violet-200 text-violet-900'];
+function _snowCm(x) { return x == null ? '—' : (x < 0.05 ? '0' : String(Math.round(x * 10) / 10).replace('.', ',')); }
+function _snowRetroLine(rt) {
+  if (!rt || !rt.lead1) return '';
+  const p = x => Math.round(x * 100) + '%';
+  const osen = rt.autumn_2026 ? ` Осень 2026: из ${rt.autumn_2026.forecasts} прогнозов снега сбылись ${rt.autumn_2026.came_true}.` : '';
+  return `Насколько верить: на прошлых зимах (${rt.period}, ${rt.events} снегопадов от ${_snowCm(rt.threshold_cm)} см по ${rt.truth}) ` +
+    `прогноз на завтра назвал ${p(rt.lead1.named)} снегопадов и сбылся в ${p(rt.lead1.came_true)} случаев; ` +
+    `на 3 суток — ${p(rt.lead3.named)} и ${p(rt.lead3.came_true)}.${osen}`;
+}
+function _renderSnowOutlook(so) {
+  if (!so || !Array.isArray(so.days) || !so.days.length) return '';
+  const days = so.days.map(d => d.day);
+  const isDist = !!so.district;
+  const distName = isDist ? _fcShortDist(so.districts?.[0]?.district || so.district) : '';
+  const head = `
+    <div class="px-4 py-2.5 flex flex-wrap gap-2 justify-between items-center border-b border-slate-100 bg-slate-50">
+      <span class="text-[10px] font-semibold uppercase tracking-widest text-slate-500">🌨 Снегопад · 3 суток${isDist ? ' · ' + esc(distName) : ' по районам'}</span>
+      <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 cursor-help" title="${esc(so.source_note || '')}">модель Open-Meteo, не УГМС</span>
+    </div>`;
+  const issued = so.issued_at ? (() => { const t = new Date(so.issued_at); return isNaN(t) ? '' : ' Прогноз загружен ' + t.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '.'; })() : '';
+  const foot = `<div class="px-4 py-2 border-t border-slate-100 text-[10px] text-slate-400 leading-snug">${esc(_snowRetroLine(so.retro))}${esc(issued)}</div>`;
+  if (so.error) {
+    return `<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">${head}
+      <div class="px-4 py-3 text-xs text-slate-500">Прогноз снегопада недоступен: ${esc(so.error)}</div></div>`;
+  }
+  const badge = (lvl, txt) => `<span class="inline-block text-[10px] px-1.5 py-0.5 rounded ${_SNOW_BADGE_CLS[lvl] || _SNOW_BADGE_CLS[0]}">${esc(txt)}</span>`;
+  const where = a => (a.where || []).map(w => `${isDist ? '' : esc(_fcShortDist(w.district)) + ' '}${_fcDays([w.day])} (${_snowCm(w.snow_cm)} см)`).join(', ');
+  const actions = (so.actions || []).map(a => `
+      <div class="px-4 py-2.5 border-t border-slate-100 text-xs leading-snug space-y-1">
+        <div>${badge(a.level, a.label)} <span class="text-slate-500">${where(a)}</span></div>
+        <div><span class="font-semibold text-slate-700">ДЭУ:</span> <span class="text-slate-600">${esc(a.deu)}</span></div>
+        ${isDist ? `<div><span class="font-semibold text-slate-700">УК:</span> <span class="text-slate-600">${esc(a.uk)}</span></div>
+        <div><span class="font-semibold text-slate-700">Жителям:</span> <span class="text-slate-600 italic">«${esc(a.citizens)}»</span></div>` : ''}
+      </div>`).join('');
+  const quiet = `<div class="px-4 py-3 text-xs text-slate-500">Снега от 2 см в ближайшие 3 суток не ожидается${isDist ? '' : ' ни в одном районе'}.</div>`;
+
+  if (isDist) {
+    const d0 = so.districts?.[0];
+    if (!d0) return `<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">${head}${quiet}${foot}</div>`;
+    const cells = d0.days.map(x => `
+      <div class="rounded-lg px-2 py-2 text-center ${_SNOW_LVL_CLS[x.level] || ''} ${x.level ? '' : 'bg-slate-50'}">
+        <div class="text-[10px] text-slate-500">${_fcDays([x.day])}</div>
+        <div class="text-base leading-tight">${_snowCm(x.snow_cm)} <span class="text-[10px]">см</span></div>
+        <div class="text-[10px] text-slate-500">${x.t_min != null ? Math.round(x.t_min) + '…' + Math.round(x.t_max) + '°' : ''}</div>
+      </div>`).join('');
+    return `<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">${head}
+      <div class="px-4 py-3 grid grid-cols-3 gap-2">${cells}</div>
+      ${so.max_level ? actions : quiet}${foot}</div>`;
+  }
+
+  if (!so.max_level) {
+    // снега от 2 см нет нигде — мэру хватит строки, таблица из нулей не нужна
+    const all = (so.districts || []).flatMap(d => d.days.map(x => ({ district: d.district, ...x })));
+    const mx = all.reduce((a, b) => ((b.snow_cm || 0) > (a?.snow_cm || 0) ? b : a), null);
+    const small = mx && mx.snow_cm >= 0.5
+      ? `<div class="px-4 pb-3 -mt-1 text-xs text-slate-400">Небольшой снег: до ${_snowCm(mx.snow_cm)} см (${esc(_fcShortDist(mx.district))}, ${_fcDays([mx.day])}).</div>` : '';
+    return `<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">${head}${quiet}${small}${foot}</div>`;
+  }
+  const rows = (so.districts || []).slice().sort((a, b) => b.total_cm - a.total_cm).map(d => `
+      <tr class="border-t border-slate-100">
+        <td class="px-3 py-1.5 text-xs text-slate-700 whitespace-nowrap">${esc(_fcShortDist(d.district))}</td>
+        ${d.days.map(x => `<td class="px-2 py-1.5 text-xs text-center ${_SNOW_LVL_CLS[x.level] || ''}">${_snowCm(x.snow_cm)}</td>`).join('')}
+      </tr>`).join('');
+  const w = so.worst;
+  const top = w ? `<div class="px-4 pt-3 text-xs text-slate-600">Больше всего снега: <strong>${esc(_fcShortDist(w.district))}</strong>, ${_fcDays([w.day])} — ${_snowCm(w.snow_cm)} см. ${badge(w.level, (so.levels || []).find(l => l.level === w.level)?.label || '')}</div>` : quiet;
+  return `<div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">${head}
+    ${top}
+    <div class="px-2 py-2 overflow-x-auto">
+      <table class="w-full">
+        <thead><tr><th class="px-3 py-1 text-[10px] text-left font-medium text-slate-400">Район, см снега</th>
+          ${days.map(d => `<th class="px-2 py-1 text-[10px] font-medium text-slate-400">${_fcDays([d])}</th>`).join('')}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${actions}${foot}</div>`;
 }
 
 function _renderZhkhForecast(fc) {
@@ -1571,7 +1658,7 @@ async function _saveForecastAnswers() {
   }
 }
 
-function renderOfficialDashboard(power, eco, risks, transit, district, trafficData, forecast) {
+function renderOfficialDashboard(power, eco, risks, transit, district, trafficData, forecast, snow) {
   const d = district || '';  // '' = весь город
   const dShort = d.replace(/ (район|округ)$/i, '');
 
@@ -1805,10 +1892,11 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
         ${ecoBlock}
       </div>
       ${_renderZhkhForecast(forecast)}
+      ${_renderSnowOutlook(snow)}
     </div>`;
 }
 
-async function renderMayorDashboard(power, eco, risks, trafficData, forecast) {
+async function renderMayorDashboard(power, eco, risks, trafficData, forecast, snow) {
   const pm = power?.power_meta || {};
   const activeH  = pm.active_houses  || 0;
   const plannedH = pm.planned_houses || 0;
@@ -2056,6 +2144,7 @@ async function renderMayorDashboard(power, eco, risks, trafficData, forecast) {
         ${budgetBlock}
       </div>
       ${_renderZhkhForecast(forecast)}
+      ${_renderSnowOutlook(snow)}
       ${taskBlock}
     </div>`;
 }

@@ -233,6 +233,24 @@ CREATE TABLE IF NOT EXISTS eco_forecast (
 )
 """
 
+# Архив выданных прогнозов: строка на точку, дату прогноза и момент выпуска (fetched_at)
+_DDL_FORECAST_ISSUES = """
+CREATE TABLE IF NOT EXISTS eco_forecast_issues (
+    station_id    VARCHAR,
+    district      VARCHAR,
+    forecast_date VARCHAR,
+    issued_at     VARCHAR,              -- момент загрузки прогноза (fetched_at)
+    temp_max      DOUBLE,
+    temp_min      DOUBLE,
+    wind_max      DOUBLE,
+    precipitation DOUBLE,
+    snowfall_cm   DOUBLE,
+    rain_mm       DOUBLE,
+    weathercode   INTEGER,
+    PRIMARY KEY (station_id, forecast_date, issued_at)
+)
+"""
+
 # WMO Weather Interpretation Codes → (иконка, описание)
 WMO_WEATHER: dict[int, tuple[str, str]] = {
     0:  ("☀️",  "Ясно"),
@@ -284,6 +302,7 @@ def init_ecology_tables() -> None:
                 conn.execute(f"ALTER TABLE eco_forecast ADD COLUMN {col} DOUBLE")
             except Exception:
                 pass  # колонка уже есть
+        conn.execute(_DDL_FORECAST_ISSUES)
     finally:
         conn.close()
 
@@ -1037,9 +1056,158 @@ def upsert_forecast(records: list[dict]) -> int:
             except Exception as e:
                 log.error(f"Forecast upsert error {r.get('id')}: {e}")
         log.info(f"Forecast upsert: {count} записей")
+        _archive_forecast_issue(conn, records)
         return count
     finally:
         conn.close()
+
+
+# ── Снегопад по районам на 1–3 суток (пилот 2026-11-18, docs/SNEGOPAD-RAZBOR.md) ──────────
+# Ретропроверка прогноза «снег от 2 см за сутки» (фаза С.1): прошлые прогнозы Open-Meteo
+# (best_match) против реанализа ERA5 по точке центра города, октябрь–апрель. Числа
+# пересчитываются из docs/snegopad-2026/snow_retro_daily.csv — сторож в tests/test_snow_outlook.py.
+SNOW_RETRO: dict[str, Any] = {
+    "period": "01.2024–11.2026, октябрь–апрель",
+    "truth": "ERA5",
+    "threshold_cm": 2.0,
+    "days": 569,
+    "events": 60,
+    "lead1": {"named": 0.78, "came_true": 0.78},
+    "lead2": {"named": 0.72, "came_true": 0.75},
+    "lead3": {"named": 0.65, "came_true": 0.74},
+    "autumn_2026": {"forecasts": 7, "came_true": 2},
+    "command": "python3 -I scripts/snow_retro/snow_retro.py score docs/snegopad-2026/snow_retro_daily.csv",
+}
+SNOW_LEVELS_DEFAULT = [{"level": 1, "min_cm": 2.0, "label": "Снег от 2 см"},
+                       {"level": 2, "min_cm": 5.0, "label": "Снегопад от 5 см"},
+                       {"level": 3, "min_cm": 15.0, "label": "Сильный снегопад от 15 см"}]
+
+
+def snow_level(cm: float | None, levels: list[dict]) -> int:
+    """Уровень снегопада за сутки: наибольший уровень, чей порог достигнут; 0 — ниже всех."""
+    if cm is None:
+        return 0
+    return max([int(lv["level"]) for lv in levels if cm >= float(lv["min_cm"])], default=0)
+
+
+def query_snow_outlook(district_filter: str | None = None) -> dict[str, Any]:
+    """Снегопад по районам на horizon_days суток вперёд (с завтрашних, по местному времени).
+
+    Мэру — районы × сутки и самый снежный день; району — его сутки. Действия ДЭУ, тексты УК и
+    жителям — по каждому уровню, который встречается в горизонте (регламент ecology_rules,
+    snow_outlook). Если в районе несколько точек — берётся наибольший снег (с запасом).
+    """
+    cfg = (_rules.get("ecology_rules") or {}).get("snow_outlook") or {}
+    levels = sorted(cfg.get("levels") or SNOW_LEVELS_DEFAULT, key=lambda lv: float(lv["min_cm"]))
+    horizon = int(cfg.get("horizon_days", 3))
+    exclude = {str(x).lower() for x in cfg.get("exclude_districts", ["Кольцово"])}
+    if district_filter and district_filter.lower().startswith("академ"):
+        district_filter = "Советский"            # Академгородок — в Советском районе
+    try:
+        from .city_config import get_utc_offset
+        offset = int(get_utc_offset())
+    except Exception:
+        offset = 7
+    today = (datetime.now(timezone.utc) + timedelta(hours=offset)).date()
+    days = [str(today + timedelta(days=k)) for k in range(1, horizon + 1)]
+
+    init_ecology_tables()
+    conn = _get_conn()
+    try:
+        wheres, params = ["forecast_date >= ?", "forecast_date <= ?"], [days[0], days[-1]]
+        if district_filter:
+            wheres.append("district ILIKE ?")
+            params.append(f"%{district_filter.split()[0]}%")
+        rows = conn.execute(
+            f"SELECT district, forecast_date, snowfall_cm, temp_min, temp_max, fetched_at "
+            f"FROM eco_forecast WHERE {' AND '.join(wheres)}", params).fetchall()
+    finally:
+        conn.close()
+
+    by: dict[str, dict[str, dict]] = {}
+    issued_at = None
+    for dist, day, sf, tmin, tmax, fetched in rows:
+        if not dist or str(dist).lower() in exclude:
+            continue
+        day = str(day)[:10]
+        sf = round(float(sf), 1) if sf is not None else None
+        cur = by.setdefault(dist, {}).get(day)
+        if cur is None or (sf or 0) > (cur["snow_cm"] or 0):
+            by[dist][day] = {"day": day, "snow_cm": sf, "t_min": tmin, "t_max": tmax}
+        if fetched and (issued_at is None or str(fetched) > issued_at):
+            issued_at = str(fetched)
+
+    districts = []
+    for dist in sorted(by):
+        ds = [dict(by[dist].get(day) or {"day": day, "snow_cm": None, "t_min": None, "t_max": None})
+              for day in days]
+        for x in ds:
+            x["level"] = snow_level(x["snow_cm"], levels)
+        districts.append({"district": dist, "days": ds,
+                          "total_cm": round(sum(x["snow_cm"] or 0 for x in ds), 1),
+                          "max_level": max(x["level"] for x in ds)})
+
+    cells = [(d["district"], x) for d in districts for x in d["days"]]
+    city = []
+    for day in days:
+        here = sorted(((dist, x) for dist, x in cells if x["day"] == day and x["level"] >= 1),
+                      key=lambda t: -(t[1]["snow_cm"] or 0))
+        city.append({"day": day,
+                     "max_cm": max([x["snow_cm"] or 0 for dist, x in cells if x["day"] == day], default=0),
+                     "districts": [dist for dist, _ in here]})
+    snowy = [(dist, x) for dist, x in cells if x["level"] >= 1]
+    worst = None
+    if snowy:
+        dist, x = max(snowy, key=lambda t: (t[1]["snow_cm"] or 0, -days.index(t[1]["day"])))
+        worst = {"district": dist, "day": x["day"], "snow_cm": x["snow_cm"], "level": x["level"]}
+    actions = []
+    for lv in sorted(levels, key=lambda lv: -int(lv["level"])):
+        where = [{"district": dist, "day": x["day"], "snow_cm": x["snow_cm"]}
+                 for dist, x in snowy if x["level"] == int(lv["level"])]
+        if where:
+            actions.append({"level": int(lv["level"]), "label": lv.get("label", ""), "min_cm": float(lv["min_cm"]),
+                            "deu": lv.get("deu", ""), "uk": lv.get("uk", ""), "citizens": lv.get("citizens", ""),
+                            "where": where})
+    return {
+        "operation": "SNOW_OUTLOOK",
+        "district": district_filter or None,
+        "error": None if rows else "прогноз погоды ещё не загружен",
+        "today": str(today),
+        "issued_at": issued_at,
+        "days": [{"day": day} for day in days],
+        "levels": [{"level": int(lv["level"]), "min_cm": float(lv["min_cm"]), "label": lv.get("label", "")}
+                   for lv in levels],
+        "districts": districts,
+        "city": city,
+        "worst": worst,
+        "max_level": max([d["max_level"] for d in districts], default=0),
+        "actions": actions,
+        "source_note": cfg.get("source_note") or "Прогноз — модель Open-Meteo, а не прогноз УГМС.",
+        "retro": SNOW_RETRO,
+    }
+
+
+def _archive_forecast_issue(conn, records: list[dict]) -> None:
+    """Архив выданных прогнозов: eco_forecast перезаписывается, а выпуск остаётся.
+
+    Выпуск — момент загрузки (fetched_at). Без архива нечем проверить свои же оповещения
+    (исследование погоды, рекомендация 3; разбор снегопада, фаза С.4). Сбой архива не
+    мешает прогнозу.
+    """
+    cols = ("station_id", "district", "forecast_date", "fetched_at", "temp_max", "temp_min", "wind_max",
+            "precipitation", "snowfall_cm", "rain_mm", "weathercode")
+    rows = [[r.get(c) if c != "district" else r.get("district", "") for c in cols]
+            for r in records if r.get("station_id") and r.get("forecast_date") and r.get("fetched_at")]
+    try:
+        for i in range(0, len(rows), 200):
+            part = rows[i:i + 200]
+            conn.execute(
+                "INSERT INTO eco_forecast_issues VALUES "
+                + ", ".join(["(" + ", ".join(["?"] * len(cols)) + ")"] * len(part)) + " ON CONFLICT DO NOTHING",
+                [v for row in part for v in row],
+            )
+    except Exception as e:
+        log.warning("архив выпусков погоды не записан: %s", e)
 
 
 def is_forecast_stale(ttl_hours: int = 6) -> bool:

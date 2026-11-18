@@ -210,3 +210,16 @@ def test_снимок_не_пишется_в_журнал_запросов(monke
     assert zapisi == []
     klient.get("/ask", params=zapros)
     assert len(zapisi) == 1 and zapisi[0]["operation"] == "UNKNOWN"
+
+
+def test_снегопад_по_районам_в_снимке():
+    """Разбор снегопада, С.5: блок табло берёт /ecology/snow-outlook — у города и у каждого
+    района; Академгородок — по Советскому району, как прогноз ЖКХ."""
+    from urllib.parse import quote
+    html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "fetch('/ecology/snow-outlook'" in html
+    konf = {"city_id": "novosibirsk", "districts": [{"val": "Советский район", "label": "Советский"}, {"val": "Академгородок", "label": "Академгородок"}]}
+    adresa = dp.spisok_adresov(html, konf)
+    assert "/ecology/snow-outlook" in adresa
+    assert "/ecology/snow-outlook?district=" + quote("Советский район", safe="") in adresa
+    assert "/ecology/snow-outlook?district=" + quote("Советский", safe="") in adresa
