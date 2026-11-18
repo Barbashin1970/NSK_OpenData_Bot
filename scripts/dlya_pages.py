@@ -397,6 +397,79 @@ window.SIMA_STATIC = __META__;
 
 META_CHARSET = re.compile(r"""<meta\s+charset=["']?utf-8["']?\s*/?>""", re.I)
 
+# ── Демо в стиле РАГРАФ (просьба руководителя работы 2026-11-18) ───────────────────
+# Вместо «мишки» — знак Σ, как в шапке лендинга РАГРАФ (синий квадрат, белая Σ, Inter Bold);
+# значок вкладки — как favicon РАГРАФ (золотая Σ на slate-900). Имя — «РАГРАФ-ПРОГНОЗ», ниже —
+# «Система интеллектуального муниципального анализа». Шапка темнее — slate-900 → blue-950 →
+# blue-800, как тёмный первый экран РАГРАФ. Меняется только копия для Pages; основной сайт —
+# с прежним видом. Каждая замена обязана найтись ровно один раз, иначе сборка останавливается:
+# демо со смесью старого и нового вида хуже прошлой публикации.
+IMYA_DEMO = "РАГРАФ-ПРОГНОЗ"
+PODZAG_DEMO = "Система интеллектуального муниципального анализа"
+ZNAK_SVG = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+            "<rect width='64' height='64' rx='12' fill='#0F172A'/>"
+            "<text x='50%' y='50%' text-anchor='middle' dominant-baseline='central' "
+            "font-family='system-ui,-apple-system,Segoe UI,Roboto,sans-serif' font-weight='700' "
+            "font-size='44' fill='#FBBF24'>Σ</text></svg>")
+TYOMNAYA_SHAPKA = "bg-gradient-to-br from-slate-900 via-blue-950 to-blue-800"
+
+
+def _znak(klass: str, extra: str = "") -> str:
+    """Знак Σ в синем квадрате — как в шапке лендинга РАГРАФ."""
+    return (f'<span class="{klass} flex flex-shrink-0 items-center justify-center bg-blue-600 text-white '
+            f'shadow-lg ring-1 ring-white/25" style="font-weight:700;line-height:1;'
+            f'font-family:\'Inter\',system-ui,sans-serif"{extra}>Σ</span>')
+
+
+PEREODET = [
+    ("<title>СИМА — Открытые данные Новосибирска</title>",
+     f"<title>{IMYA_DEMO} — {PODZAG_DEMO}</title>"),
+    ('  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">\n'
+     '  <link rel="icon" type="image/png" href="/static/img/sigma-cat-sm.png">\n'
+     '  <link rel="apple-touch-icon" href="/static/img/sigma-cat.png">\n',
+     f'  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,{quote(ZNAK_SVG, safe="")}">\n'),
+    ('  <link rel="preload" as="image" href="/static/img/sigma-cat-sm.png">\n', ""),
+    ('<header class="bg-gradient-to-br from-blue-900 via-blue-700 to-indigo-700 text-white shadow-xl">',
+     f'<header class="{TYOMNAYA_SHAPKA} text-white shadow-xl">'),
+    ('        <img src="/static/img/sigma-cat-sm.png"\n'
+     '             class="h-14 sm:h-20 w-auto object-contain flex-shrink-0 cursor-pointer active:scale-95 transition-transform"\n'
+     '             alt="СИМА"\n'
+     '             title="Что умеет СИМА?"\n'
+     '             onclick="setQuery(\'что ты умеешь\')"\n'
+     '             style="filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))">\n'
+     '        <div class="min-w-0">\n'
+     '          <h1 class="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">СИМА</h1>\n'
+     '          <p class="text-blue-300 text-xs sm:text-sm mt-0.5 sm:mt-1">Открытые данные — только спроси</p>\n',
+     "        " + _znak("h-12 w-12 sm:h-16 sm:w-16 rounded-xl text-3xl sm:text-4xl cursor-pointer active:scale-95 "
+                     "transition-transform",
+                     ' role="button" tabindex="0" title="Что умеет система?" aria-label="Что умеет система"'
+                     ' onclick="setQuery(\'что ты умеешь\')"') + "\n"
+     '        <div class="min-w-0">\n'
+     f'          <h1 class="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">{IMYA_DEMO}</h1>\n'
+     f'          <p class="text-blue-200 text-xs sm:text-sm mt-0.5 sm:mt-1">{PODZAG_DEMO}</p>\n'),
+    ('<div class="bg-gradient-to-br from-blue-900 via-blue-700 to-indigo-700 px-5 py-4 text-white">',
+     f'<div class="{TYOMNAYA_SHAPKA} px-5 py-4 text-white">'),
+    ('<img src="/static/img/sigma-cat-sm.png" class="h-16 w-auto flex-shrink-0 object-contain drop-shadow-md" alt="Сима">',
+     _znak("h-12 w-12 rounded-xl text-3xl", ' aria-hidden="true"')),
+    ('<p class="font-semibold text-base leading-snug">Привет! Я — Сима</p>',
+     f'<p class="font-semibold text-base leading-snug">{IMYA_DEMO}</p>'),
+    ("СИМА · ЦИИ НГУ · rule-based, без AI в runtime · моделирование и прогнозирование",
+     f"{IMYA_DEMO} · {PODZAG_DEMO} · ЦИИ НГУ · правила, без AI в runtime · моделирование и прогнозирование"),
+    ('<p class="font-medium text-slate-500">СИМА — система интеллектуального муниципального анализа <span id="footerVer"',
+     f'<p class="font-medium text-slate-500">{IMYA_DEMO} — система интеллектуального муниципального анализа <span id="footerVer"'),
+]
+
+
+def pereodet(html: str) -> str:
+    """Копия страницы для Pages — в стиле РАГРАФ: знак Σ, имя «РАГРАФ-ПРОГНОЗ», тёмная шапка."""
+    for staroe, novoe in PEREODET:
+        n = html.count(staroe)
+        if n != 1:
+            sys.exit(f"СТОП: переодевание демо — фрагмент найден {n} раз(а), разметка index.html изменилась: "
+                     f"{staroe[:80]!r}")
+        html = html.replace(staroe, novoe)
+    return html
+
 
 def sobrat_stranicu(html: str, osnova: str, meta: dict) -> str:
     if len(META_CHARSET.findall(html)) != 1:
@@ -406,6 +479,7 @@ def sobrat_stranicu(html: str, osnova: str, meta: dict) -> str:
     # начало страницы читалось как windows-1251 — кракозябры в строках прослойки
     # (проверка в браузере 2026-11-17). Pages шлёт charset, но полагаться на это не надо.
     shim = SHIM.replace("__META__", json.dumps(meta, ensure_ascii=False))
+    html = pereodet(html)                                  # вид РАГРАФ — до вставки прослойки
     html = META_CHARSET.sub(lambda m: m.group(0) + "\n" + shim, html, count=1)
     html = SSYLKA_UPRAVLENIYA.sub(
         'href="#demo-off" data-demo-off="1" aria-disabled="true" title="В демо-версии недоступно"', html)
@@ -578,6 +652,8 @@ def main():
     stranica = (vyhod / "index.html").read_text(encoding="utf-8")
     if stranica.count("window.SIMA_STATIC = ") != 1:
         oshibki.append("прослойка вставлена не ровно один раз")
+    if "sigma-cat" in stranica or f">{IMYA_DEMO}</h1>" not in stranica:
+        oshibki.append("вид РАГРАФ не применён: остался «мишка» или нет заголовка «РАГРАФ-ПРОГНОЗ»")
     bajty = stranica.encode("utf-8")
     m_charset = re.search(rb"<meta\s+charset", bajty, re.I)
     if not m_charset or m_charset.start() > 900 or m_charset.start() > bajty.find(b"window.SIMA_STATIC"):

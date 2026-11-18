@@ -243,3 +243,20 @@ def test_плашки_ЦИИ_в_демо_скрыты(tmp_path):
     f.write_text(stend, encoding="utf-8")
     css = json.loads(subprocess.run([node, str(f)], capture_output=True, text=True, check=True).stdout)
     assert '[onclick^="toggleCiiPanel"]' in css[0] and '[onclick^="loadNewsPublic"]' in css[0]
+
+
+def test_демо_в_стиле_РАГРАФ():
+    """Просьба руководителя работы 18.11: в демо вместо «мишки» — знак Σ, как у РАГРАФ
+    (синий квадрат, белая Σ; значок вкладки — золотая Σ на тёмном), имя «РАГРАФ-ПРОГНОЗ»
+    и ниже «Система интеллектуального муниципального анализа». Основной сайт не меняется."""
+    html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "sigma-cat-sm.png" in html and "<h1" in html            # основной сайт — с «мишкой»
+    demo = dp.sobrat_stranicu(html, "/NSK_OpenData_Bot", META)
+    assert "sigma-cat" not in demo                                  # «мишки» нет нигде: шапка, значки, приветствие
+    assert "<title>РАГРАФ-ПРОГНОЗ — Система интеллектуального муниципального анализа</title>" in demo
+    shapka = demo[demo.index("<header"):demo.index("</header>")]
+    assert ">РАГРАФ-ПРОГНОЗ</h1>" in shapka and "Система интеллектуального муниципального анализа" in shapka
+    assert ">Σ</span>" in shapka and "bg-blue-600" in shapka and "Открытые данные — только спроси" not in shapka
+    znachok = re.search(r'<link rel="icon" type="image/svg\+xml" href="data:image/svg\+xml,([^"]+)"', demo)
+    assert znachok and "FBBF24" in znachok.group(1) and "0F172A" in znachok.group(1)   # как favicon РАГРАФ
+    assert "Привет! Я — Сима" not in demo
