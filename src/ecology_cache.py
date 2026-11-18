@@ -1320,6 +1320,34 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
         conn.close()
 
 
+def life_index_inputs(district_filter: str | None = None) -> dict:
+    """Входы индексов жизни из прогноза: гололёд на сегодня, ночной минимум, снегопад на 3 суток.
+
+    Одни и те же для /ecology/status, /life-indices и ответа «качество воздуха» (/ask), чтобы
+    табло и сервер считали по одним величинам. Нет прогноза — нет величины (None, ⊥), а не 0:
+    индекс тогда помечается «неполные данные» (сверка с РАГРАФ 18.11, life_indices_rules 1.3).
+
+    night_min — минимум следующих суток прогноза: так же «следующую ночь» берёт правило
+    гололёда (ice_level). Гололёд и ночной минимум — по району, если он задан; снегопад —
+    наибольший по городу за 3 суток, как было на табло.
+    """
+    out: dict = {"ice_level": None, "night_min": None, "snow_impact": None}
+    try:
+        ice, _seg, zavtra = _ice_today(district_filter)
+        out["ice_level"] = ice
+        if zavtra and zavtra.get("temp_min") is not None:
+            out["night_min"] = float(zavtra["temp_min"])
+    except Exception as e:
+        log.warning("индексы жизни: гололёд и ночной минимум не оценены (%s)", e)
+    try:
+        vals = [float(r["snow_impact"]) for r in query_forecast(days=3) if r.get("snow_impact") is not None]
+        if vals:
+            out["snow_impact"] = max(vals)
+    except Exception as e:
+        log.warning("индексы жизни: снегопад не оценён (%s)", e)
+    return out
+
+
 def query_history(district_filter: str | None = None, days: int = 7) -> list[dict]:
     """История по дням за N дней с агрегацией по показателям.
 

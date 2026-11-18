@@ -584,8 +584,11 @@ def get_ask(
         result = execute_ecology(plan)
         meta = get_ecology_meta()
         if plan.operation == "ECO_STATUS":
-            from ..ecology_cache import query_risks
+            from ..ecology_cache import life_index_inputs, query_risks
             result["risks"] = query_risks(district_filter=plan.district)
+            # входы индексов жизни — как у /ecology/status; без них ответ «качество воздуха»
+            # считал индексы без гололёда и со снегопадом 0 (сверка с РАГРАФ 18.11)
+            result.update(life_index_inputs(plan.district))
         return {
             "query": q,
             "topic": topic,
