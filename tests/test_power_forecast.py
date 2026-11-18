@@ -353,6 +353,18 @@ class TestВыпуски:
         assert self.vybrat(stend, "SELECT count(*) FROM power_forecast_issues") == [(1,)]
 
 
+    def test_договор_полей_с_РАГРАФ(self, stend):
+        """Регламент РАГРАФ sima-brigady-peregruz раз в час читает GET /power/forecast?district=Советский
+        (18.11.2026). Имена этих полей не меняются без предупреждения сессии РАГРАФ."""
+        from src.power_forecast import RAGRAF_POLYA, get_forecast
+        assert set(RAGRAF_POLYA) == {"days", "cells", "status", "p_free", "p_overload",
+                                     "issue_id", "issued_at", "rules_version"}
+        fc = get_forecast(district="Советский", today=TODAY)
+        assert {"days", "cells", "issue_id", "issued_at", "rules_version"} <= set(fc)
+        rabochie = [c for c in fc["cells"] if c["status"] not in ("off", "nodata")]
+        assert rabochie and all({"status", "p_free", "p_overload"} <= set(c) for c in rabochie)
+
+
 class TestЭндпоинт:
     def test_power_forecast_отвечает_структурой(self, monkeypatch):
         from fastapi.testclient import TestClient

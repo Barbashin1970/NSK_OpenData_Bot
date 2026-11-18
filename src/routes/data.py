@@ -1166,6 +1166,11 @@ def get_power_forecast(
     (`power_forecast_issues`, `power_forecast_issue_cells`); прогноз района — часть
     выпуска по городу с тем же паспортом. У ячейки без оценки (выходной, нет опорных
     дней) полей `p_planned`, `p_free`, `p_overload` нет совсем — не 0 и не строка.
+
+    Договор с РАГРАФ (18.11.2026): регламент `sima-brigady-peregruz` раз в час читает
+    `?district=Советский`. Поля `days`, `cells`, `status`, `p_free`, `p_overload`,
+    `issue_id`, `issued_at`, `rules_version` не переименовывать без предупреждения
+    (`power_forecast.RAGRAF_POLYA`).
     """
     from ..power_forecast import get_forecast
     try:

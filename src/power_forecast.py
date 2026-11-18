@@ -612,6 +612,10 @@ _ISSUES_DDL = (
     """,
 )
 ISSUE_CELL_FIELDS = ("day", "district", "utility_code", "status", "regular", "p_planned", "p_overload", "capacity")
+# Договор с РАГРАФ (2026-11-18): регламент sima-brigady-peregruz раз в час читает
+# GET /power/forecast?district=Советский. Эти имена полей не менять без предупреждения сессии
+# РАГРАФ — сторож tests/test_power_forecast.py::TestВыпуски::test_договор_полей_с_РАГРАФ.
+RAGRAF_POLYA = ("days", "cells", "status", "p_free", "p_overload", "issue_id", "issued_at", "rules_version")
 _ISSUED: dict[str, str] = {}     # issue_id → issued_at: уже сохранённые этим процессом
 
 
