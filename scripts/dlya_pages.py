@@ -246,6 +246,34 @@ def zabrat(api: str, adres: str, popytok: int = 2, tajmaut: int = 45) -> bytes |
     return None
 
 
+def zaprosy_strok_zhkh(telo: bytes | None) -> list[str]:
+    """Вопросы строк аварий в блоке ЖКХ панели служащего (Р-21).
+
+    Строки кликабельны: askNow(«отключения <услуга> в <район>») — renderOfficialDashboard, pwrRows:
+    активные отключения с домами, без строк «all». Без снимка этих вопросов прослойка прятала
+    строки, и блок выглядел пустым (18.11). Шаблон повторяет страницу: первое слово услуги
+    строчными, район как в ответе.
+    """
+    try:
+        d = json.loads(telo) if telo else {}
+    except ValueError:
+        return []
+    out: list[str] = []
+    for r in (d.get("rows") or []) if isinstance(d, dict) else []:
+        if not isinstance(r, dict) or r.get("group_type") != "active":
+            continue
+        try:
+            doma = float(r.get("houses") or 0)
+        except (TypeError, ValueError):
+            continue
+        rajon = r.get("district") or ""
+        if doma > 0 and rajon and rajon != "all":
+            q = f"отключения {(r.get('utility') or '').split(' ')[0].lower()} в {rajon}"
+            if q not in out:
+                out.append(q)
+    return out
+
+
 def dozhdatsya_servera(api: str, sha: str | None = None, limit_s: float = 480, pauza: float = 15,
                        poluchit=None, grace_s: float = 90) -> str:
     """Ждёт, пока сервер отвечает, а если он сообщает коммит — тот же, что у сборки (Р-19).
@@ -663,6 +691,11 @@ def main():
                     and isinstance(d.get("lines"), dict) for k in d["lines"]})
     for v in sorted(razvernut_shablony(html, konfig, temy, {"id": linii})[0]):
         if kanon(ask(v)) not in vidannye and zhivoj(ask(v)):
+            vidannye.add(kanon(ask(v)))
+            shag2.append(ask(v))
+    # строки аварий в блоке ЖКХ панели служащего — их вопросы из ответа «отключения ЖКХ сейчас» (Р-21)
+    for v in zaprosy_strok_zhkh(otvety.get(ask("отключения ЖКХ сейчас"))):
+        if kanon(ask(v)) not in vidannye:
             vidannye.add(kanon(ask(v)))
             shag2.append(ask(v))
     snyat(shag2, 1, 30)
