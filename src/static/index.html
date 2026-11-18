@@ -1843,7 +1843,7 @@ function renderOfficialDashboard(power, eco, risks, transit, district, trafficDa
               return `<div class="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded-lg px-1 py-0.5 transition-colors"
                 onclick="askNow('качество воздуха в городе')">
                 <span class="text-xs w-4">${i.icon}</span>
-                <span class="text-[10px] text-slate-600 w-20 truncate">${i.name.replace('Индекс ','')}</span>
+                <span class="text-[10px] text-slate-600 w-20 truncate" title="${esc(i.hint || i.name)}">${i.short || i.name.replace('Индекс ','')}</span>
                 <div class="flex-1 bg-slate-100 rounded-full h-1.5">
                   <div class="${barColor} h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
                 </div>
@@ -6094,7 +6094,9 @@ function computeLifeIndices(rows, snowImpact, iceLevel) {
   const walkColor = walk >= 8 ? 'text-emerald-600' : walk >= 6 ? 'text-green-600' : walk >= 4 ? 'text-yellow-600' : 'text-red-600';
   const walkBg    = walk >= 8 ? 'bg-emerald-50 border-emerald-200' : walk >= 6 ? 'bg-green-50 border-green-200' : walk >= 4 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200';
 
-  // Индекс коммунального напряжения: 0=норма, 10=критично
+  // Погодная нагрузка на ЖКХ (переименована 18.11, life_indices_rules 1.2): 0=норма, 10=критично.
+  // Мороз по ночному минимуму — теплосети; снегопад по прогнозу — уборка и кровли. Смог убран:
+  // это экология (учтён в «Прогулке»), а воздух — модель CAMS. Как на сервере и в РАГРАФ.
   let utility = 0;
   if (minT != null) {
     if (minT < -30) utility += 4;
@@ -6102,20 +6104,20 @@ function computeLifeIndices(rows, snowImpact, iceLevel) {
     else if (minT < -10) utility += 2;
     else if (minT < -5) utility += 1;
   }
-  if (avgW != null && avgP != null && avgW < 1.5 && avgP > 20) utility += 2;
   // Снегопад: добавка по snow_impact из прогноза
   if (_snowImpact >= 8) utility += 3;
   else if (_snowImpact >= 5) utility += 2;
   else if (_snowImpact >= 2) utility += 1;
   utility = Math.min(10, Math.max(0, Math.round(utility)));
-  const utilLabel = utility <= 2 ? 'Норма' : utility <= 5 ? 'Повышенная нагрузка' : utility <= 7 ? 'Высокое напряжение' : 'Критично';
+  const utilLabel = utility <= 2 ? 'Норма' : utility <= 5 ? 'Повышенная' : utility <= 7 ? 'Высокая' : 'Критическая';
   const utilColor = utility <= 2 ? 'text-emerald-600' : utility <= 5 ? 'text-yellow-600' : utility <= 7 ? 'text-orange-600' : 'text-red-600';
   const utilBg    = utility <= 2 ? 'bg-emerald-50 border-emerald-200' : utility <= 5 ? 'bg-yellow-50 border-yellow-200' : utility <= 7 ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200';
 
   return {
     driver:  { score: driver,  label: driverLabel,  color: driverColor,  bg: driverBg,  icon: '🚗', name: 'Индекс водителя' },
     walk:    { score: walk,    label: walkLabel,    color: walkColor,    bg: walkBg,    icon: '🚶', name: 'Индекс прогулки' },
-    utility: { score: utility, label: utilLabel,    color: utilColor,    bg: utilBg,    icon: '🏗️', name: 'Коммунальное напряжение' },
+    utility: { score: utility, label: utilLabel,    color: utilColor,    bg: utilBg,    icon: '🏗️', name: 'Погодная нагрузка на ЖКХ', short: 'ЖКХ: погода',
+               hint: 'Сколько погода нагружает ЖКХ: мороз по ночному минимуму — теплосети, снегопад по прогнозу — уборка и кровли. Расчётная температура отопления Новосибирска −37 °C (СП 131.13330.2018). Это не загрузка бригад — её показывает прогноз ЖКХ на 2 недели.' },
   };
 }
 
