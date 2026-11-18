@@ -493,6 +493,35 @@ def post_ecology_update() -> dict:
 
 
 @router.get(
+    "/ecology/snow-outlook",
+    tags=["Экология"],
+    summary="Снегопад по районам на 1–3 суток: уровни, действия ДЭУ, тексты УК и жителям (пилот)",
+    response_description=(
+        "Районы × сутки: снег по прогнозу, уровень (2 / 5 / 15 см), действия с нормами и сроками, "
+        "итог ретропроверки прогноза снега (docs/SNEGOPAD-RAZBOR.md)"
+    ),
+)
+def get_snow_outlook(
+    district: str | None = Query(
+        None, description="Район (по первому слову, Академгородок — Советский); пусто — весь город",
+    ),
+) -> dict:
+    """Прогноз снегопада по районам с завтрашних суток (регламент ecology_rules, snow_outlook).
+
+    Прогноз — модель Open-Meteo, а не прогноз УГМС: повод готовиться, а не основание для сроков
+    по норме. Поле `retro` — насколько прогнозу снега верить по прошлым зимам (против ERA5).
+    """
+    from ..ecology_cache import query_snow_outlook
+    try:
+        return query_snow_outlook(district or None)
+    except Exception as e:
+        # сбой расчёта и «снега нет» — разные вещи: отдаём ошибку явно
+        log.error("snow outlook error: %s", e)
+        return {"operation": "SNOW_OUTLOOK", "error": str(e), "district": district,
+                "days": [], "districts": [], "city": [], "actions": [], "max_level": 0, "worst": None}
+
+
+@router.get(
     "/ecology/risks",
     tags=["Экология"],
     summary="Прескриптивная аналитика: карточки рисков + рекомендации",

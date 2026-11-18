@@ -82,7 +82,7 @@ def test_регламент_читается():
     yaml = pytest.importorskip("yaml")
     from pathlib import Path
     d = yaml.safe_load((Path(__file__).parent.parent / "config/rules/ecology_rules.yaml").read_text(encoding="utf-8"))
-    assert d["version"] == "1.2" and d["risks"]["ice"] == CFG
+    assert d["version"] == "1.3" and d["risks"]["ice"] == CFG
     assert "black_ice" not in d["risks"] and "ice_risk" not in d["forecast"]
 
 
