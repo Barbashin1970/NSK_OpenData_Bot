@@ -362,7 +362,20 @@ class TestВыпуски:
         fc = get_forecast(district="Советский", today=TODAY)
         assert {"days", "cells", "issue_id", "issued_at", "rules_version"} <= set(fc)
         rabochie = [c for c in fc["cells"] if c["status"] not in ("off", "nodata")]
-        assert rabochie and all({"status", "p_free", "p_overload"} <= set(c) for c in rabochie)
+        assert rabochie and all({"status", "p_free"} <= set(c) for c in rabochie)
+        # p_overload — только где ёмкость оценена: перегруз без ёмкости не оценён (⊥), а не 0
+        assert all(("p_overload" in c) == ("capacity" in c) for c in rabochie)
+
+    def test_перегруз_без_ёмкости_не_ноль(self):
+        """Находка РАГРАФ 18.11: у ячейки с неоценённой ёмкостью p_overload был 0.0 — «перегруза
+        нет», хотя он не оценён. Нет оценки — нет поля, как у p_free выходных."""
+        rare_days = {TODAY - timedelta(days=14), TODAY - timedelta(days=42)}
+        rare = lambda d: ((5.0 if d in rare_days else None), False)
+        fc = build_forecast(make_rows(weekly) + make_rows(rare, utility=GAS), all_days(), TODAY)
+        gas = cell(fc, NEXT_WED, utility=GAS)
+        assert gas["status"] == "free" and "capacity" not in gas and "p_overload" not in gas
+        el = cell(fc, NEXT_WED)
+        assert "capacity" in el and isinstance(el["p_overload"], float)
 
 
 class TestЭндпоинт:

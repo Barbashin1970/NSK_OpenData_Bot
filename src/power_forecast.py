@@ -302,15 +302,20 @@ def build_forecast(
                               if len(loads) >= int(cap_p["min_days"]) else None)
         return cap_cache[key]
 
-    def judge(p_pl: float, refs: list[date], dist: str, util: str, cap: float | None) -> tuple[str, float, float]:
-        """Статус рабочего дня: (статус, p_перегруза, средний объём по опорным дням)."""
+    def judge(p_pl: float, refs: list[date], dist: str, util: str,
+              cap: float | None) -> tuple[str, float | None, float]:
+        """Статус рабочего дня: (статус, p_перегруза, средний объём по опорным дням).
+
+        p_перегруза — None, если ёмкость не оценена или опорных дней нет: перегруз не оценён,
+        а не «нет перегруза» (находка РАГРАФ 18.11 — прежде здесь был 0.0).
+        """
         loads = [load(d, dist, util) for d in refs]
         n = len(loads)
-        p_heavy = (sum(v is not None and v > cap for v in loads) / n) if (cap and n) else 0.0
+        p_heavy = (sum(v is not None and v > cap for v in loads) / n) if (cap and n) else None
         mean_load = (sum(v or 0.0 for v in loads) / n) if n else 0.0
         if p_pl <= free_max:
             st = "free"
-        elif cap and p_heavy >= over_share:
+        elif cap and p_heavy is not None and p_heavy >= over_share:
             st = "overload"
         else:
             st = "normal"

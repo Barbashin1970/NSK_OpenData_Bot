@@ -1165,7 +1165,8 @@ def get_power_forecast(
     впервые), `rules_version`. Каждый выпуск по городу сохраняется
     (`power_forecast_issues`, `power_forecast_issue_cells`); прогноз района — часть
     выпуска по городу с тем же паспортом. У ячейки без оценки (выходной, нет опорных
-    дней) полей `p_planned`, `p_free`, `p_overload` нет совсем — не 0 и не строка.
+    дней) полей `p_planned`, `p_free`, `p_overload` нет совсем — не 0 и не строка; у ячейки
+    с неоценённой ёмкостью (нет поля `capacity`) нет и `p_overload`.
 
     Договор с РАГРАФ (18.11.2026): регламент `sima-brigady-peregruz` раз в час читает
     `?district=Советский`. Поля `days`, `cells`, `status`, `p_free`, `p_overload`,

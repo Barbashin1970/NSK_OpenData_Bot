@@ -3646,7 +3646,8 @@ const ECOLOGY_QUICK = [
 // Ключевые слайдеры для life_indices_rules (индексы жизни)
 const LIFE_INDICES_QUICK = [
   // Водитель
-  { path: ['driver', 'temp_black_ice_score'],   label: '🚗 Гололёд около нуля: штраф',             min: 0, max: 8, step: 1 },
+  { path: ['driver', 'ice_glaze_score'],        label: '🚗 Гололёд (ледяной дождь): штраф',       min: 0, max: 8, step: 1 },
+  { path: ['driver', 'ice_refreeze_score'],     label: '🚗 Возможна гололедица: штраф',           min: 0, max: 8, step: 1 },
   { path: ['driver', 'wind_strong_ms'],         label: '🚗 Сильный ветер: порог (м/с)',     min: 5, max: 20, step: 1 },
   { path: ['driver', 'wind_strong_score'],      label: '🚗 Сильный ветер: штраф',           min: 0, max: 5, step: 1 },
   // Прогулка
