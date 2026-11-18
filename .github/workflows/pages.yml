@@ -18,7 +18,10 @@ on:
       - "scripts/dlya_pages.py"
       - ".github/workflows/pages.yml"
   schedule:
-    - cron: "17 * * * *"        # запасной ход: GitHub задерживает и пропускает плановые запуски
+    # запасной ход (Р-20): GitHub задерживает и пропускает плановые запуски — 17–18.11 за 22 часа
+    # из «17 * * * *» сработали два. Слотов три в час; лишний запуск выходит сразу, если
+    # опубликованному снимку меньше 45 минут (scripts/pages_svezhest.py)
+    - cron: "7,27,47 * * * *"
   workflow_dispatch:            # основной ход — раз в час с Railway (src/pages_dispatch.py, Р-16)
 
 permissions:
@@ -40,13 +43,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # сначала — включены ли Pages: если нет, запуск падает сразу, не трогая Railway
-      - uses: actions/configure-pages@v6
+      - id: pages
+        uses: actions/configure-pages@v6
+      - id: svezhest
+        name: Свежесть демо — плановому запуску сборка нужна, только если снимок старше 45 минут
+        if: github.event_name == 'schedule'
+        run: python3 scripts/pages_svezhest.py "${{ steps.pages.outputs.base_url }}" 45 >> "$GITHUB_OUTPUT"
       - name: Копия лендинга и снимок данных с Railway
+        if: steps.svezhest.outputs.svezhij != '1'
         env:
           SIMA_API: ${{ vars.SIMA_API || 'https://nsk-opendata-bot.up.railway.app' }}
         run: python3 scripts/dlya_pages.py --osnova "/${{ github.event.repository.name }}" --vyhod _pages --api "$SIMA_API"
       - uses: actions/upload-pages-artifact@v5
+        if: steps.svezhest.outputs.svezhij != '1'
         with:
           path: _pages
       - id: publikaciya
+        if: steps.svezhest.outputs.svezhij != '1'
         uses: actions/deploy-pages@v5
