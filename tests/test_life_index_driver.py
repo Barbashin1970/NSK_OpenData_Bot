@@ -214,3 +214,39 @@ def test_уровни_погодной_нагрузки_достижимы():
     html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
     assert "'Критическая'" not in funkciya_tablo() and "Критическая" not in json.dumps(ut, ensure_ascii=False)
     assert "Нет прогноза" in html
+
+
+class TestОкноПрогноза:
+    """С4 (РАГРАФ 18.11): окно «сутки 1–3 после сегодняшних» — по местным суткам, как прогноз
+    Open-Meteo (timezone=Asia/Novosibirsk), а не по UTC: с 00:00 до 07:00 по Новосибирску дата
+    по UTC ещё вчерашняя, и окно захватывало сегодняшние местные сутки."""
+
+    def test_местные_сутки_ночью(self, monkeypatch):
+        from datetime import date, datetime, timezone
+        import src.city_config as cc
+        from src.ecology_cache import _local_today
+        monkeypatch.setattr(cc, "get_utc_offset", lambda: 7)
+        assert _local_today(datetime(2026, 11, 18, 20, 0, tzinfo=timezone.utc)) == date(2026, 11, 19)   # 03:00 местного
+        assert _local_today(datetime(2026, 11, 19, 1, 0, tzinfo=timezone.utc)) == date(2026, 11, 19)    # 08:00 местного
+
+    def test_окно_query_forecast_по_местным_суткам(self, monkeypatch):
+        from datetime import date
+        import src.ecology_cache as ec
+
+        class Conn:
+            def close(self):
+                pass
+
+        okna = []
+        monkeypatch.setattr(ec, "init_ecology_tables", lambda: None)
+        monkeypatch.setattr(ec, "_get_conn", lambda *a, **k: Conn())
+        monkeypatch.setattr(ec, "_local_today", lambda now=None: date(2031, 1, 15))
+        monkeypatch.setattr(ec, "_forecast_days",
+                            lambda conn, d, f, t, include_from=True: okna.append((f, t, include_from)) or [])
+        ec.query_forecast(days=3)                          # snow_impact индексов: сутки 1–3 после сегодняшних
+        ec.query_forecast(days=0, include_today=True)      # индекс пробок: только сегодня
+        assert okna == [("2031-01-15", "2031-01-18", False), ("2031-01-15", "2031-01-15", True)]
+
+    def test_пробки_берут_прогноз_на_сегодня(self):
+        kod = (KOREN / "src" / "traffic_index.py").read_text(encoding="utf-8")
+        assert "query_forecast(days=0, include_today=True)" in kod and "query_forecast(days=1)" not in kod

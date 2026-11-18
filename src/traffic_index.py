@@ -615,10 +615,11 @@ def get_traffic_index_with_weather() -> dict[str, Any]:
     except Exception as e:
         log.warning("traffic_index: ошибка получения измерений: %s", e)
 
-    # Шаг 2: weathercode и осадки из прогноза (сегодня)
+    # Шаг 2: weathercode и осадки из прогноза (сегодня). Окно query_forecast начинается с завтра:
+    # прежний вызов days=1 давал днём завтрашнюю погоду, а ночью — по сдвигу UTC — сегодняшнюю
     try:
         from .ecology_cache import query_forecast
-        forecast = query_forecast(days=1)
+        forecast = query_forecast(days=0, include_today=True)
         if forecast:
             today_f = forecast[0]
             if weather["weathercode"] is None:

@@ -1230,11 +1230,30 @@ def is_forecast_stale(ttl_hours: int = 6) -> bool:
         return True
 
 
-def query_forecast(district_filter: str | None = None, days: int = 7) -> list[dict]:
+def _local_today(now: datetime | None = None):
+    """«Сегодня» по местному времени города.
+
+    Прогноз Open-Meteo хранится по местным суткам (timezone=Asia/Novosibirsk). С 00:00 до 07:00
+    по Новосибирску дата по UTC ещё вчерашняя, и окно «после сегодня» по UTC захватывало бы
+    сегодняшние местные сутки (сверка с РАГРАФ 18.11, С4).
+    """
+    try:
+        from .city_config import get_utc_offset
+        offset = int(get_utc_offset())
+    except Exception:
+        offset = 7
+    return ((now or datetime.now(timezone.utc)) + timedelta(hours=offset)).date()
+
+
+def query_forecast(district_filter: str | None = None, days: int = 7,
+                   include_today: bool = False) -> list[dict]:
     """Возвращает 7-дневный прогноз погоды агрегированный по дням.
 
     Если district_filter задан — только данные по этому району.
     Иначе — среднее по всем районам (агрегированное по городу).
+
+    Окно — по местным суткам: сутки 1…days после сегодняшних; include_today — и сегодняшние
+    (days=0, include_today=True — только сегодня).
 
     Возвращает список dict с полями:
       forecast_date, day_name, temp_max, temp_min, wind_max,
@@ -1244,10 +1263,11 @@ def query_forecast(district_filter: str | None = None, days: int = 7) -> list[di
     init_ecology_tables()
     conn = _get_conn()
     try:
-        today = str(datetime.now(timezone.utc).date())
-        cutoff = str((datetime.now(timezone.utc) + timedelta(days=days)).date())
+        day0 = _local_today()
+        today = str(day0)
+        cutoff = str(day0 + timedelta(days=days))
 
-        rows = _forecast_days(conn, district_filter, today, cutoff, include_from=False)
+        rows = _forecast_days(conn, district_filter, today, cutoff, include_from=include_today)
 
         # Обогащаем каждый день: иконка, описание, флаги рисков
         ru_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
