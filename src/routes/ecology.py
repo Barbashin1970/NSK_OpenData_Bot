@@ -126,6 +126,14 @@ def get_ecology_status(
     cols = ["district", "address", "pm25", "pm10", "no2", "aqi",
             "temperature_c", "wind_speed_ms", "humidity_pct", "source", "measured_at"]
 
+    # Гололёд на сегодня по влаге — для индекса водителя на табло (как в РАГРАФ, 18.11)
+    ice_today = None
+    try:
+        from ..ecology_cache import _ice_today
+        ice_today = _ice_today(district)[0]
+    except Exception:
+        pass
+
     # Добавляем snow_impact из прогноза (для индексов жизни на фронтенде)
     snow_impact_max = 0
     try:
@@ -145,6 +153,7 @@ def get_ecology_status(
         "columns": cols,
         "ecology_meta": meta,
         "snow_impact": snow_impact_max,
+        "ice_level": ice_today,
     }
 
 
@@ -601,8 +610,11 @@ def get_ecology_risks(
 
 # ── Life indices (driven by ecology data) ────────────────────────────────────
 
-def _compute_life_indices(rows: list[dict]) -> dict | None:
-    """Вычисляет индексы водителя, прогулки и коммунального напряжения."""
+def _compute_life_indices(rows: list[dict], ice_level: str | None = None) -> dict | None:
+    """Вычисляет индексы водителя, прогулки и коммунального напряжения.
+
+    ice_level — гололёд на сегодня по влаге (ecology_cache.ice_level: «glaze» | «refreeze» | None).
+    """
     if not rows:
         return None
 
@@ -629,14 +641,15 @@ def _compute_life_indices(rows: list[dict]) -> dict | None:
     ut  = cfg.get("utility", {})
 
     # ── Индекс водителя ───────────────────────────────────────────────────────
+    # Мороз и ветер; гололёд — отдельной ветвью по влаге, как в РАГРАФ (18.11). Прежние «зоны
+    # льда» по одной температуре (−3…+2 °C: +5, −10…−3 °C: +2) убраны: в сухую погоду около нуля
+    # льда нет, и правило не прошло проверку на ДТП (РАГРАФ-ПРОГНОЗ.НИР.001-2026, п. 9.2).
     driver = 0
+    if ice_level == "glaze":
+        driver += int(dr.get("ice_glaze_score", 5))
+    elif ice_level == "refreeze":
+        driver += int(dr.get("ice_refreeze_score", 3))
     if avg_t is not None:
-        bi_min = float(dr.get("temp_black_ice_min", -3.0))
-        bi_max = float(dr.get("temp_black_ice_max",  2.0))
-        if bi_min <= avg_t <= bi_max:
-            driver += int(dr.get("temp_black_ice_score", 5))
-        elif float(dr.get("temp_regular_ice_min", -10.0)) <= avg_t < bi_min:
-            driver += int(dr.get("temp_regular_ice_score", 2))
         if avg_t < float(dr.get("temp_extreme_cold", -25.0)):
             driver += int(dr.get("temp_extreme_cold_score", 3))
         elif avg_t < float(dr.get("temp_severe_cold", -20.0)):
@@ -714,9 +727,13 @@ def get_life_indices() -> dict:
     | Прогулка | 0–10 (выше = лучше) | Комфорт прогулки на улице |
     | Коммунальное напряжение | 0–10 (выше = хуже) | Нагрузка на ЖКХ и теплосети |
     """
-    from ..ecology_cache import query_current
+    from ..ecology_cache import _ice_today, query_current
     rows = query_current()
-    result = _compute_life_indices(rows)
+    try:
+        ice = _ice_today(None)[0]
+    except Exception:
+        ice = None                                     # нет прогноза — гололёд не оценён
+    result = _compute_life_indices(rows, ice_level=ice)
     if result is None:
         return {"error": "Нет данных экологии", "hint": "POST /update — обновить данные"}
     return result
