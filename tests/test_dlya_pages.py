@@ -308,3 +308,20 @@ def test_версия_сервера_сообщает_коммит(monkeypatch):
     monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "abc1234def")
     d = TestClient(app).get("/api/version").json()
     assert d["commit"] == "abc1234def" and d["version"]
+
+
+def test_строки_аварий_ЖКХ_в_снимке():
+    """Р-21, 18.11: блок ЖКХ панели служащего выглядел пустым. Строки аварий кликабельны —
+    askNow(«отключения <услуга> в <район>»), — их вопросов не было в снимке, и прослойка
+    прятала строки. Вопросы берутся из ответа «отключения ЖКХ сейчас» по шаблону страницы."""
+    html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "const _q = `отключения ${(r.utility||'').split(' ')[0].toLowerCase()} в ${r.district||''}`;" in html
+    telo = json.dumps({"rows": [
+        {"utility": "Холодное водоснабжение и канализация", "district": "Советский район", "group_type": "active", "houses": 2},
+        {"utility": "Холодное водоснабжение и канализация", "district": "Советский район", "group_type": "active", "houses": 3},
+        {"utility": "Теплоснабжение", "district": "Ленинский район", "group_type": "planned", "houses": 50},
+        {"utility": "Электроснабжение", "district": "all", "group_type": "active", "houses": 4},
+        {"utility": "Газоснабжение", "district": "Кировский район", "group_type": "active", "houses": 0},
+    ]}, ensure_ascii=False).encode("utf-8")
+    assert dp.zaprosy_strok_zhkh(telo) == ["отключения холодное в Советский район"]
+    assert dp.zaprosy_strok_zhkh(None) == [] and dp.zaprosy_strok_zhkh(b"oops") == []
