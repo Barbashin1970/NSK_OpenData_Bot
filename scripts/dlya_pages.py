@@ -440,7 +440,7 @@ window.SIMA_STATIC = __META__;
     (S.off || []).forEach(function (f) { if (typeof window[f] === 'function') window[f] = function () { toast(); }; });
     var bar = document.createElement('div');
     bar.style.cssText = 'background:#fef3c7;color:#78350f;font:12px system-ui,sans-serif;padding:6px 12px;text-align:center;border-bottom:1px solid #fde68a';
-    bar.textContent = 'Демо-копия СИМА без сервера: данные на ' + S.snapshotLocal + ', обновляются раз в час. Страницы управления недоступны. Полная версия — ' + S.source;
+    bar.textContent = 'Демо-копия РАГРАФ-ПРОГНОЗ без сервера: данные на ' + S.snapshotLocal + ', обновляются раз в час. Страницы управления недоступны. Полная версия — ' + S.source;
     document.body.insertBefore(bar, document.body.firstChild);
   });
 })();
