@@ -260,3 +260,46 @@ def test_демо_в_стиле_РАГРАФ():
     znachok = re.search(r'<link rel="icon" type="image/svg\+xml" href="data:image/svg\+xml,([^"]+)"', demo)
     assert znachok and "FBBF24" in znachok.group(1) and "0F172A" in znachok.group(1)   # как favicon РАГРАФ
     assert "Привет! Я — Сима" not in demo
+
+
+def test_сборка_ждёт_выкатки_railway():
+    """Р-19, запуск №11 18.11: пуш в main одновременно перезапускает Railway и сборку демо —
+    снимок, снятый в момент перезапуска, потерял /ecology/status, и сборка встала. Теперь
+    сборка ждёт, пока сервер отвечает, и — если сервер сообщает коммит — отвечает тем же
+    коммитом, что в Actions (GITHUB_SHA)."""
+    otvety = iter([None, b'{"version": "1.5.0", "commit": "old0000"}', b'{"version": "1.5.0", "commit": "abc1234def"}'])
+    vyzovy = []
+    def poluchit():
+        vyzovy.append(1)
+        return next(otvety)
+    assert dp.dozhdatsya_servera("x", "abc1234def", limit_s=60, pauza=0, poluchit=poluchit) == "готов"
+    assert len(vyzovy) == 3                                    # сервер лежал, потом старый коммит, потом новый
+    # сервер коммит не сообщает — ждать нечего, только чтобы отвечал
+    assert dp.dozhdatsya_servera("x", "abc", limit_s=60, pauza=0, grace_s=0,
+                                 poluchit=lambda: b'{"version": "1.5.0"}').startswith("готов")
+    # старая версия без коммита во время выкатки: переждать раз и увидеть новый коммит
+    po_ocheredi = iter([b'{"version": "1.5.0"}', b'{"version": "1.5.0", "commit": "abc1234def"}'])
+    assert dp.dozhdatsya_servera("x", "abc1234def", limit_s=60, pauza=0, grace_s=0.01,
+                                 poluchit=lambda: next(po_ocheredi)) == "готов"
+    # старый коммит не уходит — по пределу времени идём дальше, самопроверка решит
+    assert dp.dozhdatsya_servera("x", "abc", limit_s=0, pauza=0,
+                                 poluchit=lambda: b'{"commit": "old"}') == "не дождались"
+
+
+def test_важные_адреса_переспрашиваются():
+    otvety = {a: b"{}" for a in dp.VAZHNYE}
+    otvety["/ecology/status"] = None                           # потерян в общем проходе
+    popytki = []
+    def poluchit(adres):
+        popytki.append(adres)
+        return None if len(popytki) == 1 else b'{"rows": []}'  # первый повтор тоже мимо
+    assert dp.dobrat_vazhnye(otvety, poluchit, popytok=3, pauza=0) == []
+    assert popytki == ["/ecology/status", "/ecology/status"] and otvety["/ecology/status"] == b'{"rows": []}'
+
+
+def test_версия_сервера_сообщает_коммит(monkeypatch):
+    from fastapi.testclient import TestClient
+    from src.api import app
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "abc1234def")
+    d = TestClient(app).get("/api/version").json()
+    assert d["commit"] == "abc1234def" and d["version"]

@@ -17,6 +17,7 @@ Railway из российских сетей без VPN не открывает�
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -243,6 +244,59 @@ def zabrat(api: str, adres: str, popytok: int = 2, tajmaut: int = 45) -> bytes |
             POSLEDNYAYA_OSHIBKA["tekst"] = f"{type(e).__name__}: {e}"
         time.sleep(2 * (i + 1))
     return None
+
+
+def dozhdatsya_servera(api: str, sha: str | None = None, limit_s: float = 480, pauza: float = 15,
+                       poluchit=None, grace_s: float = 90) -> str:
+    """Ждёт, пока сервер отвечает, а если он сообщает коммит — тот же, что у сборки (Р-19).
+
+    Пуш в main одновременно перевыкатывает Railway и запускает эту сборку: снимок, снятый в
+    момент перезапуска, терял важные адреса (запуск №11, 18.11 — /ecology/status), а снятый до
+    перезапуска — показывал старую версию сервера. Коммит сервер берёт из RAILWAY_GIT_COMMIT_SHA,
+    сборка — из GITHUB_SHA. Сервер коммит не сообщает (старая версия или не Railway) — один раз
+    ждём grace_s: вдруг выкатка ещё идёт, — и проверяем снова. По пределу времени идём дальше:
+    решит самопроверка, прошлая публикация при отказе остаётся.
+    """
+    poshchada = grace_s
+    poluchit = poluchit or (lambda: zabrat(api, "/api/version", popytok=1, tajmaut=20))
+    t0 = time.monotonic()
+    while True:
+        telo = poluchit()
+        try:
+            d = json.loads(telo) if telo else None
+        except ValueError:
+            d = None
+        if isinstance(d, dict):
+            kommit = d.get("commit")
+            if not sha:
+                return "готов"
+            if not kommit:
+                if poshchada > 0:                     # один раз переждать возможную выкатку
+                    time.sleep(poshchada)
+                    poshchada = 0
+                    continue
+                return "готов (коммит сервер не сообщает)"
+            if kommit.startswith(sha) or sha.startswith(kommit):
+                return "готов"
+        if time.monotonic() - t0 >= limit_s:
+            return "не дождались"
+        time.sleep(pauza)
+
+
+def dobrat_vazhnye(otvety: dict, poluchit, popytok: int = 3, pauza: float = 20) -> list[str]:
+    """Важные адреса, не снятые в общем проходе, переспросить после паузы (Р-19).
+
+    Перезапуск Railway длится 30–60 с, а общий проход переспрашивает адрес через 2–4 с.
+    Возвращает то, что так и не снялось.
+    """
+    for _ in range(popytok):
+        nedostayot = [x for x in VAZHNYE if otvety.get(x) is None]
+        if not nedostayot:
+            return []
+        time.sleep(pauza)
+        for x in nedostayot:
+            otvety[x] = poluchit(x)
+    return [x for x in VAZHNYE if otvety.get(x) is None]
 
 
 # ── Прослойка: подмена fetch, выключение управления, плашка демо ────────────────
@@ -530,7 +584,8 @@ def main():
         ikonka["src"] = osnova + ikonka["src"] if ikonka["src"].startswith("/") else ikonka["src"]
     (vyhod / "static" / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    # снимок
+    # снимок — когда Railway закончил выкатку того же коммита (Р-19)
+    print(f"сервер: {dozhdatsya_servera(api, os.environ.get('GITHUB_SHA') or None)}")
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     telo = zabrat(api, "/api/city-config")
     if telo is None:
@@ -573,6 +628,9 @@ def main():
 
     # Шаг 1 — всё, что страница показывает и предлагает: адреса API, готовые запросы, шаблоны
     snyat([x for x in spisok_adresov(html, konfig, temy) if zhivoj(x) or x in VAZHNYE], 2, 45)
+    ne_snyaty = dobrat_vazhnye(otvety, lambda x: zabrat(api, x, 2, 45))
+    if ne_snyaty:
+        print(f"важные адреса не снялись и после повторов: {', '.join(ne_snyaty)}")
     # Шаг 2 — кнопки «Район:» под каждой таблицей из снимка (renderTable)
     tablicy = []
     for adres, telo in list(otvety.items()):

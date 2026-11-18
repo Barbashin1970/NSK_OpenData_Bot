@@ -954,8 +954,12 @@ def custom_swagger_ui() -> HTMLResponse:
 
 @app.get("/api/version", include_in_schema=False)
 def api_version():
-    """Текущая версия приложения (единый источник — pyproject.toml)."""
-    return {"version": __version__}
+    """Текущая версия приложения (единый источник — pyproject.toml) и коммит выкатки.
+
+    Коммит — переменная Railway RAILWAY_GIT_COMMIT_SHA (вне Railway — None). По нему сборка
+    демо Pages ждёт, пока Railway выкатит тот же коммит, что и пуш (docs/PAGES-DEMO-RAZBOR.md, Р-19).
+    """
+    return {"version": __version__, "commit": os.environ.get("RAILWAY_GIT_COMMIT_SHA") or None}
 
 
 @app.get("/presentation", response_class=HTMLResponse, include_in_schema=False)
