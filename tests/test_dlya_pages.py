@@ -223,3 +223,23 @@ def test_снегопад_по_районам_в_снимке():
     assert "/ecology/snow-outlook" in adresa
     assert "/ecology/snow-outlook?district=" + quote("Советский район", safe="") in adresa
     assert "/ecology/snow-outlook?district=" + quote("Советский", safe="") in adresa
+
+
+def test_плашки_ЦИИ_в_демо_скрыты(tmp_path):
+    """Просьба руководителя работы 18.11: в демо для мэрии нет плашек «Центр ИИ НГУ» и «Новости
+    ЦИИ НГУ» — это вне поля внимания мэра. На основном сайте они остаются."""
+    html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    # плашки вызывают эти функции — по ним прослойка их и прячет
+    assert 'onclick="toggleCiiPanel()"' in html and 'onclick="loadNewsPublic()"' in html
+    assert {"toggleCiiPanel", "loadNewsPublic", "loadCiiSection"} <= set(dp.OTKLYUCHIT)
+    assert not any(a.startswith("/ciinsu") for a in dp.spisok_adresov(html, KONFIG))
+    node = _node_or_skip()
+    shim = dp.SHIM.replace("__META__", json.dumps(dict(META, off=list(dp.OTKLYUCHIT)), ensure_ascii=False))
+    js = shim.split("<script>", 1)[1].split("</script>", 1)[0]
+    stend = ("globalThis.window = globalThis; window.open = () => {}; window.fetch = () => Promise.reject();\n"
+             "const stili = []; globalThis.document = { addEventListener() {}, head: { appendChild: e => stili.push(e.textContent) },\n"
+             "  createElement: () => ({}) };\n" + js + "\nconsole.log(JSON.stringify(stili));")
+    f = tmp_path / "cii.js"
+    f.write_text(stend, encoding="utf-8")
+    css = json.loads(subprocess.run([node, str(f)], capture_output=True, text=True, check=True).stdout)
+    assert '[onclick^="toggleCiiPanel"]' in css[0] and '[onclick^="loadNewsPublic"]' in css[0]

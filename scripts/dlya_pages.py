@@ -48,12 +48,14 @@ FORECAST_RAJON = {"Академгородок": "Советский"}   # _forec
 # ask() шлёт /ask?q=…, листалка — /ask?q=…&offset=0&page_size=20; ключ снимка у них общий.
 # Тот же словарь уходит в прослойку (S.defaults).
 UMOLCHANIYA = {"/ask": {"offset": "0", "page_size": str(PAGE_SIZE)}}
-# Функции страницы, которые в демо выключены (просьба заказчика 2026-11-17): игра «Пятнашки»
-# и пользовательские отчёты (МТС, аварийные службы). Кнопки с ними прячутся, вызов — плашка.
-OTKLYUCHIT = ("toggleGamePanel", "_showCustomReport")
+# Функции страницы, которые в демо выключены. Кнопки с ними прячутся, вызов — плашка.
+# - игра «Пятнашки» и пользовательские отчёты (МТС, аварийные службы) — просьба 2026-11-17;
+# - плашки «Центр ИИ НГУ» и «Новости ЦИИ НГУ» и панель ЦИИ (в том числе по запросу «что такое
+#   ЦИИ») — просьба 2026-11-18: в демо для мэрии это вне поля внимания мэра.
+OTKLYUCHIT = ("toggleGamePanel", "_showCustomReport", "toggleCiiPanel", "loadNewsPublic", "loadCiiSection")
 # Адреса, которые в демо намеренно пусты: прослойка отвечает «нет» сразу, без запроса в сеть
-# (без списка отчётов страница не рисует их карточки)
-PUSTYE = ("custom-reports",)
+# (без списка отчётов страница не рисует их карточки; данные ЦИИ в демо не снимаются)
+PUSTYE = ("custom-reports", "ciinsu")
 
 
 # ── Ключ снимка: то же самое считает прослойка в браузере (см. SHIM) ──────────────
@@ -173,17 +175,17 @@ def zaprosy_iz_stranicy(html: str, konfig: dict, temy: list[str] = ()) -> list[s
 def spisok_adresov(html: str, konfig: dict, temy: list[str] = ()) -> list[str]:
     gorod = konfig.get("city_id") or "novosibirsk"
     rajony = [r for r in (konfig.get("districts") or []) if r.get("val")]
-    razdely_cii = re.findall(r"\{\s*key:\s*'([a-z]+)',\s*icon:", html.split("const _CII_SECTIONS", 1)[-1][:2000])
     adresa = [
         "/api/city-config", "/api/available-cities", "/topics", "/api/vocabulary", "/api/version", "/api/version/check",
         "/ecology/status", "/ecology/risks", "/traffic-index", "/transit/districts", "/power/forecast",
         "/ecology/snow-outlook",                                  # снегопад по районам (docs/SNEGOPAD-RAZBOR.md)
         # /custom-reports не снимается: карточки отчётов (МТС, аварийные службы) в демо не нужны
         # (просьба заказчика 2026-11-17) — без списка страница их не рисует
-        f"/budget/{gorod}", "/budget-compare", f"/emissions/{gorod}", "/ciinsu/news",
+        # /ciinsu/news и разделы ЦИИ не снимаются: плашки ЦИИ в демо выключены (2026-11-18)
+        f"/budget/{gorod}", "/budget-compare", f"/emissions/{gorod}",
         "/ecology/aqi-exceedances?days=30&aqi_threshold=40",
         "/ask?q=" + quote("отключения ЖКХ сейчас", safe=""),       # табло: без параметров страницы
-    ] + [f"/ciinsu?section={k}" for k in razdely_cii]
+    ]
     for d in PERIODY:
         adresa += [f"/power/history?days={d}&group_by=day", f"/power/history?days={d}&group_by=district",
                    f"/power/efficiency?days={d}", f"/ecology/history?days={d}",
