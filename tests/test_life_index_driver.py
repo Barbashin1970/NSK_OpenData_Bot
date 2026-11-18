@@ -80,14 +80,15 @@ def test_табло_та_же_логика(tmp_path, t, uroven, ballov):
 def test_табло_передаёт_уровень_гололёда():
     html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
     assert "computeLifeIndices(ecoRows, eco?.snow_impact)" not in html          # все вызовы с ice_level
-    assert len(re.findall(r"computeLifeIndices\([^)]*ice_level\)", html)) == 3
+    # и с ночным минимумом (регламент 1.3): гололёд и ночь — из одного прогноза
+    assert len(re.findall(r"computeLifeIndices\([^)]*ice_level, [^)]*night_min\)", html)) == 3
 
 
 def test_регламент_индексов():
     yaml = pytest.importorskip("yaml")
     d = yaml.safe_load((KOREN / "config/rules/life_indices_rules.yaml").read_text(encoding="utf-8"))
     dr = d["driver"]
-    assert d["version"] in ("1.1", "1.2") and dr["ice_glaze_score"] == 5 and dr["ice_refreeze_score"] == 3
+    assert d["version"] in ("1.1", "1.2", "1.3") and dr["ice_glaze_score"] == 5 and dr["ice_refreeze_score"] == 3
     assert not any(k.startswith(("temp_black_ice", "temp_regular_ice")) for k in dr)
 
 
@@ -103,24 +104,25 @@ def stroki_vozduh(t, w, pm):
 class TestПогоднаяНагрузка:
     def test_смог_не_ЖКХ(self):
         from src.routes.ecology import _compute_life_indices
-        ix = _compute_life_indices(stroki_vozduh(2.0, 0.8, 45.0))          # штиль и грязный воздух, тепло
+        ix = _compute_life_indices(stroki_vozduh(2.0, 0.8, 45.0), snow_impact=0, night_min=1.0)   # штиль, грязный воздух, тепло
         assert ix["utility"]["score"] == 0 and ix["utility"]["name"] == "Погодная нагрузка на ЖКХ"
 
     def test_мороз_и_снегопад(self):
         from src.routes.ecology import _compute_life_indices
-        assert _compute_life_indices(stroki_vozduh(-12.0, 3.0, 5.0))["utility"]["score"] == 2
-        ix = _compute_life_indices(stroki_vozduh(-12.0, 3.0, 5.0), snow_impact=8)
+        assert _compute_life_indices(stroki_vozduh(-12.0, 3.0, 5.0), snow_impact=0, night_min=-12.0)["utility"]["score"] == 2
+        ix = _compute_life_indices(stroki_vozduh(-12.0, 3.0, 5.0), snow_impact=8, night_min=-12.0)
         assert ix["utility"]["score"] == 5 and ix["utility"]["label"] == "Повышенная"
         assert ix["driver"]["score"] == 1 + 2                                 # водитель: мороз −12 (+1) и снегопад (+2), как на табло
 
 
+# t — и текущая температура, и ночной минимум прогноза: здесь проверяется сумма мороза и снега
 @pytest.mark.parametrize("t, w, pm, sneg, ballov", [(2.0, 0.8, 45.0, 0, 0), (-12.0, 3.0, 5.0, 0, 2), (-12.0, 3.0, 5.0, 8, 5)])
 def test_табло_погодная_нагрузка(tmp_path, t, w, pm, sneg, ballov):
     node = shutil.which("node")
     if not node:
         pytest.skip("node не установлен")
     stend = (funkciya_tablo() + "\nconst ix = computeLifeIndices(" + json.dumps(stroki_vozduh(t, w, pm)) + ", " + str(sneg)
-             + ", null);\nconsole.log(JSON.stringify([ix.utility.score, ix.utility.name, ix.utility.short]));")
+             + ", null, " + str(t) + ");\nconsole.log(JSON.stringify([ix.utility.score, ix.utility.name, ix.utility.short]));")
     f = tmp_path / "u.js"
     f.write_text(stend, encoding="utf-8")
     score, name, short = json.loads(subprocess.run([node, str(f)], capture_output=True, text=True, check=True).stdout)
@@ -131,8 +133,84 @@ def test_регламент_погодной_нагрузки():
     yaml = pytest.importorskip("yaml")
     d = yaml.safe_load((KOREN / "config/rules/life_indices_rules.yaml").read_text(encoding="utf-8"))
     ut = d["utility"]
-    assert d["version"] == "1.2" and not any(k.startswith("smog") for k in ut)
-    assert [lv["label"] for lv in ut["levels"]] == ["Норма", "Повышенная", "Высокая", "Критическая"]
+    assert d["version"] == "1.3" and not any(k.startswith("smog") for k in ut)
+    assert [lv["label"] for lv in ut["levels"]] == ["Норма", "Повышенная", "Высокая"]
     assert d["driver"]["snow_heavy_score"] == 2 and d["driver"]["snow_moderate_score"] == 1
     html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
     assert "Коммунальное напряжение" not in html and "Высокое напряжение" not in html
+
+
+# ── Сверка с РАГРАФ 18.11 (docs/INDEKSY-ZHIZNI-RAZBOR.md): С1 — мороз по ночному минимуму,
+# С2 — каждый уровень достижим, С3 — нет прогноза не значит «снега нет» ──────────────────────
+
+class TestСверкаРАГРАФ:
+    def test_С1_мороз_по_ночному_минимуму_а_не_по_текущей(self):
+        from src.routes.ecology import _compute_life_indices
+        # днём тепло, ночью −12: нагрузка на теплосети есть
+        assert _compute_life_indices(stroki_vozduh(2.0, 3.0, 5.0), snow_impact=0, night_min=-12.0)["utility"]["score"] == 2
+        # сейчас −12, ночь мягкая: балла за мороз нет
+        assert _compute_life_indices(stroki_vozduh(-12.0, 3.0, 5.0), snow_impact=0, night_min=-3.0)["utility"]["score"] == 0
+
+    def test_С3_нет_прогноза_не_ноль(self):
+        from src.routes.ecology import _compute_life_indices
+        ix = _compute_life_indices(stroki_vozduh(-12.0, 3.0, 5.0))           # прогноза нет: ⊥
+        ut, dr = ix["utility"], ix["driver"]
+        assert ut["score"] is None and ut["label"] == "Нет прогноза" and ut["partial"]
+        assert dr["partial"] and "не оценены" in dr["missing"] and dr["score"] == 1   # мороз −12 по текущей — известен
+        polu = _compute_life_indices(stroki_vozduh(2.0, 3.0, 5.0), snow_impact=8)   # снег есть, ночи нет
+        assert polu["utility"]["score"] == 3 and polu["utility"]["partial"] and "ночной минимум" in polu["utility"]["missing"]
+        polnye = _compute_life_indices(stroki_vozduh(2.0, 3.0, 5.0), snow_impact=0, night_min=-3.0)
+        assert not polnye["utility"]["partial"] and not polnye["driver"]["partial"]
+
+    def test_входы_прогноза_без_прогноза_None(self, monkeypatch):
+        import src.ecology_cache as ec
+        monkeypatch.setattr(ec, "_ice_today", lambda d: (None, None, None))
+        monkeypatch.setattr(ec, "query_forecast", lambda **k: [])
+        assert ec.life_index_inputs(None) == {"ice_level": None, "night_min": None, "snow_impact": None}
+        monkeypatch.setattr(ec, "_ice_today", lambda d: ("refreeze", {"rain_mm": 2.0}, {"temp_min": -14.0}))
+        monkeypatch.setattr(ec, "query_forecast", lambda **k: [{"snow_impact": 0}, {"snow_impact": 3}, {}])
+        assert ec.life_index_inputs(None) == {"ice_level": "refreeze", "night_min": -14.0, "snow_impact": 3.0}
+
+
+def _tablo(rows, sneg, led, noch):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node не установлен")
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "s.js"
+        f.write_text(funkciya_tablo() + "\nconst ix = computeLifeIndices(" + ", ".join(json.dumps(v) for v in (rows, sneg, led, noch))
+                     + ");\nconsole.log(JSON.stringify(ix));", encoding="utf-8")
+        return json.loads(subprocess.run([node, str(f)], capture_output=True, text=True, check=True).stdout)
+
+
+def test_табло_С1_и_С3_как_сервер():
+    from src.routes.ecology import _compute_life_indices
+    sluchai = [(2.0, 0, None, -12.0), (-12.0, 0, None, -3.0), (-12.0, None, None, None), (2.0, 8, None, None),
+               (2.0, 0, "glaze", -3.0), (-25.0, 9, "refreeze", -33.0)]
+    for t, sneg, led, noch in sluchai:
+        s = _compute_life_indices(stroki_vozduh(t, 3.0, 5.0), ice_level=led, snow_impact=sneg, night_min=noch)
+        b = _tablo(stroki_vozduh(t, 3.0, 5.0), sneg, led, noch)
+        for key in ("driver", "utility"):
+            assert (b[key]["score"], b[key]["label"], b[key]["partial"]) == \
+                   (s[key]["score"], s[key]["label"], s[key]["partial"]), (t, sneg, led, noch, key)
+
+
+def test_уровни_погодной_нагрузки_достижимы():
+    """С2: «Критическая» от 8 была недостижима — сумма мороза и снега не больше 7. Каждый уровень
+    регламента должен выпадать хоть при одной погоде, и табло не знает уровней сверх регламента."""
+    yaml = pytest.importorskip("yaml")
+    ut = yaml.safe_load((KOREN / "config/rules/life_indices_rules.yaml").read_text(encoding="utf-8"))["utility"]
+    naibolshaya = max(ut[k] for k in ut if k.startswith("temp_") and k.endswith("_score")) \
+        + max(ut[k] for k in ut if k.startswith("snow_") and k.endswith("_score"))
+    porogi = [lv["max"] for lv in ut["levels"]]
+    assert porogi[-1] >= naibolshaya                                # выше последнего уровня балл не уходит
+    nizhe = [-1] + porogi
+    assert all(nizhe[i] < min(porogi[i], naibolshaya) for i in range(len(porogi))), (porogi, naibolshaya)
+    from src.routes.ecology import _compute_life_indices
+    metki = {_compute_life_indices(stroki_vozduh(0.0, 3.0, 5.0), snow_impact=s, night_min=n)["utility"]["label"]
+             for n in (0.0, -6.0, -12.0, -25.0, -35.0) for s in (0, 2, 5, 8)}
+    assert metki == {lv["label"] for lv in ut["levels"]}
+    html = (KOREN / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "'Критическая'" not in funkciya_tablo() and "Критическая" not in json.dumps(ut, ensure_ascii=False)
+    assert "Нет прогноза" in html
