@@ -610,10 +610,12 @@ def get_ecology_risks(
 
 # ── Life indices (driven by ecology data) ────────────────────────────────────
 
-def _compute_life_indices(rows: list[dict], ice_level: str | None = None) -> dict | None:
-    """Вычисляет индексы водителя, прогулки и коммунального напряжения.
+def _compute_life_indices(rows: list[dict], ice_level: str | None = None,
+                          snow_impact: float = 0) -> dict | None:
+    """Вычисляет индексы водителя, прогулки и погодной нагрузки на ЖКХ.
 
-    ice_level — гололёд на сегодня по влаге (ecology_cache.ice_level: «glaze» | «refreeze» | None).
+    ice_level — гололёд на сегодня по влаге (ecology_cache.ice_level: «glaze» | «refreeze» | None);
+    snow_impact — индекс снегопада 0–10 из прогноза на 3 суток (как на табло).
     """
     if not rows:
         return None
@@ -661,6 +663,11 @@ def _compute_life_indices(rows: list[dict], ice_level: str | None = None) -> dic
             driver += int(dr.get("wind_strong_score", 2))
         elif avg_w > float(dr.get("wind_moderate_ms", 8.0)):
             driver += int(dr.get("wind_moderate_score", 1))
+    # снегопад: видимость и сцепление — как на табло (computeLifeIndices)
+    if snow_impact >= float(dr.get("snow_heavy_threshold", 8)):
+        driver += int(dr.get("snow_heavy_score", 2))
+    elif snow_impact >= float(dr.get("snow_moderate_threshold", 5)):
+        driver += int(dr.get("snow_moderate_score", 1))
     driver = min(10, max(0, round(driver)))
 
     driver_levels = dr.get("levels", [])
@@ -687,25 +694,32 @@ def _compute_life_indices(rows: list[dict], ice_level: str | None = None) -> dic
     walk_levels = wk.get("levels", [])
     walk_label  = next((l["label"] for l in walk_levels if walk >= l["min"]), "Рекомендуется остаться дома")
 
-    # ── Индекс коммунального напряжения ───────────────────────────────────────
+    # ── Погодная нагрузка на ЖКХ (было «Коммунальное напряжение», 18.11) ────────
+    # Мороз по ночному минимуму — теплосети; снегопад по прогнозу — уборка и кровли. «Штиль +
+    # загрязнение» убран: смог — это экология (учтён в «Прогулке»), а воздух — модель CAMS.
     utility = 0
     if min_t is not None:
         if min_t < float(ut.get("temp_critical", -30.0)):  utility += int(ut.get("temp_critical_score", 4))
         elif min_t < float(ut.get("temp_severe", -20.0)):  utility += int(ut.get("temp_severe_score",   3))
         elif min_t < float(ut.get("temp_cold", -10.0)):    utility += int(ut.get("temp_cold_score",     2))
         elif min_t < float(ut.get("temp_cool", -5.0)):     utility += int(ut.get("temp_cool_score",     1))
-    if avg_w is not None and avg_p is not None:
-        if avg_w < float(ut.get("smog_wind_threshold_ms", 1.5)) and avg_p > float(ut.get("smog_pm25_threshold", 20.0)):
-            utility += int(ut.get("smog_score", 2))
+    if snow_impact >= float(ut.get("snow_heavy_threshold", 8)):
+        utility += int(ut.get("snow_heavy_score", 3))
+    elif snow_impact >= float(ut.get("snow_moderate_threshold", 5)):
+        utility += int(ut.get("snow_moderate_score", 2))
+    elif snow_impact >= float(ut.get("snow_light_threshold", 2)):
+        utility += int(ut.get("snow_light_score", 1))
     utility = min(10, max(0, round(utility)))
 
     util_levels = ut.get("levels", [])
-    util_label  = next((l["label"] for l in util_levels if utility <= l["max"]), "Критично")
+    util_label  = next((l["label"] for l in util_levels if utility <= l["max"]), "Критическая")
 
     return {
-        "driver":  {"score": driver,  "label": driver_label,  "icon": "🚗", "name": "Индекс водителя"},
-        "walk":    {"score": walk,    "label": walk_label,    "icon": "🚶", "name": "Индекс прогулки"},
-        "utility": {"score": utility, "label": util_label,    "icon": "🏗️",  "name": "Коммунальное напряжение"},
+        "driver":  {"score": driver,  "label": driver_label,  "icon": "🚗", "name": "Индекс водителя", "short": "водителя"},
+        "walk":    {"score": walk,    "label": walk_label,    "icon": "🚶", "name": "Индекс прогулки", "short": "прогулки"},
+        "utility": {"score": utility, "label": util_label,    "icon": "🏗️",  "name": "Погодная нагрузка на ЖКХ",
+                    "short": "ЖКХ: погода",
+                    "hint": "Сколько погода нагружает ЖКХ: мороз по ночному минимуму — теплосети, снегопад по прогнозу — уборка и кровли. Расчётная температура отопления Новосибирска −37 °C (СП 131.13330.2018). Это не загрузка бригад — её показывает прогноз ЖКХ на 2 недели."},
         "inputs":  {"avg_t": avg_t, "avg_w": avg_w, "avg_p": avg_p, "avg_a": avg_a, "min_t": min_t},
     }
 
@@ -725,7 +739,7 @@ def get_life_indices() -> dict:
     |---|---|---|
     | Водитель | 0–10 (выше = опаснее) | Риск для автомобилиста |
     | Прогулка | 0–10 (выше = лучше) | Комфорт прогулки на улице |
-    | Коммунальное напряжение | 0–10 (выше = хуже) | Нагрузка на ЖКХ и теплосети |
+    | Погодная нагрузка на ЖКХ | 0–10 (выше = хуже) | Мороз (теплосети) и снегопад (уборка, кровли) — только погода, не загрузка бригад |
     """
     from ..ecology_cache import _ice_today, query_current
     rows = query_current()
@@ -733,7 +747,13 @@ def get_life_indices() -> dict:
         ice = _ice_today(None)[0]
     except Exception:
         ice = None                                     # нет прогноза — гололёд не оценён
-    result = _compute_life_indices(rows, ice_level=ice)
+    snow = 0                                           # индекс снегопада на 3 суток — как /ecology/status
+    try:
+        from ..ecology_cache import query_forecast
+        snow = max((r.get("snow_impact", 0) for r in query_forecast(days=3)), default=0)
+    except Exception:
+        pass
+    result = _compute_life_indices(rows, ice_level=ice, snow_impact=snow)
     if result is None:
         return {"error": "Нет данных экологии", "hint": "POST /update — обновить данные"}
     return result
