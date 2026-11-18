@@ -261,6 +261,10 @@ def test_демо_в_стиле_РАГРАФ():
     assert znachok and "FBBF24" in znachok.group(1) and "0F172A" in znachok.group(1)   # как favicon РАГРАФ
     assert "Привет! Я — Сима" not in demo
     assert "Демо-копия РАГРАФ-ПРОГНОЗ без сервера" in demo and "Демо-копия СИМА" not in demo   # полоса прослойки
+    # в подвале — ссылка на лендинг РАГРАФ (только в демо)
+    podval = demo[demo.index('id="footerVer"'):]
+    assert 'href="https://ragraf.up.railway.app/"' in podval[:1500] and "РАГРАФ ↗</a>" in podval[:1500]
+    assert "ragraf.up.railway.app" not in html
 
 
 def test_сборка_ждёт_выкатки_railway():

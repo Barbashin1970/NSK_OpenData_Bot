@@ -466,6 +466,9 @@ ZNAK_SVG = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
             "font-family='system-ui,-apple-system,Segoe UI,Roboto,sans-serif' font-weight='700' "
             "font-size='44' fill='#FBBF24'>Σ</text></svg>")
 TYOMNAYA_SHAPKA = "bg-gradient-to-br from-slate-900 via-blue-950 to-blue-800"
+# Ссылка на лендинг РАГРАФ — в подвале демо (решение руководителя работы 2026-11-18: только в демо,
+# основной сайт СИМА не меняется). Девиз — заголовок лендинга РАГРАФ.
+SSYLKA_RAGRAF = "https://ragraf.up.railway.app/"
 
 
 def _znak(klass: str, extra: str = "") -> str:
@@ -511,6 +514,13 @@ PEREODET = [
      f"{IMYA_DEMO} · {PODZAG_DEMO} · ЦИИ НГУ · правила, без AI в runtime · моделирование и прогнозирование"),
     ('<p class="font-medium text-slate-500">СИМА — система интеллектуального муниципального анализа <span id="footerVer"',
      f'<p class="font-medium text-slate-500">{IMYA_DEMO} — система интеллектуального муниципального анализа <span id="footerVer"'),
+    (' class="inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] text-slate-400 '
+     'font-mono ml-1"></span></p>\n',
+     ' class="inline-block bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] text-slate-400 '
+     'font-mono ml-1"></span></p>\n'
+     f'    <p class="text-slate-500">Линейка <a href="{SSYLKA_RAGRAF}" target="_blank" rel="noopener" '
+     'class="font-bold text-slate-600 hover:text-blue-600 transition-colors">РАГРАФ ↗</a> — '
+     'искусственный интеллект, который можно проверить</p>\n'),
 ]
 
 
