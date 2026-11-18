@@ -260,6 +260,7 @@ def test_демо_в_стиле_РАГРАФ():
     znachok = re.search(r'<link rel="icon" type="image/svg\+xml" href="data:image/svg\+xml,([^"]+)"', demo)
     assert znachok and "FBBF24" in znachok.group(1) and "0F172A" in znachok.group(1)   # как favicon РАГРАФ
     assert "Привет! Я — Сима" not in demo
+    assert "Демо-копия РАГРАФ-ПРОГНОЗ без сервера" in demo and "Демо-копия СИМА" not in demo   # полоса прослойки
 
 
 def test_сборка_ждёт_выкатки_railway():
