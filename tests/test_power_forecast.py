@@ -358,13 +358,30 @@ class TestВыпуски:
         (18.11.2026). Имена этих полей не меняются без предупреждения сессии РАГРАФ."""
         from src.power_forecast import RAGRAF_POLYA, get_forecast
         assert set(RAGRAF_POLYA) == {"days", "cells", "status", "p_free", "p_overload",
-                                     "issue_id", "issued_at", "rules_version"}
+                                     "issue_id", "issued_at", "rules_version", "history_to"}
         fc = get_forecast(district="Советский", today=TODAY)
-        assert {"days", "cells", "issue_id", "issued_at", "rules_version"} <= set(fc)
+        assert {"days", "cells", "issue_id", "issued_at", "rules_version", "history_to"} <= set(fc)
         rabochie = [c for c in fc["cells"] if c["status"] not in ("off", "nodata")]
         assert rabochie and all({"status", "p_free"} <= set(c) for c in rabochie)
         # p_overload — только где ёмкость оценена: перегруз без ёмкости не оценён (⊥), а не 0
         assert all(("p_overload" in c) == ("capacity" in c) for c in rabochie)
+
+    def test_молчание_сборщика_видно_по_history_to(self, stend, monkeypatch):
+        """Замечание РАГРАФ 2 (18.11): issued_at — когда посчитан, history_to — по каким данным.
+        Сборщик молчит три дня — выпуск свежий, а история кончается четыре дня назад.
+        У выпуска одно history_to, и в базе то же, что в ответе."""
+        import src.power_cache as pc
+        import src.power_forecast as pf
+        a = pf.get_forecast(today=TODAY)
+        assert a["history_to"] == (TODAY - timedelta(days=1)).isoformat()
+        tishina = {TODAY - timedelta(days=k) for k in (1, 2, 3)}
+        monkeypatch.setattr(pc, "query_observed_days", lambda days=0: all_days(skip=tishina))
+        b = pf.get_forecast(district="Советский", today=TODAY)
+        assert b["history_to"] == (TODAY - timedelta(days=4)).isoformat() and b["issued_at"]
+        assert self.vybrat(stend, "SELECT history_to FROM power_forecast_issues WHERE issue_id = ?",
+                           [b["issue_id"]]) == [(b["history_to"],)]
+        # отпечаток помнит history_to: те же ячейки на другой истории — другой выпуск
+        assert pf.issue_id_of(dict(b, history_to=a["history_to"])) != pf.issue_id_of(b)
 
     def test_перегруз_без_ёмкости_не_ноль(self):
         """Находка РАГРАФ 18.11: у ячейки с неоценённой ёмкостью p_overload был 0.0 — «перегруза
@@ -392,6 +409,6 @@ class TestЭндпоинт:
         body = r.json()
         assert body["operation"] == "POWER_FORECAST"
         for key in ("days", "free_windows", "overloads", "risk", "backtest", "hypothesis", "regime", "estimator",
-                    "issue_id", "issued_at", "rules_version"):
+                    "issue_id", "issued_at", "rules_version", "history_to"):
             assert key in body
         assert body["cells"] == []            # по городу ячейки не отдаются
