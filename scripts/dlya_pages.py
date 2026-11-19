@@ -480,23 +480,27 @@ window.SIMA_STATIC = __META__;
 META_CHARSET = re.compile(r"""<meta\s+charset=["']?utf-8["']?\s*/?>""", re.I)
 
 # ── Демо в стиле РАГРАФ (просьба руководителя работы 2026-11-18) ───────────────────
-# Вместо «мишки» — знак Σ, как в шапке лендинга РАГРАФ (синий квадрат, белая Σ, Inter Bold);
-# значок вкладки — как favicon РАГРАФ (золотая Σ на slate-900). Имя — «РАГРАФ-ПРОГНОЗ», ниже —
+# Вместо «мишки» — знак Σ, как в шапке лендинга РАГРАФ (синий квадрат, белая Σ, Inter Bold).
+# Значок вкладки — белая Σ в синем круге (Р-23, 19.11): в цвет знака в шапке, а в строке браузера
+# не путается с вкладкой РАГРАФ, у которой золотая Σ на тёмном квадрате. Имя — «РАГРАФ-ПРОГНОЗ», ниже —
 # «Система интеллектуального муниципального анализа». Шапка темнее — slate-900 → blue-950 →
 # blue-800, как тёмный первый экран РАГРАФ. Меняется только копия для Pages; основной сайт —
 # с прежним видом. Каждая замена обязана найтись ровно один раз, иначе сборка останавливается:
 # демо со смесью старого и нового вида хуже прошлой публикации.
 IMYA_DEMO = "РАГРАФ-ПРОГНОЗ"
 PODZAG_DEMO = "Система интеллектуального муниципального анализа"
-ZNAK_SVG = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
-            "<rect width='64' height='64' rx='12' fill='#0F172A'/>"
-            "<text x='50%' y='50%' text-anchor='middle' dominant-baseline='central' "
-            "font-family='system-ui,-apple-system,Segoe UI,Roboto,sans-serif' font-weight='700' "
-            "font-size='44' fill='#FBBF24'>Σ</text></svg>")
+ZNACHOK_SVG = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+               "<circle cx='32' cy='32' r='32' fill='#2563EB'/>"
+               "<text x='50%' y='50%' text-anchor='middle' dominant-baseline='central' "
+               "font-family='system-ui,-apple-system,Segoe UI,Roboto,sans-serif' font-weight='700' "
+               "font-size='40' fill='#FFFFFF'>Σ</text></svg>")
 TYOMNAYA_SHAPKA = "bg-gradient-to-br from-slate-900 via-blue-950 to-blue-800"
 # Ссылка на лендинг РАГРАФ — в подвале демо (решение руководителя работы 2026-11-18: только в демо,
 # основной сайт СИМА не меняется). Девиз — заголовок лендинга РАГРАФ.
 SSYLKA_RAGRAF = "https://ragraf.up.railway.app/"
+# Второй продукт в подвале — Платформа АРХИ (просьба руководителя работы 2026-11-19, Р-22); подпись —
+# по заголовку её публичной страницы: «Платформа АРХИ — контроль строительных регламентов».
+SSYLKA_ARHI = "https://barbashin1970.github.io/ARCHI-NSU-Public/"
 
 
 def _znak(klass: str, extra: str = "") -> str:
@@ -512,7 +516,7 @@ PEREODET = [
     ('  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">\n'
      '  <link rel="icon" type="image/png" href="/static/img/sigma-cat-sm.png">\n'
      '  <link rel="apple-touch-icon" href="/static/img/sigma-cat.png">\n',
-     f'  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,{quote(ZNAK_SVG, safe="")}">\n'),
+     f'  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,{quote(ZNACHOK_SVG, safe="")}">\n'),
     ('  <link rel="preload" as="image" href="/static/img/sigma-cat-sm.png">\n', ""),
     ('<header class="bg-gradient-to-br from-blue-900 via-blue-700 to-indigo-700 text-white shadow-xl">',
      f'<header class="{TYOMNAYA_SHAPKA} text-white shadow-xl">'),
@@ -548,7 +552,10 @@ PEREODET = [
      'font-mono ml-1"></span></p>\n'
      f'    <p class="text-slate-500">Линейка <a href="{SSYLKA_RAGRAF}" target="_blank" rel="noopener" '
      'class="font-bold text-slate-600 hover:text-blue-600 transition-colors">РАГРАФ ↗</a> — '
-     'искусственный интеллект, который можно проверить</p>\n'),
+     'искусственный интеллект, который можно проверить</p>\n'
+     f'    <p class="text-slate-500"><a href="{SSYLKA_ARHI}" target="_blank" rel="noopener" '
+     'class="font-bold text-slate-600 hover:text-blue-600 transition-colors">Платформа АРХИ ↗</a> — '
+     'контроль строительных регламентов</p>\n'),
 ]
 
 
