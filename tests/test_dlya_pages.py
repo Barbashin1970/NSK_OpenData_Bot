@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 
@@ -257,14 +258,22 @@ def test_демо_в_стиле_РАГРАФ():
     shapka = demo[demo.index("<header"):demo.index("</header>")]
     assert ">РАГРАФ-ПРОГНОЗ</h1>" in shapka and "Система интеллектуального муниципального анализа" in shapka
     assert ">Σ</span>" in shapka and "bg-blue-600" in shapka and "Открытые данные — только спроси" not in shapka
+    # значок вкладки — белая Σ в синем круге (Р-23, 19.11), как знак в шапке; не золотая Σ на тёмном,
+    # как у вкладки РАГРАФ, — в строке браузера демо с ней не путается
     znachok = re.search(r'<link rel="icon" type="image/svg\+xml" href="data:image/svg\+xml,([^"]+)"', demo)
-    assert znachok and "FBBF24" in znachok.group(1) and "0F172A" in znachok.group(1)   # как favicon РАГРАФ
+    svg = unquote(znachok.group(1)) if znachok else ""
+    assert "<circle" in svg and "#2563EB" in svg and "fill='#FFFFFF'>Σ" in svg
+    assert "FBBF24" not in svg and "0F172A" not in svg
     assert "Привет! Я — Сима" not in demo
     assert "Демо-копия РАГРАФ-ПРОГНОЗ без сервера" in demo and "Демо-копия СИМА" not in demo   # полоса прослойки
     # в подвале — ссылка на лендинг РАГРАФ (только в демо)
     podval = demo[demo.index('id="footerVer"'):]
     assert 'href="https://ragraf.up.railway.app/"' in podval[:1500] and "РАГРАФ ↗</a>" in podval[:1500]
     assert "ragraf.up.railway.app" not in html
+    # и второй продукт — Платформа АРХИ (Р-22, 19.11), тоже только в демо
+    assert 'href="https://barbashin1970.github.io/ARCHI-NSU-Public/"' in podval[:2000]
+    assert "Платформа АРХИ ↗</a> — контроль строительных регламентов" in podval[:2000]
+    assert "ARCHI-NSU-Public" not in html
 
 
 def test_сборка_ждёт_выкатки_railway():
